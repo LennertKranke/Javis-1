@@ -267,6 +267,10 @@ class MailDraftSkill(Skill):
         )
 
     @property
+    def client(self) -> GmailClient:
+        return self._client
+
+    @property
     def options(self) -> ReplyOptions:
         return self._options
 

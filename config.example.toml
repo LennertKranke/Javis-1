@@ -39,6 +39,9 @@ rate_limits = { hour = 120, day = 600 }
 [capabilities.mail_reply]
 autonomy_level = 0
 requires_outbound = false
+# Was nicht von selbst durchgeht, landet als anstehende Entscheidung im
+# Dashboard und laesst sich dort einzeln freigeben.
+collect_approvals = true
 rate_limits = { hour = 20, day = 100 }
 
 # Entwuerfe tatsaechlich senden. Das erreicht Menschen.
@@ -50,6 +53,7 @@ rate_limits = { hour = 20, day = 100 }
 [capabilities.mail_send]
 autonomy_level = 0
 requires_outbound = true
+collect_approvals = true
 rate_limits = { hour = 5, day = 20 }
 
 [capabilities.calendar]
@@ -206,3 +210,18 @@ allowlist_manual = []
 
 # Immer verboten, schlaegt alles andere. Ganze Domains als "@example.com".
 allowlist_blocked = []
+
+
+# --------------------------------------------------------------------------- #
+# Dashboard
+#
+# Laeuft ausschliesslich auf der Loopback-Adresse. Eine andere weist die
+# Konfiguration ab -- die Oberflaeche kann Entscheidungen freigeben.
+# --------------------------------------------------------------------------- #
+
+[web]
+host = "127.0.0.1"
+port = 8765
+
+# 0 heisst: die Seite laedt sich nicht von selbst neu. Sonst Sekunden (ab 5).
+refresh_seconds = 0

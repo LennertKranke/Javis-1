@@ -141,6 +141,41 @@ MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
             """,
         ),
     ),
+    (
+        4,
+        (
+            # Anstehende Entscheidungen. Enthaelt beide Haelften der urspruenglichen
+            # Entscheidung getrennt, damit sie sich spaeter unveraendert
+            # wiederherstellen laesst -- samt der Pruefung, dass in der
+            # Modellhaelfte kein Ziel steckt.
+            """
+            CREATE TABLE approvals (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                skill      TEXT    NOT NULL,
+                event_key  TEXT    NOT NULL,
+                action     TEXT    NOT NULL,
+                reason     TEXT    NOT NULL DEFAULT '',
+                decided_by TEXT    NOT NULL DEFAULT '',
+                summary    TEXT    NOT NULL DEFAULT '',
+                fields     TEXT    NOT NULL DEFAULT '{}',
+                targets    TEXT    NOT NULL DEFAULT '{}',
+                model      TEXT,
+                state      TEXT    NOT NULL DEFAULT 'pending',
+                created_at TEXT    NOT NULL,
+                settled_at TEXT,
+                note       TEXT,
+                audit_id   INTEGER REFERENCES audit_log (id)
+            )
+            """,
+            # Ein Vorgang steht hoechstens einmal offen. Ohne das sammeln sich
+            # bei jedem Durchlauf neue Kopien derselben Entscheidung.
+            """
+            CREATE UNIQUE INDEX ux_approvals_offen ON approvals (skill, event_key)
+            WHERE state = 'pending'
+            """,
+            "CREATE INDEX ix_approvals_state ON approvals (state, created_at)",
+        ),
+    ),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

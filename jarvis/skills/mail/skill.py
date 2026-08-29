@@ -131,6 +131,10 @@ class MailSkill(Skill):
         )
 
     @property
+    def client(self) -> GmailClient:
+        return self._client
+
+    @property
     def options(self) -> MailOptions:
         return self._options
 

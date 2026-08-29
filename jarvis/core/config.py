@@ -33,6 +33,7 @@ __all__ = [
     "RateLimit",
     "StopSwitch",
     "TaskRoute",
+    "WebConfig",
     "jarvis_home",
 ]
 
@@ -145,6 +146,7 @@ class Capability:
     autonomy_level: AutonomyLevel = AutonomyLevel.SHADOW
     requires_outbound: bool = True
     enabled: bool = True
+    collect_approvals: bool = False
     rate_limits: tuple[RateLimit, ...] = ()
 
 
@@ -190,6 +192,23 @@ class TaskRoute:
 class LLMConfig:
     providers: dict[str, ProviderConfig]
     tasks: dict[str, TaskRoute]
+
+
+LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+@dataclass(frozen=True)
+class WebConfig:
+    """Das Dashboard. Bindet ausschliesslich an die Loopback-Adresse.
+
+    Das ist keine Vorsichtsmassnahme, sondern eine Sperre: die Oberflaeche
+    kann Entscheidungen freigeben, und Abschnitt 6 sagt "unter localhost".
+    Eine andere Adresse wird beim Laden abgewiesen, nicht bloss gewarnt.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = 8765
+    refresh_seconds: int = 0
 
 
 # --------------------------------------------------------------------------- #
@@ -249,6 +268,7 @@ class Config:
     capabilities: dict[str, Capability]
     llm: LLMConfig
     skills: dict[str, dict[str, Any]]
+    web: WebConfig
     source: Path | None
 
     @property
@@ -296,7 +316,15 @@ class Config:
     ) -> Config:
         _reject_unknown(
             raw,
-            {"dry_run", "log_level", "sanitize_max_chars", "capabilities", "llm", "skills"},
+            {
+                "dry_run",
+                "log_level",
+                "sanitize_max_chars",
+                "capabilities",
+                "llm",
+                "skills",
+                "web",
+            },
             "(Wurzel)",
         )
         dry_run = _as_bool(raw.get("dry_run", True), "dry_run")
@@ -310,6 +338,7 @@ class Config:
         capabilities = _parse_capabilities(raw.get("capabilities", {}))
         llm = _parse_llm(raw.get("llm", {}))
         skills = _parse_skills(raw.get("skills", {}))
+        web = _parse_web(raw.get("web", {}))
         return cls(
             paths=paths,
             dry_run=dry_run,
@@ -318,6 +347,7 @@ class Config:
             capabilities=capabilities,
             llm=llm,
             skills=skills,
+            web=web,
             source=source,
         )
 
@@ -360,7 +390,15 @@ def _parse_capabilities(raw: Any) -> dict[str, Capability]:
         if not isinstance(body, dict):
             raise ConfigError(f"{where}: erwartet eine Tabelle")
         _reject_unknown(
-            body, {"autonomy_level", "requires_outbound", "enabled", "rate_limits"}, where
+            body,
+            {
+                "autonomy_level",
+                "requires_outbound",
+                "enabled",
+                "collect_approvals",
+                "rate_limits",
+            },
+            where,
         )
         level_value = _as_int(body.get("autonomy_level", 0), f"{where}.autonomy_level")
         try:
@@ -371,6 +409,7 @@ def _parse_capabilities(raw: Any) -> dict[str, Capability]:
             ) from None
         outbound = _as_bool(body.get("requires_outbound", True), f"{where}.requires_outbound")
         enabled = _as_bool(body.get("enabled", True), f"{where}.enabled")
+        sammeln = _as_bool(body.get("collect_approvals", False), f"{where}.collect_approvals")
         limits = _parse_rate_limits(body.get("rate_limits", {}), where)
         if outbound and not limits:
             raise ConfigError(
@@ -382,6 +421,7 @@ def _parse_capabilities(raw: Any) -> dict[str, Capability]:
             autonomy_level=level,
             requires_outbound=outbound,
             enabled=enabled,
+            collect_approvals=sammeln,
             rate_limits=limits,
         )
     return out
@@ -402,6 +442,27 @@ def _parse_rate_limits(raw: Any, where: str) -> tuple[RateLimit, ...]:
             raise ConfigError(f"{where}.rate_limits.{window}: darf nicht negativ sein")
         limits.append(RateLimit(seconds=WINDOW_SECONDS[window], window=window, limit=limit))
     return tuple(sorted(limits))
+
+
+def _parse_web(raw: Any) -> WebConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError("web: erwartet eine Tabelle")
+    _reject_unknown(raw, {"host", "port", "refresh_seconds"}, "web")
+
+    host = _as_str(raw.get("host", "127.0.0.1"), "web.host")
+    if host not in LOOPBACK:
+        erlaubt = ", ".join(sorted(LOOPBACK))
+        raise ConfigError(
+            f"web.host: {host!r} ist nicht erlaubt. Das Dashboard gibt Entscheidungen "
+            f"frei und laeuft ausschliesslich lokal (erlaubt: {erlaubt})."
+        )
+    port = _as_int(raw.get("port", 8765), "web.port")
+    if not 1024 <= port <= 65535:
+        raise ConfigError("web.port: muss zwischen 1024 und 65535 liegen")
+    refresh = _as_int(raw.get("refresh_seconds", 0), "web.refresh_seconds")
+    if refresh and not 5 <= refresh <= 3600:
+        raise ConfigError("web.refresh_seconds: 0 oder zwischen 5 und 3600")
+    return WebConfig(host=host, port=port, refresh_seconds=refresh)
 
 
 def _parse_skills(raw: Any) -> dict[str, dict[str, Any]]:
@@ -557,6 +618,9 @@ rate_limits = { hour = 120, day = 600 }
 [capabilities.mail_reply]
 autonomy_level = 0
 requires_outbound = false
+# Was nicht von selbst durchgeht, landet als anstehende Entscheidung im
+# Dashboard und laesst sich dort einzeln freigeben.
+collect_approvals = true
 rate_limits = { hour = 20, day = 100 }
 
 # Entwuerfe tatsaechlich senden. Das erreicht Menschen.
@@ -568,6 +632,7 @@ rate_limits = { hour = 20, day = 100 }
 [capabilities.mail_send]
 autonomy_level = 0
 requires_outbound = true
+collect_approvals = true
 rate_limits = { hour = 5, day = 20 }
 
 [capabilities.calendar]
@@ -724,4 +789,19 @@ allowlist_manual = []
 
 # Immer verboten, schlaegt alles andere. Ganze Domains als "@example.com".
 allowlist_blocked = []
+
+
+# --------------------------------------------------------------------------- #
+# Dashboard
+#
+# Laeuft ausschliesslich auf der Loopback-Adresse. Eine andere weist die
+# Konfiguration ab -- die Oberflaeche kann Entscheidungen freigeben.
+# --------------------------------------------------------------------------- #
+
+[web]
+host = "127.0.0.1"
+port = 8765
+
+# 0 heisst: die Seite laedt sich nicht von selbst neu. Sonst Sekunden (ab 5).
+refresh_seconds = 0
 """

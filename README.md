@@ -3,10 +3,11 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 3 abgeschlossen.** Der Kern steht, JARVIS liest und ordnet den
-Posteingang ein, schreibt Antwortentwuerfe und kann sie -- ab Stufe 1 und nur
-an Adressen auf der Allowlist -- auch senden. Es gibt noch keinen Daemon, kein
-Dashboard und keine Sprache.
+**Stand: Phase 4 abgeschlossen.** Der Kern steht, JARVIS liest und ordnet den
+Posteingang ein, schreibt Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf
+der Allowlist senden, und zeigt Zustand, Protokoll und anstehende Entscheidungen
+in einer Weboberflaeche auf localhost. Es gibt noch keinen Daemon und keine
+Sprache.
 
 ---
 
@@ -72,6 +73,7 @@ Keychain ab. Angefordert werden `gmail.modify` und `gmail.send`.
 | `jarvis mail send [-n N]` | fertige Entwuerfe senden (verlangt Stufe 1) |
 | `jarvis mail allowlist [--refresh]` | wer eine Antwort bekommen darf |
 | `jarvis mail compare` | Entwuerfe gegen das Protokoll abgleichen |
+| `jarvis web [--port N]` | Dashboard auf localhost starten |
 
 Der Stoppschalter ist eine Datei. Er wirkt auch ohne laufendes JARVIS:
 
@@ -306,8 +308,66 @@ task = "personal"     # vertraulich, nur Ollama
 
 ---
 
+## Phase 4: Dashboard
+
+```sh
+uv run jarvis web
+```
+
+Gibt eine Adresse mit Sitzungstoken aus. Drei Ansichten -- Zustand,
+Entscheidungen, Protokoll -- und genau drei Dinge, die sich ausloesen lassen:
+freigeben, verwerfen, anhalten. Durchlaeufe startet weiter die Kommandozeile;
+eine Oberflaeche, die Modellaufrufe ausloesen kann, ist etwas anderes als eine,
+die nur bestaetigt.
+
+### Anstehende Entscheidungen
+
+Was nicht von selbst durchging, wandert in eine Warteschlange, sofern die
+Faehigkeit das sammelt:
+
+```toml
+[capabilities.mail_reply]
+collect_approvals = true
+```
+
+Eine Freigabe ersetzt die **Autonomiestufe** -- mehr nicht. Stoppschalter,
+Ein-Aus-Schalter und Obergrenze gelten weiter, und der globale Trockenlauf
+ebenfalls: `dry_run = true` heisst "nichts geht hinaus", auch wenn jemand
+klickt. Die Seite sagt das an der Stelle, an der sonst der Knopf waere.
+
+Greift eine dieser Sperren, bleibt der Vorgang offen und traegt den Grund als
+Vermerk. Nochmal klicken kostet dann nichts, und niemand muss raten, warum
+nichts geschah.
+
+Beim Freigeben wird die urspruengliche Entscheidung aus der Datenbank wieder
+aufgebaut -- ueber den regulaeren Weg, nicht per Umgehung. `Decision` prueft
+dabei erneut, dass in der Modellhaelfte kein Ziel steckt. Eine von Hand
+veraenderte Zeile in der Datenbank kommt damit nicht an Prinzip 2.1 vorbei.
+
+### Absicherung
+
+Die Oberflaeche kann E-Mails freigeben. Eine Bindung an 127.0.0.1 allein
+reicht dafuer nicht: jede beliebige Webseite in deinem Browser darf ein
+Formular an localhost abschicken, und der Browser tut es.
+
+- **Sitzungstoken** in `~/.jarvis/web-token` (Rechte 0600). Ohne ihn
+  antwortet der Server nichts. Beim ersten Aufruf wandert er aus der
+  Adresszeile in ein Cookie, damit er nicht im Verlauf stehen bleibt.
+- **Herkunftspruefung** bei jeder veraendernden Anfrage. Fehlen Origin und
+  Referer, wird abgelehnt.
+- **Content-Security-Policy** ohne Skripte, ohne fremde Quellen, ohne
+  Einbettung in fremde Rahmen.
+- **`web.host`** laesst nur Loopback zu; alles andere weist die Konfiguration
+  beim Laden ab.
+
+Das Protokoll zeigt Betreffzeilen aus fremden Mails. Jeder Wert, der auf die
+Seite geht, wird maskiert -- ungefiltertes Markup waere hier kein
+Schoenheits-, sondern ein Sicherheitsfehler.
+
+---
+
 ## Was noch nicht existiert
 
-Dashboard (Phase 4), Kalender und Briefing (Phase 5), Sprache (Phase 6). Es
-gibt noch keinen `daemon.py` und keine launchd-plist: Durchlaeufe startet man
-vorerst von Hand.
+Kalender und Briefing (Phase 5), Sprache (Phase 6). Es gibt noch keinen
+`daemon.py` und keine launchd-plist: Durchlaeufe startet man vorerst von Hand
+oder ueber einen eigenen Eintrag in der Aufgabenplanung.

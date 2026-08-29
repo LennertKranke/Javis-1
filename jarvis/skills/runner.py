@@ -7,6 +7,12 @@ wird: beurteilen, protokollieren, durchs Gatter, erst dann handeln.
 Ein Fehler bei einer Nachricht beendet den Durchlauf nicht. Eine kaputte Mail
 im Posteingang darf nicht dazu fuehren, dass die restlichen dreissig liegen
 bleiben -- sie wird protokolliert und uebersprungen.
+
+Seit Phase 4 kommt ein zweiter Weg dazu: was nicht von selbst durchging, kann
+als anstehende Entscheidung in die Warteschlange wandern und spaeter von Hand
+freigegeben werden. `execute_approval` baut die urspruengliche Entscheidung
+dafuer wieder auf -- und laesst sie noch einmal durchs Gatter, nur eben mit der
+Freigabe anstelle der Autonomiestufe.
 """
 
 from __future__ import annotations
@@ -15,11 +21,12 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 
-from jarvis.core.audit import KIND_ACTION, KIND_DECISION, AuditLog
+from jarvis.core.approvals import EXECUTED, FAILED, REJECTED, Approval, ApprovalStore
+from jarvis.core.audit import KIND_ACTION, KIND_DECISION, KIND_SYSTEM, AuditLog
 from jarvis.core.gate import Disposition, Gate
-from jarvis.skills.base import Skill
+from jarvis.skills.base import Decision, Result, Skill
 
-__all__ = ["RunReport", "run_skill"]
+__all__ = ["RunReport", "execute_approval", "reject_approval", "run_skill"]
 
 
 @dataclass
@@ -31,6 +38,7 @@ class RunReport:
     dry_run: int = 0
     blocked: int = 0
     failed: int = 0
+    queued: int = 0
     by_category: Counter[str] = field(default_factory=Counter)
     errors: list[str] = field(default_factory=list)
 
@@ -44,6 +52,8 @@ def run_skill(
     *,
     gate: Gate,
     audit: AuditLog,
+    approvals: ApprovalStore | None = None,
+    collect_approvals: bool = False,
     logger: logging.Logger | None = None,
 ) -> RunReport:
     log = logger or logging.getLogger("jarvis.runner")
@@ -118,6 +128,27 @@ def run_skill(
         else:
             report.blocked += 1
 
+        # Nur was am Stoppschalter vorbeikam, ist eine offene Frage: `rate` ist
+        # gesetzt, sobald die Begrenzung ueberhaupt geprueft wurde. Ist das
+        # System angehalten, steht die Antwort schon fest -- dann bliebe die
+        # Warteschlange voller Vorgaenge, die niemand gemeint hat.
+        sammelbar = approvals is not None and collect_approvals and verdict.rate is not None
+        if sammelbar and not verdict.may_act:
+            eingestellt = approvals.enqueue(
+                skill=skill.name,
+                event_key=event.key,
+                action=decision.action,
+                reason=verdict.reason,
+                decided_by=decision.decided_by,
+                summary=event.summary,
+                fields=decision.fields,
+                targets=decision.targets,
+                model=decision.model,
+                audit_id=verdict.audit_id,
+            )
+            if eingestellt is not None:
+                report.queued += 1
+
         skill.after(event, decision, str(verdict.disposition), result)
 
     log.info(
@@ -132,3 +163,105 @@ def run_skill(
         },
     )
     return report
+
+
+def _decision_from(approval: Approval) -> Decision:
+    """Baut die urspruengliche Entscheidung wieder auf.
+
+    Ueber den regulaeren Weg, nicht per Umgehung: `Decision` prueft beim
+    Anlegen erneut, dass in der Modellhaelfte kein Ziel steckt. Eine von Hand
+    veraenderte Zeile in der Datenbank kommt damit nicht an Prinzip 2.1 vorbei.
+    """
+    return Decision(
+        skill=approval.skill,
+        event_key=approval.event_key,
+        action=approval.action,
+        reason=approval.reason,
+        decided_by=approval.decided_by,
+        fields=approval.fields,
+        targets=approval.targets,
+        model=approval.model,
+    )
+
+
+def execute_approval(
+    approval: Approval,
+    *,
+    skill: Skill,
+    gate: Gate,
+    audit: AuditLog,
+    approvals: ApprovalStore,
+    logger: logging.Logger | None = None,
+) -> Result | None:
+    """Fuehrt eine freigegebene Entscheidung aus.
+
+    Die Freigabe ersetzt die Autonomiestufe, sonst nichts. Stoppschalter,
+    Ein-Aus-Schalter und Obergrenze gelten weiter; greift eine davon, bleibt
+    der Vorgang offen und traegt den Grund als Vermerk. Erneut klicken kostet
+    dann nichts, und niemand muss raten, warum nichts geschah.
+    """
+    log = logger or logging.getLogger("jarvis.runner")
+    if not approval.pending:
+        return None
+
+    decision = _decision_from(approval)
+    verdict = gate.evaluate(
+        skill.name,
+        required_level=skill.autonomy_level,
+        subject=approval.event_key,
+        detail={"action": decision.action, "approval_id": approval.id, "approved": True},
+        approved=True,
+    )
+
+    if not verdict.may_act:
+        approvals.note(approval.id, verdict.reason)
+        log.info(
+            "Freigabe nicht ausgefuehrt",
+            extra={"skill": skill.name, "approval": approval.id, "reason": verdict.reason},
+        )
+        return None
+
+    result = skill.act(decision)
+    audit.record(
+        capability=skill.name,
+        kind=KIND_ACTION,
+        outcome="performed" if result.performed else "failed",
+        subject=approval.event_key,
+        detail=dict(result.detail)
+        | {"approval_id": approval.id, "approved": True}
+        | ({"error": result.error} if result.error else {}),
+    )
+    approvals.settle(
+        approval.id,
+        EXECUTED if result.performed else FAILED,
+        note=result.error,
+    )
+    log.info(
+        "Freigabe ausgefuehrt",
+        extra={
+            "skill": skill.name,
+            "approval": approval.id,
+            "performed": result.performed,
+        },
+    )
+    return result
+
+
+def reject_approval(
+    approval: Approval,
+    *,
+    audit: AuditLog,
+    approvals: ApprovalStore,
+    note: str = "von Hand verworfen",
+) -> bool:
+    """Verwirft eine Entscheidung. Es geschieht nichts ausser einem Vermerk."""
+    if not approvals.settle(approval.id, REJECTED, note=note):
+        return False
+    audit.record(
+        capability=approval.skill,
+        kind=KIND_SYSTEM,
+        outcome="rejected",
+        subject=approval.event_key,
+        detail={"approval_id": approval.id, "note": note},
+    )
+    return True

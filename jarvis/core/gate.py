@@ -5,6 +5,12 @@ Stoppschalter, Autonomiestufe, Ratenbegrenzung. Waeren sie ueber die
 Faehigkeiten verstreut, wuerde die vierte Faehigkeit irgendwann eine davon
 vergessen -- und zwar unbemerkt, weil das Vergessen aussieht wie Erfolg.
 
+Seit Phase 4 gibt es einen zweiten Weg hindurch: eine ausdrueckliche Freigabe
+durch einen Menschen. Sie ersetzt die Autonomiestufe -- mehr nicht. Der
+Stoppschalter, der Ein-Aus-Schalter der Faehigkeit und die Obergrenze gelten
+weiter. Ein angehaltenes System bleibt angehalten, auch wenn jemand klickt;
+sonst waere der Stoppschalter nur eine Bitte.
+
 Die Reihenfolge ist Absicht. Der Stoppschalter kommt vor der Ratenbegrenzung,
 damit ein angehaltenes System keine Kontingente aufbraucht. Die Begrenzung wird
 auch im Trockenlauf ausgewertet, aber nicht verbraucht: so zeigt der
@@ -61,6 +67,7 @@ class Gate:
         required_level: int,
         subject: str | None = None,
         detail: dict[str, Any] | None = None,
+        approved: bool = False,
     ) -> GateVerdict:
         cap = self._config.capability(capability)
         granted = int(cap.autonomy_level)
@@ -92,7 +99,11 @@ class Gate:
             )
 
         # Trockenlauf, wenn global so eingestellt oder die Stufe nicht reicht.
-        dry = self._config.dry_run or not self._config.permits(capability, required_level)
+        # Eine Freigabe von Hand ersetzt die Stufe, nicht den Trockenlauf:
+        # dry_run heisst "nichts geht hinaus", und das soll es auch heissen,
+        # wenn jemand klickt.
+        stufe_reicht = approved or self._config.permits(capability, required_level)
+        dry = self._config.dry_run or not stufe_reicht
 
         rate = self._limiter.acquire(capability, dry_run=dry)
         if not rate.allowed:
@@ -127,7 +138,7 @@ class Gate:
         return self._record(
             capability,
             Disposition.ACT,
-            "freigegeben",
+            "von Hand freigegeben" if approved else "freigegeben",
             granted,
             required_level,
             rate,

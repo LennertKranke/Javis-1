@@ -13,10 +13,16 @@ dependencies = [
     # Code stehen und sich auf eine Allowlist einschraenken lassen.
     "google-auth>=2.30",
     "google-auth-oauthlib>=1.2",
+    # Dashboard. Starlette liefert Routing und Anfrageobjekte, uvicorn den
+    # Server. Die Seiten selbst entstehen serverseitig als HTML -- kein
+    # JavaScript-Framework, nichts nachzuladen.
+    "starlette>=0.37",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+# httpx nur fuer Starlettes TestClient. Zur Laufzeit braucht JARVIS es nicht.
+dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]
 
 [project.scripts]
 jarvis = "jarvis.interfaces.cli:main"

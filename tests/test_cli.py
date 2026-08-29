@@ -333,3 +333,52 @@ def test_fehlerhafte_antworteinstellungen_werden_gemeldet(home, capsys):
     err = capsys.readouterr().err
     assert code == 2
     assert "kategorien" in err
+
+
+# --------------------------------------------------------------------------- #
+# Dashboard (Phase 4)
+# --------------------------------------------------------------------------- #
+
+
+def test_web_ohne_datenbank(home, capsys):
+    code, out = run(home, "web", capsys=capsys)
+    assert code == 1
+    assert "jarvis init" in out
+
+
+def test_web_zeigt_adresse_und_token(home, capsys, monkeypatch):
+    """Ohne die vollstaendige Adresse kommt niemand hinein."""
+    run(home, "init", capsys=capsys)
+    gestartet = {}
+
+    def fake_run(app, **kwargs):
+        gestartet.update(kwargs)
+
+    monkeypatch.setattr("uvicorn.run", fake_run)
+    code, out = run(home, "web", "--port", "9123", capsys=capsys)
+
+    assert code == 0
+    assert "http://127.0.0.1:9123/?token=" in out
+    assert "web-token" in out
+    assert gestartet["port"] == 9123
+    assert gestartet["host"] == "127.0.0.1"
+
+
+def test_web_meldet_dass_freigaben_im_trockenlauf_nichts_bewirken(home, capsys, monkeypatch):
+    run(home, "init", capsys=capsys)
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: None)
+    _code, out = run(home, "web", capsys=capsys)
+    assert "wirken nur ohne Trockenlauf" in out
+
+
+def test_web_host_ausserhalb_von_localhost_wird_abgelehnt(home, capsys):
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace('host = "127.0.0.1"', 'host = "0.0.0.0"'),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(home), "web"])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "web.host" in err

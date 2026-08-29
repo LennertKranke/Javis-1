@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from jarvis import __version__
+from jarvis.core.approvals import ApprovalStore
 from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import DEFAULT_CONFIG_TOML, Config, ConfigError, Paths
 from jarvis.core.db import open_database
@@ -26,12 +27,17 @@ from jarvis.core.ratelimit import RateLimiter
 from jarvis.core.secrets import default_store
 from jarvis.llm.providers import build_providers
 from jarvis.llm.router import Router, RouterError
-from jarvis.skills.mail import GmailAuth, GmailAuthError, GmailClient, GmailError, MailStore
+from jarvis.skills.factory import (
+    build_skill,
+    gmail_auth,
+    gmail_client,
+    send_capabilities,
+)
+from jarvis.skills.mail import GmailAuthError, GmailError, MailStore
 from jarvis.skills.mail.allowlist import Allowlist
 from jarvis.skills.mail.compose import fingerprint_of_draft
-from jarvis.skills.mail.gmail import DRAFTING, READ_ONLY, SENDING
-from jarvis.skills.mail.reply import MailDraftSkill, MailSendSkill, SendOptions
-from jarvis.skills.mail.skill import MailOptions, MailSkill
+from jarvis.skills.mail.gmail import DRAFTING, READ_ONLY
+from jarvis.skills.mail.reply import SendOptions
 from jarvis.skills.mail.store import ReplyStore
 from jarvis.skills.mail.style import StyleStore, extract_profile
 from jarvis.skills.runner import run_skill
@@ -339,42 +345,11 @@ def cmd_verify(args: argparse.Namespace, out: Out) -> int:
 # --------------------------------------------------------------------------- #
 
 
-def _gmail(config, capabilities):
-    """Baut einen Gmail-Client mit genau den Rechten, die er braucht."""
-    secrets = default_store()
-    options = MailOptions(config.skill_options("mail"), known_tasks=set(config.llm.tasks))
-    auth = GmailAuth(
-        secrets, client_secret_name=options.client_secret, token_name=options.token_secret
-    )
-    return auth, GmailClient(auth, capabilities=capabilities)
-
-
-def _send_capabilities(config):
-    """Senden nur, wenn die Stufe es hergibt -- sonst gar nicht erst im Client."""
-    return SENDING if config.permits("mail_send", 1) else DRAFTING
-
-
 def _mail_parts(config, conn, *, max_per_run: int | None = None):
-    """Baut Gmail-Client, Router und Faehigkeit aus der Konfiguration."""
-    secrets = default_store()
-    options = MailOptions(config.skill_options("mail"), known_tasks=set(config.llm.tasks))
+    skill = build_skill("mail", config=config, conn=conn)
     if max_per_run:
-        options.max_per_run = max_per_run
-    auth = GmailAuth(
-        secrets,
-        client_secret_name=options.client_secret,
-        token_name=options.token_secret,
-    )
-    client = GmailClient(auth)
-    router = Router(config.llm, build_providers(config.llm, secrets))
-    skill = MailSkill(
-        options=options,
-        client=client,
-        router=router,
-        store=MailStore(conn),
-        sanitize_max_chars=config.sanitize_max_chars,
-    )
-    return auth, client, skill
+        skill.options.max_per_run = max_per_run
+    return skill.client, skill
 
 
 def _require_db(paths, out: Out):
@@ -391,17 +366,22 @@ def cmd_mail_login(args: argparse.Namespace, out: Out) -> int:
     if conn is None:
         return 1
     try:
-        auth, client, _ = _mail_parts(config, conn)
         secrets = default_store()
         if not secrets.writable:
             out.line("Zugangsdaten lassen sich hier nicht ablegen.")
             out.line(f"  {out.dim('Die Anmeldung braucht die macOS-Keychain.')}")
             return 1
+
+        auth = gmail_auth(config, secrets=secrets)
         out.line("Ein Browserfenster oeffnet sich fuer die Zustimmung.")
         auth.login()
+
+        client = gmail_client(config, READ_ONLY, secrets=secrets)
+        darf_senden = "send" in send_capabilities(config)
         out.line(f"Angemeldet als {client.address()}")
         out.line(f"  {out.dim('Berechtigungen: gmail.modify und gmail.send')}")
-        out.line(f"  {out.dim('In dieser Phase wird ausschliesslich gelesen und beschriftet.')}")
+        stand = "freigeschaltet" if darf_senden else "gesperrt (mail_send auf Stufe 0)"
+        out.line(f"  {out.dim('Senden ist derzeit ' + stand)}")
         return 0
     except (GmailError, ConfigError) as exc:
         out.line(f"Anmeldung fehlgeschlagen: {exc}")
@@ -417,11 +397,17 @@ def cmd_mail_poll(args: argparse.Namespace, out: Out) -> int:
     if conn is None:
         return 1
     try:
-        _, _, skill = _mail_parts(config, conn, max_per_run=args.anzahl)
+        _client, skill = _mail_parts(config, conn, max_per_run=args.anzahl)
         audit = AuditLog(conn)
         gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
         try:
-            report = run_skill(skill, gate=gate, audit=audit)
+            report = run_skill(
+                skill,
+                gate=gate,
+                audit=audit,
+                approvals=ApprovalStore(conn),
+                collect_approvals=config.capability(skill.name).collect_approvals,
+            )
         except GmailAuthError as exc:
             out.line(f"{exc}")
             return 1
@@ -442,6 +428,8 @@ def cmd_mail_poll(args: argparse.Namespace, out: Out) -> int:
             out.field("Blockiert", str(report.blocked))
         if report.failed:
             out.field("Fehler", str(report.failed))
+        if report.queued:
+            out.field("Zur Freigabe", str(report.queued))
 
         if report.by_category:
             out.line()
@@ -462,7 +450,7 @@ def cmd_mail_labels(args: argparse.Namespace, out: Out) -> int:
     if conn is None:
         return 1
     try:
-        _, _, skill = _mail_parts(config, conn)
+        _client, skill = _mail_parts(config, conn)
         try:
             zuordnung = skill.labels.ensure(skill.options.categories)
         except GmailError as exc:
@@ -524,7 +512,7 @@ def cmd_mail_style(args: argparse.Namespace, out: Out) -> int:
     try:
         store = StyleStore(conn)
         if args.refresh:
-            _, client = _gmail(config, READ_ONLY)
+            client = gmail_client(config, READ_ONLY)
             try:
                 ids = client.list_message_ids("in:sent", args.anzahl)
                 koerper = [parse_sent_body(client.get_message(mid)) for mid in ids]
@@ -556,20 +544,10 @@ def parse_sent_body(roh: dict) -> str:
 
 
 def _reply_teile(config, conn, *, max_per_run=None):
-    _, client = _gmail(config, DRAFTING)
-    secrets = default_store()
-    router = Router(config.llm, build_providers(config.llm, secrets))
-    skill = MailDraftSkill.from_config(
-        config,
-        client=client,
-        router=router,
-        mail_store=MailStore(conn),
-        reply_store=ReplyStore(conn),
-        style=StyleStore(conn).load(),
-    )
+    skill = build_skill("mail_reply", config=config, conn=conn)
     if max_per_run:
         skill.options.max_per_run = max_per_run
-    return client, skill
+    return skill.client, skill
 
 
 def cmd_mail_draft(args: argparse.Namespace, out: Out) -> int:
@@ -579,11 +557,17 @@ def cmd_mail_draft(args: argparse.Namespace, out: Out) -> int:
     if conn is None:
         return 1
     try:
-        _, skill = _reply_teile(config, conn, max_per_run=args.anzahl)
+        _client, skill = _reply_teile(config, conn, max_per_run=args.anzahl)
         audit = AuditLog(conn)
         gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
         try:
-            bericht = run_skill(skill, gate=gate, audit=audit)
+            bericht = run_skill(
+                skill,
+                gate=gate,
+                audit=audit,
+                approvals=ApprovalStore(conn),
+                collect_approvals=config.capability(skill.name).collect_approvals,
+            )
         except GmailAuthError as exc:
             out.line(str(exc))
             return 1
@@ -604,6 +588,8 @@ def cmd_mail_draft(args: argparse.Namespace, out: Out) -> int:
             out.field("Blockiert", str(bericht.blocked))
         if bericht.failed:
             out.field("Fehler", str(bericht.failed))
+        if bericht.queued:
+            out.field("Zur Freigabe", str(bericht.queued))
         zurueck = sum(1 for e in ReplyStore(conn).recent(bericht.polled or 1) if e.needs_human)
         if zurueck:
             out.field("Zur Durchsicht", str(zurueck))
@@ -622,17 +608,20 @@ def cmd_mail_send(args: argparse.Namespace, out: Out) -> int:
     if conn is None:
         return 1
     try:
-        capabilities = _send_capabilities(config)
-        _, client = _gmail(config, capabilities)
-        skill = MailSendSkill.from_config(
-            config, client=client, reply_store=ReplyStore(conn), conn=conn
-        )
+        capabilities = send_capabilities(config)
+        skill = build_skill("mail_send", config=config, conn=conn)
         if args.anzahl:
             skill.options.max_per_run = args.anzahl
         audit = AuditLog(conn)
         gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
         try:
-            bericht = run_skill(skill, gate=gate, audit=audit)
+            bericht = run_skill(
+                skill,
+                gate=gate,
+                audit=audit,
+                approvals=ApprovalStore(conn),
+                collect_approvals=config.capability(skill.name).collect_approvals,
+            )
         except GmailAuthError as exc:
             out.line(str(exc))
             return 1
@@ -656,6 +645,8 @@ def cmd_mail_send(args: argparse.Namespace, out: Out) -> int:
             out.field("Blockiert", str(bericht.blocked))
         if bericht.failed:
             out.field("Fehler", str(bericht.failed))
+        if bericht.queued:
+            out.field("Zur Freigabe", str(bericht.queued))
         for fehler in bericht.errors[:5]:
             out.line(f"  {out.dim(fehler)}")
         out.line()
@@ -679,7 +670,7 @@ def cmd_mail_allowlist(args: argparse.Namespace, out: Out) -> int:
             threshold=options.allowlist_threshold,
         )
         if args.refresh:
-            _, client = _gmail(config, READ_ONLY)
+            client = gmail_client(config, READ_ONLY)
             try:
                 eigene = client.address()
                 gezaehlt = allowlist.refresh_from_sent(
@@ -728,7 +719,7 @@ def cmd_mail_compare(args: argparse.Namespace, out: Out) -> int:
     if conn is None:
         return 1
     try:
-        _, client = _gmail(config, DRAFTING)
+        client = gmail_client(config, DRAFTING)
         eintraege = ReplyStore(conn).with_drafts(limit=args.anzahl)
         if not eintraege:
             out.line("Keine Entwuerfe vorhanden.")
@@ -763,6 +754,43 @@ def cmd_mail_compare(args: argparse.Namespace, out: Out) -> int:
         return 1 if abweichungen else 0
     finally:
         conn.close()
+
+
+def cmd_web(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    if not paths.db_file.exists():
+        out.line("Keine Datenbank. Erst: jarvis init")
+        return 1
+
+    import uvicorn
+
+    from jarvis.interfaces.web import create_app
+    from jarvis.interfaces.web.security import load_or_create_token
+
+    token = load_or_create_token(paths.home)
+    host = args.host or config.web.host
+    port = args.port or config.web.port
+    adresse = f"http://{host}:{port}/?token={token}"
+
+    out.line()
+    out.line(f"{out.accent('JARVIS')} {out.dim('Dashboard')}")
+    out.line()
+    out.field("Adresse", adresse)
+    out.field("Token", str(paths.home / "web-token"))
+    out.field("Freigaben", "wirken nur ohne Trockenlauf" if config.dry_run else "wirken")
+    out.line()
+    out.line(f"  {out.dim('Beenden mit Strg-C.')}")
+    out.line()
+
+    uvicorn.run(
+        create_app(home=paths.home, token=token, port=port),
+        host=host,
+        port=port,
+        log_level="warning",
+        access_log=False,
+    )
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -807,6 +835,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("verify", help="Hash-Kette des Protokolls pruefen")
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser("web", help="Dashboard auf localhost starten")
+    p.add_argument("--host", default=None, help="statt [web].host")
+    p.add_argument("--port", type=int, default=None, help="statt [web].port")
+    p.set_defaults(func=cmd_web)
 
     mail = sub.add_parser("mail", help="Postfach lesen und einordnen")
     mail_sub = mail.add_subparsers(dest="unterbefehl", required=True)

@@ -108,7 +108,7 @@ def test_ganze_kette_im_trockenlauf(home, conn):
         detail={"kategorie": entscheidung["kategorie"]},
     )
     assert urteil.disposition is Disposition.DRY_RUN
-    assert not urteil.may_send
+    assert not urteil.may_act
 
     # 6. Das Protokoll erzaehlt es lueckenlos nach.
     eintrag = audit.recent(1)[0]
@@ -129,7 +129,7 @@ def test_dieselbe_kette_auf_stufe_eins_gibt_frei(home, conn):
 
     urteil = gate.evaluate("mail", required_level=1, subject="nachricht-1")
     assert urteil.disposition is Disposition.ACT
-    assert urteil.may_send
+    assert urteil.may_act
     assert limiter.usage("mail")[0].used == 1
 
 

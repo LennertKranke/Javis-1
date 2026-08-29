@@ -248,6 +248,7 @@ class Config:
     sanitize_max_chars: int
     capabilities: dict[str, Capability]
     llm: LLMConfig
+    skills: dict[str, dict[str, Any]]
     source: Path | None
 
     @property
@@ -259,6 +260,15 @@ class Config:
             return self.capabilities[name]
         except KeyError:
             raise ConfigError(f"Unbekannte Faehigkeit: {name!r}") from None
+
+    def skill_options(self, name: str) -> dict[str, Any]:
+        """Rohe Einstellungen einer Faehigkeit.
+
+        Der Kern prueft sie bewusst nicht: eine Faehigkeit ist ein Plugin und
+        kennt ihre eigenen Schluessel selbst. `config.py` wuerde sonst mit jeder
+        neuen Faehigkeit mitwachsen, was Abschnitt 5.1 gerade vermeiden will.
+        """
+        return dict(self.skills.get(name, {}))
 
     def permits(self, name: str, required_level: int) -> bool:
         """Darf die Faehigkeit auf der gewaehrten Stufe selbstaendig handeln?"""
@@ -285,7 +295,9 @@ class Config:
         cls, raw: dict[str, Any], *, paths: Paths, source: Path | None = None
     ) -> Config:
         _reject_unknown(
-            raw, {"dry_run", "log_level", "sanitize_max_chars", "capabilities", "llm"}, "(Wurzel)"
+            raw,
+            {"dry_run", "log_level", "sanitize_max_chars", "capabilities", "llm", "skills"},
+            "(Wurzel)",
         )
         dry_run = _as_bool(raw.get("dry_run", True), "dry_run")
         log_level = str(raw.get("log_level", "INFO")).upper()
@@ -297,6 +309,7 @@ class Config:
 
         capabilities = _parse_capabilities(raw.get("capabilities", {}))
         llm = _parse_llm(raw.get("llm", {}))
+        skills = _parse_skills(raw.get("skills", {}))
         return cls(
             paths=paths,
             dry_run=dry_run,
@@ -304,6 +317,7 @@ class Config:
             sanitize_max_chars=max_chars,
             capabilities=capabilities,
             llm=llm,
+            skills=skills,
             source=source,
         )
 
@@ -388,6 +402,17 @@ def _parse_rate_limits(raw: Any, where: str) -> tuple[RateLimit, ...]:
             raise ConfigError(f"{where}.rate_limits.{window}: darf nicht negativ sein")
         limits.append(RateLimit(seconds=WINDOW_SECONDS[window], window=window, limit=limit))
     return tuple(sorted(limits))
+
+
+def _parse_skills(raw: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(raw, dict):
+        raise ConfigError("skills: erwartet eine Tabelle")
+    out: dict[str, dict[str, Any]] = {}
+    for name, body in raw.items():
+        if not isinstance(body, dict):
+            raise ConfigError(f"skills.{name}: erwartet eine Tabelle")
+        out[name] = dict(body)
+    return out
 
 
 def _parse_llm(raw: Any) -> LLMConfig:
@@ -519,10 +544,21 @@ sanitize_max_chars = 20000
 # Faehigkeit nach aussen wirkt.
 # --------------------------------------------------------------------------- #
 
+# Lesen und Einsortieren. Beruehrt nur das eigene Postfach und erreicht
+# niemanden, ist also keine ausgehende Faehigkeit. Die Obergrenzen bremsen
+# trotzdem: sie begrenzen API-Aufrufe und Modellkosten pro Zeitfenster.
 [capabilities.mail]
 autonomy_level = 0
+requires_outbound = false
+rate_limits = { hour = 120, day = 600 }
+
+# Antworten. Ab Phase 3. Bleibt bis dahin abgeschaltet und auf Stufe 0, sodass
+# ein Umlegen von dry_run das Senden nicht mit freischaltet.
+[capabilities.mail_reply]
+autonomy_level = 0
 requires_outbound = true
-rate_limits = { hour = 10, day = 40 }
+enabled = false
+rate_limits = { hour = 5, day = 20 }
 
 [capabilities.calendar]
 autonomy_level = 0
@@ -593,4 +629,41 @@ effort = "high"
 [llm.tasks.personal]
 providers = ["ollama"]
 confidential = true
+
+
+# --------------------------------------------------------------------------- #
+# Faehigkeiten-Einstellungen
+#
+# Jede Faehigkeit prueft ihren eigenen Abschnitt selbst. Der Kern reicht ihn
+# nur durch, damit config.py nicht mit jeder neuen Faehigkeit mitwaechst.
+# --------------------------------------------------------------------------- #
+
+[skills.mail]
+# Gmail-Suchausdruck. Bestimmt, was ueberhaupt angesehen wird.
+query = "is:unread in:inbox"
+
+# Obergrenze je Durchlauf. Schuetzt den ersten Lauf vor einem vollen Postfach.
+max_per_run = 25
+
+# Labels entstehen als "JARVIS/Rechnung" und beruehren nichts Bestehendes.
+label_prefix = "JARVIS"
+
+# Aufgabe aus [llm.tasks], die den Klassifizierer bedient.
+task = "classify"
+
+# Die Kategorien sind zugleich Ausgabeschema und Labelnamen.
+categories = [
+    "rechnung",
+    "termin",
+    "anfrage",
+    "newsletter",
+    "werbung",
+    "benachrichtigung",
+    "persoenlich",
+    "sonstiges",
+]
+
+# Namen der Keychain-Eintraege, nie die Werte selbst.
+client_secret = "gmail_client_secret"
+token_secret = "gmail_token"
 """

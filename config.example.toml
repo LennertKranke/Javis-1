@@ -26,10 +26,21 @@ sanitize_max_chars = 20000
 # Faehigkeit nach aussen wirkt.
 # --------------------------------------------------------------------------- #
 
+# Lesen und Einsortieren. Beruehrt nur das eigene Postfach und erreicht
+# niemanden, ist also keine ausgehende Faehigkeit. Die Obergrenzen bremsen
+# trotzdem: sie begrenzen API-Aufrufe und Modellkosten pro Zeitfenster.
 [capabilities.mail]
 autonomy_level = 0
+requires_outbound = false
+rate_limits = { hour = 120, day = 600 }
+
+# Antworten. Ab Phase 3. Bleibt bis dahin abgeschaltet und auf Stufe 0, sodass
+# ein Umlegen von dry_run das Senden nicht mit freischaltet.
+[capabilities.mail_reply]
+autonomy_level = 0
 requires_outbound = true
-rate_limits = { hour = 10, day = 40 }
+enabled = false
+rate_limits = { hour = 5, day = 20 }
 
 [capabilities.calendar]
 autonomy_level = 0
@@ -100,3 +111,40 @@ effort = "high"
 [llm.tasks.personal]
 providers = ["ollama"]
 confidential = true
+
+
+# --------------------------------------------------------------------------- #
+# Faehigkeiten-Einstellungen
+#
+# Jede Faehigkeit prueft ihren eigenen Abschnitt selbst. Der Kern reicht ihn
+# nur durch, damit config.py nicht mit jeder neuen Faehigkeit mitwaechst.
+# --------------------------------------------------------------------------- #
+
+[skills.mail]
+# Gmail-Suchausdruck. Bestimmt, was ueberhaupt angesehen wird.
+query = "is:unread in:inbox"
+
+# Obergrenze je Durchlauf. Schuetzt den ersten Lauf vor einem vollen Postfach.
+max_per_run = 25
+
+# Labels entstehen als "JARVIS/Rechnung" und beruehren nichts Bestehendes.
+label_prefix = "JARVIS"
+
+# Aufgabe aus [llm.tasks], die den Klassifizierer bedient.
+task = "classify"
+
+# Die Kategorien sind zugleich Ausgabeschema und Labelnamen.
+categories = [
+    "rechnung",
+    "termin",
+    "anfrage",
+    "newsletter",
+    "werbung",
+    "benachrichtigung",
+    "persoenlich",
+    "sonstiges",
+]
+
+# Namen der Keychain-Eintraege, nie die Werte selbst.
+client_secret = "gmail_client_secret"
+token_secret = "gmail_token"

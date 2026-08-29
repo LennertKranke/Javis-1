@@ -8,6 +8,11 @@ dependencies = [
     # jarvis/llm/providers/anthropic.py und dort verzoegert importiert, damit
     # core/ und die Tests ohne Netz und ohne dieses Paket laufen.
     "anthropic>=0.40",
+    # OAuth fuer Gmail. Nur der Zustimmungsablauf und die Token-Erneuerung --
+    # die Gmail-Aufrufe selbst macht urllib, damit die Endpunkte sichtbar im
+    # Code stehen und sich auf eine Allowlist einschraenken lassen.
+    "google-auth>=2.30",
+    "google-auth-oauthlib>=1.2",
 ]
 
 [project.optional-dependencies]

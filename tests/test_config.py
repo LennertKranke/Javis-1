@@ -24,8 +24,20 @@ def laden(home, raw: dict) -> Config:
 def test_vorlage_ist_gueltig(home):
     config = laden(home, tomllib.loads(DEFAULT_CONFIG_TOML))
     assert config.dry_run is True
-    assert set(config.capabilities) == {"mail", "calendar", "research", "briefing"}
+    assert set(config.capabilities) == {
+        "mail",
+        "mail_reply",
+        "calendar",
+        "research",
+        "briefing",
+    }
     assert all(int(c.autonomy_level) == 0 for c in config.capabilities.values())
+    # Einordnen erreicht niemanden, Antworten schon.
+    assert config.capabilities["mail"].requires_outbound is False
+    assert config.capabilities["mail_reply"].requires_outbound is True
+    # Antworten bleibt bis Phase 3 abgeschaltet, damit ein Umlegen von dry_run
+    # es nicht mit freischaltet.
+    assert config.capabilities["mail_reply"].enabled is False
 
 
 def test_beispieldatei_im_repo_stimmt_mit_der_vorlage_ueberein():

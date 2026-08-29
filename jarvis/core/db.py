@@ -72,6 +72,28 @@ MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
             """,
         ),
     ),
+    (
+        2,
+        (
+            # Merkt sich, welche Nachricht schon beurteilt wurde. Ohne das
+            # klassifiziert jeder Durchlauf dasselbe erneut -- teuer, und das
+            # Protokoll waere voller Wiederholungen.
+            """
+            CREATE TABLE mail_messages (
+                message_id  TEXT    PRIMARY KEY,
+                thread_id   TEXT,
+                first_seen  TEXT    NOT NULL,
+                last_seen   TEXT    NOT NULL,
+                category    TEXT,
+                decided_by  TEXT,
+                labelled    INTEGER NOT NULL DEFAULT 0 CHECK (labelled IN (0, 1)),
+                audit_id    INTEGER REFERENCES audit_log (id)
+            )
+            """,
+            "CREATE INDEX ix_mail_category ON mail_messages (category)",
+            "CREATE INDEX ix_mail_labelled ON mail_messages (labelled)",
+        ),
+    ),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

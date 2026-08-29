@@ -28,6 +28,7 @@ __all__ = [
     "ValidationError",
     "assert_no_target_fields",
     "extract_json",
+    "is_target_name",
     "validate",
 ]
 
@@ -84,6 +85,11 @@ def _tokens(name: str) -> set[str]:
     parts = {p for p in _WORD_RE.split(name.lower()) if p}
     singular = {p[:-1] for p in parts if len(p) > 2 and p.endswith("s")}
     return parts | singular
+
+
+def is_target_name(name: str) -> bool:
+    """Sieht dieser Feldname nach einem Ziel aus?"""
+    return bool(_tokens(name) & TARGET_TOKENS)
 
 
 def assert_no_target_fields(schema: dict[str, Any], *, path: str = "$") -> None:

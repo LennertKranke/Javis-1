@@ -20,11 +20,15 @@ from jarvis import __version__
 from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import DEFAULT_CONFIG_TOML, Config, ConfigError, Paths
 from jarvis.core.db import open_database
+from jarvis.core.gate import Gate
 from jarvis.core.log import configure as configure_logging
 from jarvis.core.ratelimit import RateLimiter
 from jarvis.core.secrets import default_store
 from jarvis.llm.providers import build_providers
 from jarvis.llm.router import Router, RouterError
+from jarvis.skills.mail import GmailAuth, GmailAuthError, GmailClient, GmailError, MailStore
+from jarvis.skills.mail.skill import MailOptions, MailSkill
+from jarvis.skills.runner import run_skill
 
 ACCENT = "\033[36m"
 DIM = "\033[2m"
@@ -325,6 +329,172 @@ def cmd_verify(args: argparse.Namespace, out: Out) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Mail
+# --------------------------------------------------------------------------- #
+
+
+def _mail_parts(config, conn, *, max_per_run: int | None = None):
+    """Baut Gmail-Client, Router und Faehigkeit aus der Konfiguration."""
+    secrets = default_store()
+    options = MailOptions(config.skill_options("mail"), known_tasks=set(config.llm.tasks))
+    if max_per_run:
+        options.max_per_run = max_per_run
+    auth = GmailAuth(
+        secrets,
+        client_secret_name=options.client_secret,
+        token_name=options.token_secret,
+    )
+    client = GmailClient(auth)
+    router = Router(config.llm, build_providers(config.llm, secrets))
+    skill = MailSkill(
+        options=options,
+        client=client,
+        router=router,
+        store=MailStore(conn),
+        sanitize_max_chars=config.sanitize_max_chars,
+    )
+    return auth, client, skill
+
+
+def _require_db(paths, out: Out):
+    if not paths.db_file.exists():
+        out.line("Keine Datenbank. Erst: jarvis init")
+        return None
+    return open_database(paths.db_file)
+
+
+def cmd_mail_login(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        auth, client, _ = _mail_parts(config, conn)
+        secrets = default_store()
+        if not secrets.writable:
+            out.line("Zugangsdaten lassen sich hier nicht ablegen.")
+            out.line(f"  {out.dim('Die Anmeldung braucht die macOS-Keychain.')}")
+            return 1
+        out.line("Ein Browserfenster oeffnet sich fuer die Zustimmung.")
+        auth.login()
+        out.line(f"Angemeldet als {client.address()}")
+        out.line(f"  {out.dim('Berechtigungen: gmail.modify und gmail.send')}")
+        out.line(f"  {out.dim('In dieser Phase wird ausschliesslich gelesen und beschriftet.')}")
+        return 0
+    except (GmailError, ConfigError) as exc:
+        out.line(f"Anmeldung fehlgeschlagen: {exc}")
+        return 1
+    finally:
+        conn.close()
+
+
+def cmd_mail_poll(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        _, _, skill = _mail_parts(config, conn, max_per_run=args.anzahl)
+        audit = AuditLog(conn)
+        gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
+        try:
+            report = run_skill(skill, gate=gate, audit=audit)
+        except GmailAuthError as exc:
+            out.line(f"{exc}")
+            return 1
+        except GmailError as exc:
+            out.line(f"Gmail: {exc}")
+            return 1
+
+        out.line()
+        out.line(f"{out.accent('Durchlauf')} {skill.name}   {out.dim(skill.options.query)}")
+        out.line()
+        out.field("Gefunden", str(report.polled))
+        nachsatz = "  (Trockenlauf)" if config.dry_run and report.dry_run else ""
+        out.field("Eingeordnet", f"{report.acted}{nachsatz}")
+        if report.dry_run:
+            out.field("Nur beurteilt", str(report.dry_run))
+        out.field("Uebersprungen", str(report.skipped))
+        if report.blocked:
+            out.field("Blockiert", str(report.blocked))
+        if report.failed:
+            out.field("Fehler", str(report.failed))
+
+        if report.by_category:
+            out.line()
+            rows = [[k, str(v)] for k, v in report.by_category.most_common()]
+            out.table(["KATEGORIE", "ANZAHL"], rows)
+        for fehler in report.errors[:5]:
+            out.line(f"  {out.dim(fehler)}")
+        out.line()
+        return 1 if report.failed else 0
+    finally:
+        conn.close()
+
+
+def cmd_mail_labels(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        _, _, skill = _mail_parts(config, conn)
+        try:
+            zuordnung = skill.labels.ensure(skill.options.categories)
+        except GmailError as exc:
+            out.line(f"Gmail: {exc}")
+            return 1
+        out.line()
+        out.table(
+            ["KATEGORIE", "LABEL", "ID"],
+            [[k, skill.labels.label_name(k), v] for k, v in zuordnung.items()],
+        )
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+def cmd_mail_state(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        store = MailStore(conn)
+        out.line()
+        out.field("Beurteilt", str(store.total()))
+        out.field("Beschriftet", str(store.labelled_count()))
+        counts = store.counts_by_category()
+        if counts:
+            out.line()
+            out.table(["KATEGORIE", "ANZAHL"], [[k, str(v)] for k, v in counts.items()])
+        eintraege = store.recent(args.anzahl)
+        if eintraege:
+            out.line()
+            out.table(
+                ["NACHRICHT", "KATEGORIE", "QUELLE", "LABEL", "ZULETZT"],
+                [
+                    [
+                        e.message_id[:16],
+                        e.category or "--",
+                        e.decided_by or "--",
+                        "ja" if e.labelled else "nein",
+                        e.last_seen[:19].replace("T", " "),
+                    ]
+                    for e in eintraege
+                ],
+            )
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------------- #
 # Einstieg
 # --------------------------------------------------------------------------- #
 
@@ -366,6 +536,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("verify", help="Hash-Kette des Protokolls pruefen")
     p.set_defaults(func=cmd_verify)
+
+    mail = sub.add_parser("mail", help="Postfach lesen und einordnen")
+    mail_sub = mail.add_subparsers(dest="unterbefehl", required=True)
+
+    m = mail_sub.add_parser("login", help="Bei Gmail anmelden (einmalig, mit Browser)")
+    m.set_defaults(func=cmd_mail_login)
+
+    m = mail_sub.add_parser("poll", help="Einen Durchlauf ausfuehren")
+    m.add_argument(
+        "-n", "--anzahl", type=int, default=None, help="Obergrenze fuer diesen Durchlauf"
+    )
+    m.set_defaults(func=cmd_mail_poll)
+
+    m = mail_sub.add_parser("labels", help="Fehlende Labels anlegen")
+    m.set_defaults(func=cmd_mail_labels)
+
+    m = mail_sub.add_parser("state", help="Was bisher beurteilt wurde")
+    m.add_argument("-n", "--anzahl", type=int, default=15, help="Anzahl Zeilen")
+    m.set_defaults(func=cmd_mail_state)
+
     return parser
 
 

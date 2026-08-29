@@ -57,6 +57,39 @@ class KeychainBackend:
     def available(self) -> bool:
         return sys.platform == "darwin" and shutil.which("security") is not None
 
+    def set(self, key: str, value: str) -> None:
+        """Legt an oder ersetzt (-U).
+
+        Der Wert steht kurzzeitig in der Kommandozeile und ist damit fuer
+        `ps` sichtbar. `security` kennt fuer add-generic-password keinen
+        Weg ueber die Standardeingabe; das Zeitfenster liegt im Bereich von
+        Millisekunden auf dem eigenen Rechner. Wer das nicht will, legt den
+        Eintrag von Hand in der Schluesselbundverwaltung an.
+        """
+        if not self.available():
+            raise SecretsError("Keychain steht auf diesem System nicht zur Verfuegung")
+        result = subprocess.run(
+            ["security", "add-generic-password", "-U", "-s", self.service, "-a", key, "-w", value],
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise SecretsError(f"Keychain-Eintrag {key!r} liess sich nicht schreiben")
+
+    def delete(self, key: str) -> bool:
+        if not self.available():
+            return False
+        result = subprocess.run(
+            ["security", "delete-generic-password", "-s", self.service, "-a", key],
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+            check=False,
+        )
+        return result.returncode == 0
+
     def get(self, key: str) -> str | None:
         if not self.available():
             return None
@@ -113,6 +146,35 @@ class SecretStore:
 
     def has(self, key: str) -> bool:
         return self.get(key) is not None
+
+    @property
+    def writable(self) -> bool:
+        return any(hasattr(b, "set") for b in self._backends)
+
+    def store(self, key: str, value: str) -> str:
+        """Schreibt ein Geheimnis. Nur die Keychain kann das.
+
+        Die Umgebung ist bewusst nicht beschreibbar: eine gesetzte Variable
+        ueberlebt den Prozess nicht, und der naheliegende Ausweg -- eine Datei
+        -- ist durch Abschnitt 4 ausgeschlossen.
+        """
+        for backend in self._backends:
+            setter = getattr(backend, "set", None)
+            if setter is not None:
+                setter(key, value)
+                return backend.name
+        raise SecretsError(
+            "Kein beschreibbarer Speicher vorhanden. Zugangsdaten gehoeren in die "
+            "macOS-Keychain; auf anderen Systemen laesst sich nichts ablegen."
+        )
+
+    def forget(self, key: str) -> bool:
+        entfernt = False
+        for backend in self._backends:
+            deleter = getattr(backend, "delete", None)
+            if deleter is not None and deleter(key):
+                entfernt = True
+        return entfernt
 
     def require(self, key: str) -> str:
         value = self.get(key)

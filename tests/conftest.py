@@ -39,8 +39,10 @@ def build_config(
         "requires_outbound": outbound,
         "enabled": enabled,
     }
-    if outbound:
-        capability["rate_limits"] = limits if limits is not None else {"hour": 3}
+    if limits is not None:
+        capability["rate_limits"] = limits
+    elif outbound:
+        capability["rate_limits"] = {"hour": 3}
     raw = {
         "dry_run": dry_run,
         "capabilities": {"mail": capability},

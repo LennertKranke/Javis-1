@@ -43,8 +43,8 @@ class GateVerdict:
     audit_id: int | None = None
 
     @property
-    def may_send(self) -> bool:
-        """Nur hier darf tatsaechlich etwas hinausgehen."""
+    def may_act(self) -> bool:
+        """Nur hier darf die Aktion tatsaechlich ausgefuehrt werden."""
         return self.disposition is Disposition.ACT
 
 

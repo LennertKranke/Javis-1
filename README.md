@@ -3,9 +3,9 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 1 abgeschlossen.** Der Kern steht. Es gibt noch keine
-Faehigkeit, keinen Daemon und keine Anbindung an ein Postfach. JARVIS kann
-derzeit sagen, was er duerfte -- nicht etwas tun.
+**Stand: Phase 2 abgeschlossen.** Der Kern steht, und die erste Faehigkeit
+liest Gmail und ordnet es ein. Sie sendet nichts. Es gibt noch keinen Daemon,
+kein Dashboard und keine Sprache.
 
 ---
 
@@ -32,7 +32,23 @@ security add-generic-password -s jarvis -a anthropic_api_key -w
 
 Zum Entwickeln auf anderen Systemen liest JARVIS ersatzweise
 `JARVIS_SECRET_ANTHROPIC_API_KEY` aus der Umgebung. `JARVIS_SECRET_BACKEND`
-erzwingt eine Wahl (`keychain`, `env`, `none`).
+erzwingt eine Wahl (`keychain`, `env`, `none`). Geschrieben wird ausschliesslich
+in die Keychain -- die Umgebung ueberlebt keinen Prozess, und eine Datei
+schliesst Abschnitt 4 aus.
+
+### Gmail einrichten
+
+In der Google Cloud Console ein Projekt anlegen, die Gmail-API aktivieren und
+Zugangsdaten vom Typ **Desktop-App** erzeugen. Die heruntergeladene
+`client_secret.json` kommt in die Keychain, nicht ins Repo:
+
+```sh
+security add-generic-password -s jarvis -a gmail_client_secret -w "$(cat ~/Downloads/client_secret.json)"
+uv run jarvis mail login
+```
+
+`login` oeffnet ein Browserfenster und legt den Token danach ebenfalls in der
+Keychain ab. Angefordert werden `gmail.modify` und `gmail.send`.
 
 ---
 
@@ -46,6 +62,10 @@ erzwingt eine Wahl (`keychain`, `env`, `none`).
 | `jarvis resume` | Stoppschalter loesen, mit Rueckfrage |
 | `jarvis log -n 20` | letzte Protokolleintraege |
 | `jarvis verify` | Hash-Kette des Protokolls pruefen |
+| `jarvis mail login` | einmalige Anmeldung bei Gmail |
+| `jarvis mail poll [-n N]` | einen Durchlauf ueber den Posteingang |
+| `jarvis mail state` | was bisher beurteilt wurde |
+| `jarvis mail labels` | fehlende Labels anlegen |
 
 Der Stoppschalter ist eine Datei. Er wirkt auch ohne laufendes JARVIS:
 
@@ -125,7 +145,59 @@ uv run ruff format .
 
 ---
 
+## Phase 2: Postfach lesen
+
+Ein Durchlauf geht immer denselben Weg:
+
+1. **Suchen** -- der Gmail-Ausdruck aus `[skills.mail].query`, standardmaessig
+   `is:unread in:inbox`, hoechstens `max_per_run` Nachrichten.
+2. **Aussortieren** -- schon beurteilte Nachrichten fallen raus.
+3. **Normalisieren** -- Betreff und Text zusammen durch `sanitize()`.
+4. **Vorfilter** -- was aus den Kopffeldern folgt, entscheidet sich ohne
+   Modell: List-Unsubscribe ist ein Newsletter, Auto-Submitted eine
+   Benachrichtigung, eigene Post wird uebersprungen.
+5. **Klassifizieren** -- der Rest geht ans Modell, mit erzwungenem Schema.
+6. **Gatter** -- Stoppschalter, Stufe, Obergrenze.
+7. **Einordnen** -- ein Label, ausschliesslich unterhalb von `JARVIS/`.
+
+### Warum das Modell kein Ziel waehlt
+
+Das Modell darf genau eine Kategorie aus einer geschlossenen Aufzaehlung
+nennen. Welches Label daraus wird und welche Nachricht es bekommt, rechnet
+danach deterministischer Code aus der Gmail-Kennung und der Zuordnung
+Kategorie -> Label. Eine praeparierte Mail kann die Kategorie also
+verschieben -- mehr nicht. Sie kann keinen Empfaenger, kein anderes Postfach
+und keine andere Nachricht benennen, weil im Ausgabeschema kein Feld dafuer
+existiert und `Decision` ein solches Feld zurueckweist.
+
+### Warum der Client nicht senden kann
+
+Die Zustimmung umfasst `gmail.send`, der Token koennte also senden. "Wir rufen
+die Stelle einfach nicht auf" ist eine Zusage, die ein Tippfehler bricht.
+`GmailClient` prueft deshalb jeden Pfad gegen eine Liste erlaubter Endpunkte;
+`/messages/send`, Entwuerfe, Papierkorb und die Weiterleitungseinstellungen
+stehen nicht darauf.
+
+### Die Beobachtungswoche
+
+Solange `dry_run = true` ist, wird beurteilt und protokolliert, aber im
+Postfach veraendert sich nichts -- nicht einmal ein Label entsteht. Das ist der
+Probelauf aus Phase 2:
+
+```sh
+uv run jarvis mail poll      # taeglich, oder oefter
+uv run jarvis mail state     # was bisher herauskam
+uv run jarvis log -n 40      # warum
+```
+
+Wenn das Protokoll plausibel aussieht, `dry_run = false` setzen. Das schaltet
+das Einordnen frei -- und nur das: `mail_reply` bleibt auf Stufe 0 und
+abgeschaltet, Senden gibt es in dieser Phase ohnehin nicht im Code.
+
+---
+
 ## Was noch nicht existiert
 
-`skills/`, `daemon.py`, `interfaces/web/`, `interfaces/voice/` und die
-launchd-plist unter `deploy/`. Alles ab Phase 2.
+Antworten (Phase 3), Dashboard (Phase 4), Kalender und Briefing (Phase 5),
+Sprache (Phase 6). Es gibt noch keinen `daemon.py` und keine launchd-plist:
+Durchlaeufe startet man vorerst von Hand mit `jarvis mail poll`.

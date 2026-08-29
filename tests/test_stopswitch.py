@@ -54,7 +54,7 @@ def test_gatter_blockiert_bei_gesetztem_schalter(conn, home):
 
     verdict = gate.evaluate("mail", required_level=1)
     assert verdict.disposition is Disposition.BLOCKED
-    assert not verdict.may_send
+    assert not verdict.may_act
     assert "Vorfall" in verdict.reason
 
 
@@ -71,7 +71,7 @@ def test_stufe_null_ergibt_trockenlauf(conn, home):
     gate, _audit, _limiter = gate_bauen(conn, home, dry_run=False, level=0)
     verdict = gate.evaluate("mail", required_level=1)
     assert verdict.disposition is Disposition.DRY_RUN
-    assert not verdict.may_send
+    assert not verdict.may_act
     assert "Stufe 0" in verdict.reason
 
 
@@ -79,7 +79,7 @@ def test_ausreichende_stufe_gibt_frei(conn, home):
     gate, _audit, _limiter = gate_bauen(conn, home, dry_run=False, level=1)
     verdict = gate.evaluate("mail", required_level=1)
     assert verdict.disposition is Disposition.ACT
-    assert verdict.may_send
+    assert verdict.may_act
 
 
 def test_globaler_trockenlauf_schlaegt_die_stufe(conn, home):
@@ -97,8 +97,8 @@ def test_abgeschaltete_faehigkeit_blockiert(conn, home):
 
 def test_erschoepfte_grenze_blockiert(conn, home):
     gate, _audit, _limiter = gate_bauen(conn, home, dry_run=False, level=1, limits={"hour": 2})
-    assert gate.evaluate("mail", required_level=1).may_send
-    assert gate.evaluate("mail", required_level=1).may_send
+    assert gate.evaluate("mail", required_level=1).may_act
+    assert gate.evaluate("mail", required_level=1).may_act
     dritter = gate.evaluate("mail", required_level=1)
     assert dritter.disposition is Disposition.BLOCKED
     assert "Obergrenze" in dritter.reason

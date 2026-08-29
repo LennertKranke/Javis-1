@@ -35,7 +35,7 @@ def test_status_zeigt_stufe_und_zaehler(home, capsys):
     assert code == 0
     assert "BETRIEB" in out
     assert "Schattenbetrieb" in out
-    assert "hour 0/10" in out  # Zaehler der Faehigkeit mail
+    assert "hour 0/120" in out  # Zaehler der Faehigkeit mail
     assert "Kette intakt" in out
     assert "classify" in out and "->" in out
 
@@ -171,3 +171,69 @@ def test_keine_ausrufezeichen_und_keine_emojis(home, capsys):
     for text in (out, log):
         assert "!" not in text
         assert all(ord(ch) < 0x2100 or ch in "->" for ch in text)
+
+
+# --------------------------------------------------------------------------- #
+# Mail
+# --------------------------------------------------------------------------- #
+
+
+def test_mail_state_auf_leerer_datenbank(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "mail", "state", capsys=capsys)
+    assert code == 0
+    assert "Beurteilt" in out
+    assert "Beschriftet" in out
+
+
+def test_mail_state_zeigt_beurteiltes(home, capsys):
+    from jarvis.skills.mail.store import MailStore
+
+    run(home, "init", capsys=capsys)
+    conn = open_database(home / "state.db")
+    store = MailStore(conn)
+    store.remember(message_id="abc123", category="rechnung", decided_by="model", labelled=True)
+    store.remember(message_id="def456", category="newsletter", decided_by="prefilter")
+    conn.close()
+
+    code, out = run(home, "mail", "state", capsys=capsys)
+    assert code == 0
+    assert "rechnung" in out and "newsletter" in out
+    assert "prefilter" in out
+
+
+def test_mail_poll_ohne_datenbank(home, capsys):
+    code, out = run(home, "mail", "poll", capsys=capsys)
+    assert code == 1
+    assert "jarvis init" in out
+
+
+def test_mail_poll_ohne_anmeldung(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "mail", "poll", capsys=capsys)
+    assert code == 1
+    assert "jarvis mail login" in out
+
+
+def test_mail_login_ohne_schreibbaren_speicher(home, capsys):
+    """Auf diesem System gibt es keine Keychain -- das muss klar gesagt werden."""
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "mail", "login", capsys=capsys)
+    assert code == 1
+    assert "Keychain" in out
+
+
+def test_fehlerhafte_mail_einstellungen_werden_gemeldet(home, capsys):
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace(
+            'query = "is:unread in:inbox"', 'quary = "is:unread in:inbox"'
+        ),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(home), "mail", "poll"])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "Konfiguration fehlerhaft" in err
+    assert "quary" in err

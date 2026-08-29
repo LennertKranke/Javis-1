@@ -94,6 +94,53 @@ MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
             "CREATE INDEX ix_mail_labelled ON mail_messages (labelled)",
         ),
     ),
+    (
+        3,
+        (
+            "ALTER TABLE mail_messages ADD COLUMN needs_reply INTEGER NOT NULL DEFAULT 0",
+            # Was geantwortet werden soll, was daraus wurde, und der Fingerabdruck
+            # dazwischen. Der Fingerabdruck ist der Grund, warum sich Trockenlauf
+            # und tatsaechlicher Entwurf spaeter vergleichen lassen.
+            """
+            CREATE TABLE mail_replies (
+                message_id        TEXT    PRIMARY KEY,
+                thread_id         TEXT,
+                recipient         TEXT    NOT NULL,
+                subject           TEXT    NOT NULL,
+                fingerprint       TEXT    NOT NULL,
+                planned_at        TEXT    NOT NULL,
+                disposition       TEXT    NOT NULL,
+                needs_human       INTEGER NOT NULL DEFAULT 0,
+                draft_id          TEXT,
+                drafted_at        TEXT,
+                draft_fingerprint TEXT,
+                sent_at           TEXT,
+                audit_id          INTEGER REFERENCES audit_log (id)
+            )
+            """,
+            "CREATE INDEX ix_replies_disposition ON mail_replies (disposition)",
+            # Die Allowlist mit ihrem Beleg: wie oft und wann zuletzt. Ohne den
+            # Beleg waere sie eine Liste ohne Begruendung.
+            """
+            CREATE TABLE mail_allowlist (
+                address    TEXT    PRIMARY KEY,
+                sent_count INTEGER NOT NULL DEFAULT 0,
+                first_seen TEXT,
+                last_seen  TEXT,
+                source     TEXT    NOT NULL
+            )
+            """,
+            # Genau eine Zeile. Die abgeleiteten Stilmerkmale, nie ein Originaltext.
+            """
+            CREATE TABLE style_profile (
+                id           INTEGER PRIMARY KEY CHECK (id = 1),
+                updated_at   TEXT    NOT NULL,
+                sample_count INTEGER NOT NULL,
+                profile      TEXT    NOT NULL
+            )
+            """,
+        ),
+    ),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

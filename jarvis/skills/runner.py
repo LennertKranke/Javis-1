@@ -81,9 +81,9 @@ def run_skill(
             detail=detail,
         )
 
-        if decision.action == "skip":
+        if decision.is_noop:
             report.skipped += 1
-            skill.after(event, decision, "skip", None)
+            skill.after(event, decision, decision.action, None)
             continue
 
         kategorie = decision.targets.get("category")

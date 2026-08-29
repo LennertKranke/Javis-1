@@ -6,10 +6,19 @@ falsch liegt. Die API-Aufrufe dagegen macht `urllib`: es sind fuenf Endpunkte,
 sie stehen sichtbar im Code, und genau deshalb lassen sie sich einschraenken.
 
 Das ist der Punkt der Allowlist unten. Die Zustimmung umfasst laut Vorgabe auch
-`gmail.send`, der Token koennte also senden. In Phase 2 soll er das nicht, und
-"wir rufen die Stelle einfach nicht auf" ist eine Zusage, die ein Tippfehler
-brechen kann. `_call` prueft jeden Pfad gegen die Liste; `/messages/send` steht
-nicht darauf und ist damit nicht erreichbar, auch nicht versehentlich.
+`gmail.send`, der Token koennte also senden. "Wir rufen die Stelle einfach nicht
+auf" ist eine Zusage, die ein Tippfehler bricht -- `_call` prueft deshalb jeden
+Pfad, bevor er hinausgeht.
+
+Seit Phase 3 haengt die Liste an den Faehigkeiten, die der Client mitbekommt,
+und die leitet der Aufrufer aus der Autonomiestufe ab. Steht `mail_send` auf
+Stufe 0, wird der Client ohne "send" gebaut und kann nicht senden -- nicht weil
+der Code es unterlaesst, sondern weil der Pfad abgewiesen wird. Das ist die
+Umschaltung auf Stufe 1 aus Abschnitt 6, als Schalter statt als Vorsatz.
+
+Gesendet wird ausserdem nur ueber `/drafts/send`, nie ueber `/messages/send`.
+So geht genau der Entwurf hinaus, der vorher dastand und geprueft werden
+konnte -- nicht eine zweite, frisch gebaute Nachricht.
 """
 
 from __future__ import annotations
@@ -32,16 +41,32 @@ GMAIL_SCOPES = [
 
 API_ROOT = "https://gmail.googleapis.com/gmail/v1/users/me"
 
-# Was JARVIS in dieser Phase aufrufen darf. Alles andere -- allen voran
-# /messages/send -- ist nicht vorgesehen und wird abgewiesen.
-ALLOWED_ENDPOINTS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("GET", re.compile(r"^/profile$")),
-    ("GET", re.compile(r"^/messages$")),
-    ("GET", re.compile(r"^/messages/[A-Za-z0-9_-]+$")),
-    ("POST", re.compile(r"^/messages/[A-Za-z0-9_-]+/modify$")),
-    ("GET", re.compile(r"^/labels$")),
-    ("POST", re.compile(r"^/labels$")),
-)
+# Was eine Faehigkeit jeweils aufrufen darf. Alles, was hier nicht steht --
+# Papierkorb, Weiterleitungsregeln, Filter, /messages/send --, wird abgewiesen.
+ENDPOINTS_BY_CAPABILITY: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
+    "read": (
+        ("GET", re.compile(r"^/profile$")),
+        ("GET", re.compile(r"^/messages$")),
+        ("GET", re.compile(r"^/messages/[A-Za-z0-9_-]+$")),
+        ("GET", re.compile(r"^/labels$")),
+    ),
+    "label": (
+        ("POST", re.compile(r"^/messages/[A-Za-z0-9_-]+/modify$")),
+        ("POST", re.compile(r"^/labels$")),
+    ),
+    "draft": (
+        ("POST", re.compile(r"^/drafts$")),
+        ("GET", re.compile(r"^/drafts/[A-Za-z0-9_-]+$")),
+    ),
+    # Bewusst nur /drafts/send: es geht genau der Entwurf hinaus, der
+    # vorher dastand. /messages/send waere eine zweite, ungepruefte Nachricht.
+    "send": (("POST", re.compile(r"^/drafts/send$")),),
+}
+
+READ_ONLY = frozenset({"read"})
+LABELLING = frozenset({"read", "label"})
+DRAFTING = frozenset({"read", "draft"})
+SENDING = frozenset({"read", "draft", "send"})
 
 
 class GmailError(RuntimeError):
@@ -132,21 +157,39 @@ class GmailAuth:
 
 
 class GmailClient:
-    def __init__(self, auth: GmailAuth, *, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        auth: GmailAuth,
+        *,
+        capabilities: frozenset[str] | set[str] = LABELLING,
+        timeout: float = 30.0,
+    ) -> None:
+        unbekannt = sorted(set(capabilities) - set(ENDPOINTS_BY_CAPABILITY))
+        if unbekannt:
+            raise ValueError(f"Unbekannte Faehigkeiten: {', '.join(unbekannt)}")
         self._auth = auth
+        self._capabilities = frozenset(capabilities)
         self._timeout = timeout
         self._opener = urllib.request.build_opener()
 
+    @property
+    def capabilities(self) -> frozenset[str]:
+        return self._capabilities
+
+    def can(self, capability: str) -> bool:
+        return capability in self._capabilities
+
     # ---------------------------------------------------------------- #
 
-    @staticmethod
-    def _check_endpoint(method: str, path: str) -> None:
-        for erlaubte_methode, muster in ALLOWED_ENDPOINTS:
-            if method == erlaubte_methode and muster.match(path):
-                return
+    def _check_endpoint(self, method: str, path: str) -> None:
+        for capability in self._capabilities:
+            for erlaubte_methode, muster in ENDPOINTS_BY_CAPABILITY[capability]:
+                if method == erlaubte_methode and muster.match(path):
+                    return
+        erlaubt = ", ".join(sorted(self._capabilities)) or "keine"
         raise GmailError(
-            f"{method} {path} steht nicht auf der Liste der erlaubten Endpunkte. "
-            f"In dieser Phase liest und beschriftet JARVIS nur."
+            f"{method} {path} steht nicht auf der Liste der erlaubten Endpunkte "
+            f"(freigeschaltet: {erlaubt})."
         )
 
     def _call(
@@ -208,8 +251,14 @@ class GmailClient:
         )
         return [str(eintrag["id"]) for eintrag in antwort.get("messages") or []]
 
-    def get_message(self, message_id: str) -> dict:
-        return self._call("GET", f"/messages/{message_id}", params={"format": "full"})
+    def get_message(
+        self, message_id: str, *, fmt: str = "full", headers: list[str] | None = None
+    ) -> dict:
+        """`fmt="metadata"` holt nur Kopffelder -- viel billiger bei vielen Nachrichten."""
+        params: dict[str, Any] = {"format": fmt}
+        if headers:
+            params["metadataHeaders"] = ",".join(headers)
+        return self._call("GET", f"/messages/{message_id}", params=params)
 
     def modify_labels(
         self, message_id: str, *, add: list[str] | None = None, remove: list[str] | None = None
@@ -222,6 +271,19 @@ class GmailClient:
 
     def list_labels(self) -> list[dict]:
         return list(self._call("GET", "/labels").get("labels") or [])
+
+    def create_draft(self, raw: str, *, thread_id: str | None = None) -> dict:
+        nachricht: dict[str, Any] = {"raw": raw}
+        if thread_id:
+            nachricht["threadId"] = thread_id
+        return self._call("POST", "/drafts", body={"message": nachricht})
+
+    def get_draft(self, draft_id: str) -> dict:
+        return self._call("GET", f"/drafts/{draft_id}", params={"format": "full"})
+
+    def send_draft(self, draft_id: str) -> dict:
+        """Sendet einen bestehenden Entwurf. Der einzige Weg nach draussen."""
+        return self._call("POST", "/drafts/send", body={"id": draft_id})
 
     def create_label(self, name: str) -> dict:
         return self._call(

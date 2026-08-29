@@ -237,3 +237,99 @@ def test_fehlerhafte_mail_einstellungen_werden_gemeldet(home, capsys):
     assert code == 2
     assert "Konfiguration fehlerhaft" in err
     assert "quary" in err
+
+
+# --------------------------------------------------------------------------- #
+# Antworten (Phase 3)
+# --------------------------------------------------------------------------- #
+
+
+def test_mail_style_ohne_profil(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "mail", "style", capsys=capsys)
+    assert code == 0
+    assert "Kein Stilprofil" in out
+    assert "kein Nachrichtentext" in out
+
+
+def test_mail_style_zeigt_gespeichertes(home, capsys):
+    from jarvis.skills.mail.style import StyleStore, extract_profile
+
+    run(home, "init", capsys=capsys)
+    conn = open_database(home / "state.db")
+    StyleStore(conn).save(extract_profile(["Hallo,\n\nja passt, bis Montag.\n\nViele Gruesse\nL"]))
+    conn.close()
+
+    code, out = run(home, "mail", "style", capsys=capsys)
+    assert code == 0
+    assert "Hallo" in out
+    assert "Viele Gruesse" in out
+
+
+def test_mail_allowlist_zeigt_schwelle_und_eintraege(home, capsys):
+    run(home, "init", capsys=capsys)
+    conn = open_database(home / "state.db")
+    conn.execute(
+        "INSERT INTO mail_allowlist (address, sent_count, source) VALUES ('anna@x.de', 5, 'sent')"
+    )
+    conn.execute(
+        "INSERT INTO mail_allowlist (address, sent_count, source) VALUES ('tom@x.de', 1, 'sent')"
+    )
+    conn.close()
+
+    code, out = run(home, "mail", "allowlist", capsys=capsys)
+    assert code == 0
+    assert "Schwelle" in out
+    assert "anna@x.de" in out and "tom@x.de" in out
+
+
+def test_mail_compare_ohne_entwuerfe(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "mail", "compare", capsys=capsys)
+    assert code == 0
+    assert "Keine Entwuerfe" in out
+
+
+def test_mail_draft_ohne_offene_nachricht(home, capsys):
+    """Nichts zu tun heisst nichts zu tun -- nicht einmal eine Gmail-Anfrage."""
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "mail", "draft", capsys=capsys)
+    assert code == 0
+    assert "Gefunden" in out
+
+
+def test_mail_draft_ohne_anmeldung(home, capsys):
+    from jarvis.skills.mail.store import MailStore
+
+    run(home, "init", capsys=capsys)
+    conn = open_database(home / "state.db")
+    MailStore(conn).remember(message_id="a", category="anfrage", needs_reply=True)
+    conn.close()
+
+    code, out = run(home, "mail", "draft", capsys=capsys)
+    assert code == 1
+    assert "jarvis mail login" in out
+
+
+def test_mail_send_zeigt_die_stufe(home, capsys):
+    """Der Befehl sagt vor allem anderen, ob er ueberhaupt senden darf."""
+    run(home, "init", capsys=capsys)
+    _code, out = run(home, "mail", "send", capsys=capsys)
+    assert "Stufe" in out
+    assert "Senderecht" in out
+    assert "nein" in out
+
+
+def test_fehlerhafte_antworteinstellungen_werden_gemeldet(home, capsys):
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace(
+            'categories = ["anfrage", "termin"]', 'kategorien = ["anfrage"]'
+        ),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(home), "mail", "draft"])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "kategorien" in err

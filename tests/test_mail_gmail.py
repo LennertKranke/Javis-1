@@ -7,7 +7,14 @@ import urllib.error
 
 import pytest
 
-from jarvis.skills.mail.gmail import GmailAuthError, GmailClient, GmailError
+from jarvis.skills.mail.gmail import (
+    DRAFTING,
+    LABELLING,
+    SENDING,
+    GmailAuthError,
+    GmailClient,
+    GmailError,
+)
 
 
 class FakeAuth:
@@ -29,8 +36,8 @@ class FakeResponse:
         return False
 
 
-def client_mit(monkeypatch, antwort=None, fehler=None):
-    client = GmailClient(FakeAuth())
+def client_mit(monkeypatch, antwort=None, fehler=None, capabilities=LABELLING):
+    client = GmailClient(FakeAuth(), capabilities=capabilities)
     aufzeichnung = {}
 
     def fake_open(request, timeout=None):
@@ -65,8 +72,9 @@ def client_mit(monkeypatch, antwort=None, fehler=None):
 )
 def test_nicht_erlaubte_endpunkte_werden_abgewiesen(method, path):
     """Der Token darf laut Zustimmung senden. Der Client darf es nicht."""
+    client = GmailClient(FakeAuth(), capabilities=LABELLING)
     with pytest.raises(GmailError, match="erlaubten Endpunkte"):
-        GmailClient._check_endpoint(method, path)
+        client._check_endpoint(method, path)
 
 
 @pytest.mark.parametrize(
@@ -81,21 +89,86 @@ def test_nicht_erlaubte_endpunkte_werden_abgewiesen(method, path):
     ],
 )
 def test_erlaubte_endpunkte(method, path):
-    GmailClient._check_endpoint(method, path)
+    GmailClient(FakeAuth(), capabilities=LABELLING)._check_endpoint(method, path)
 
 
-def test_senden_ist_auch_ueber_die_oeffentliche_flaeche_unerreichbar():
-    """Es gibt keine Methode, die dorthin fuehrt -- gepruefte Zusicherung."""
-    client = GmailClient(FakeAuth())
+# --- Faehigkeiten haengen an der Autonomiestufe ----------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "erlaubt_entwurf", "erlaubt_senden"),
+    [(LABELLING, False, False), (DRAFTING, True, False), (SENDING, True, True)],
+)
+def test_stufe_entscheidet_was_der_client_kann(capabilities, erlaubt_entwurf, erlaubt_senden):
+    """Auf Stufe 0 kann der Client nicht senden -- nicht weil er es unterlaesst."""
+    client = GmailClient(FakeAuth(), capabilities=capabilities)
+
+    def geht(method, path):
+        try:
+            client._check_endpoint(method, path)
+        except GmailError:
+            return False
+        return True
+
+    assert geht("POST", "/drafts") is erlaubt_entwurf
+    assert geht("POST", "/drafts/send") is erlaubt_senden
+    # Nie, auf keiner Stufe: eine frisch gebaute zweite Nachricht.
+    assert geht("POST", "/messages/send") is False
+
+
+def test_senden_geht_ausschliesslich_ueber_den_entwurf():
+    """So geht genau das hinaus, was vorher dastand und pruefbar war."""
+    client = GmailClient(FakeAuth(), capabilities=SENDING)
+    with pytest.raises(GmailError):
+        client._check_endpoint("POST", "/messages/send")
+    client._check_endpoint("POST", "/drafts/send")
+
+
+def test_unbekannte_faehigkeit_wird_abgelehnt():
+    with pytest.raises(ValueError, match="Unbekannte Faehigkeiten"):
+        GmailClient(FakeAuth(), capabilities={"alles"})
+
+
+def test_entwurf_anlegen_und_senden(monkeypatch):
+    client, auf = client_mit(monkeypatch, {"id": "d1"}, capabilities=SENDING)
+    client.create_draft("cm9o", thread_id="t1")
+    assert auf["body"] == {"message": {"raw": "cm9o", "threadId": "t1"}}
+
+    client.send_draft("d1")
+    assert auf["url"].endswith("/drafts/send")
+    assert auf["body"] == {"id": "d1"}
+
+
+def test_entwurf_senden_scheitert_auf_stufe_null(monkeypatch):
+    client, _ = client_mit(monkeypatch, {"id": "d1"}, capabilities=DRAFTING)
+    with pytest.raises(GmailError, match="erlaubten Endpunkte"):
+        client.send_draft("d1")
+
+
+def test_sparsames_format_fuer_viele_nachrichten(monkeypatch):
+    client, auf = client_mit(monkeypatch, {"id": "a"})
+    client.get_message("a", fmt="metadata", headers=["To", "Cc"])
+    assert "format=metadata" in auf["url"]
+    assert "metadataHeaders=To%2CCc" in auf["url"]
+
+
+def test_die_oeffentliche_flaeche_bleibt_uebersichtlich():
+    """Kommt eine Methode dazu, faellt es hier auf."""
+    client = GmailClient(FakeAuth(), capabilities=SENDING)
     oeffentlich = [n for n in dir(client) if not n.startswith("_")]
-    assert not any("send" in n or "draft" in n or "trash" in n for n in oeffentlich)
+    assert not any("trash" in n or "forward" in n or "filter" in n for n in oeffentlich)
     assert sorted(oeffentlich) == [
         "address",
+        "can",
+        "capabilities",
+        "create_draft",
         "create_label",
+        "get_draft",
         "get_message",
         "list_labels",
         "list_message_ids",
         "modify_labels",
+        "send_draft",
     ]
 
 

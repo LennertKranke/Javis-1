@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from email.header import decode_header, make_header
 from email.utils import getaddresses, parseaddr
 
-__all__ = ["Attachment", "MailAddress", "MailMessage", "parse_message"]
+__all__ = ["Attachment", "MailAddress", "MailMessage", "headers_of", "parse_message"]
 
 _B64URL_RE = re.compile(r"^[A-Za-z0-9_=-]*$")
 
@@ -59,7 +59,10 @@ class MailMessage:
     thread_id: str
     label_ids: tuple[str, ...] = ()
     sender: MailAddress | None = None
+    reply_to: MailAddress | None = None
     recipients: tuple[MailAddress, ...] = ()
+    rfc_message_id: str | None = None
+    references: str | None = None
     internal_date: int = 0
     list_unsubscribe: bool = False
     auto_submitted: str | None = None
@@ -101,6 +104,11 @@ def _headers(payload: dict) -> dict[str, str]:
         if name and name not in out:
             out[name] = str(header.get("value", ""))
     return out
+
+
+def headers_of(raw: dict) -> dict[str, str]:
+    """Kopffelder einer Gmail-Antwort, klein geschrieben. Erstes Vorkommen zaehlt."""
+    return _headers(raw.get("payload") or {})
 
 
 def _decode_body(data: str) -> str:
@@ -155,6 +163,12 @@ def parse_message(raw: dict) -> MailMessage:
     sender = (
         MailAddress(name=_decode_header_value(name), address=address.lower()) if address else None
     )
+    antwort_name, antwort_adresse = parseaddr(headers.get("reply-to", ""))
+    reply_to = (
+        MailAddress(name=_decode_header_value(antwort_name), address=antwort_adresse.lower())
+        if antwort_adresse
+        else None
+    )
 
     empfaenger = tuple(
         MailAddress(name=_decode_header_value(n), address=a.lower())
@@ -176,7 +190,10 @@ def parse_message(raw: dict) -> MailMessage:
         thread_id=str(raw.get("threadId", "")),
         label_ids=tuple(raw.get("labelIds") or []),
         sender=sender,
+        reply_to=reply_to,
         recipients=empfaenger,
+        rfc_message_id=headers.get("message-id"),
+        references=headers.get("references"),
         internal_date=int(raw.get("internalDate") or 0),
         list_unsubscribe=bool(headers.get("list-unsubscribe")),
         auto_submitted=auto.lower() if auto else None,

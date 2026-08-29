@@ -8,7 +8,9 @@ sieht deshalb keinen fremden Inhalt mehr, sondern nur noch das Ergebnis.
 Die entscheidende Stelle ist `Decision`. Sie hat zwei getrennte Haelften:
 
   fields   kommt vom Modell. Schema-geprueft, enthaelt nie ein Ziel.
-  targets  kommt von deterministischem Code aus vertrauenswuerdigen Quellen.
+  targets  kommt von deterministischem Code aus vertrauenswuerdigen Quellen --
+           vor allem das Ziel, daneben was der deterministische Teil sonst
+           ausgerechnet hat.
 
 Prinzip 2.1 ist genau diese Trennung. Damit sie nicht bloss eine Verabredung
 bleibt, prueft `Decision` beim Anlegen, dass in `fields` kein Zielfeld steckt --
@@ -26,7 +28,19 @@ from typing import Any
 from jarvis.core.sanitize import SanitizedText
 from jarvis.llm.schema import is_target_name
 
-__all__ = ["Decision", "Event", "Result", "Skill", "available_skills", "register_skill"]
+__all__ = [
+    "NOOP_ACTIONS",
+    "Decision",
+    "Event",
+    "Result",
+    "Skill",
+    "available_skills",
+    "register_skill",
+]
+
+# Entscheidungen, nach denen nichts geschieht. "hold" heisst: es gaebe etwas zu
+# tun, aber eine Regel haelt es zurueck -- das ist kein blockiertes Gatter.
+NOOP_ACTIONS = frozenset({"skip", "hold", "none"})
 
 
 @dataclass(frozen=True)
@@ -64,6 +78,11 @@ class Decision:
                 f"nach einem Ziel aus und stehen in der Modellhaelfte. Prinzip 2.1: Ziele "
                 f"gehoeren nach targets und werden aus den Originaldaten berechnet."
             )
+
+    @property
+    def is_noop(self) -> bool:
+        """Nichts zu tun. Kommt gar nicht erst ans Gatter und verbraucht nichts."""
+        return self.action in NOOP_ACTIONS
 
     @property
     def audit_detail(self) -> dict[str, Any]:

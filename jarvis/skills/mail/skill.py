@@ -261,6 +261,9 @@ class MailSkill(Skill):
             category=decision.targets.get("category"),
             decided_by=decision.decided_by,
             labelled=bool(result and result.performed),
+            # Phase 3 liest das: nur was hier vermerkt ist, bekommt spaeter
+            # ueberhaupt einen Antwortentwurf.
+            needs_reply=bool(decision.fields.get("antwort_noetig")),
         )
 
     # ------------------------------------------------------------------ #

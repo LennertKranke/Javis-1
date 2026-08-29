@@ -552,12 +552,22 @@ autonomy_level = 0
 requires_outbound = false
 rate_limits = { hour = 120, day = 600 }
 
-# Antworten. Ab Phase 3. Bleibt bis dahin abgeschaltet und auf Stufe 0, sodass
-# ein Umlegen von dry_run das Senden nicht mit freischaltet.
+# Antwortentwuerfe schreiben. Ein Entwurf liegt im eigenen Postfach und
+# erreicht niemanden -- wie das Einordnen also nicht ausgehend.
 [capabilities.mail_reply]
 autonomy_level = 0
+requires_outbound = false
+rate_limits = { hour = 20, day = 100 }
+
+# Entwuerfe tatsaechlich senden. Das erreicht Menschen.
+#
+# Hier steht die Umschaltung aus Abschnitt 6: autonomy_level = 1 schaltet das
+# Senden frei. Solange hier 0 steht, laeuft die Faehigkeit im Trockenlauf mit
+# und zeigt im Protokoll, was sie gesendet haette -- und der Gmail-Client wird
+# ohne Senderecht gebaut, kann es also auch bei einem Fehler im Code nicht.
+[capabilities.mail_send]
+autonomy_level = 0
 requires_outbound = true
-enabled = false
 rate_limits = { hour = 5, day = 20 }
 
 [capabilities.calendar]
@@ -666,4 +676,52 @@ categories = [
 # Namen der Keychain-Eintraege, nie die Werte selbst.
 client_secret = "gmail_client_secret"
 token_secret = "gmail_token"
+
+
+[skills.mail_reply]
+# Aufgabe aus [llm.tasks] fuer die Entwuerfe.
+task = "draft"
+
+# Nur diese Kategorien bekommen ueberhaupt einen Entwurf.
+categories = ["anfrage", "termin"]
+
+max_per_run = 10
+
+# Laengere Entwuerfe werden nicht abgeschnitten, sondern zur Durchsicht
+# zurueckgehalten.
+max_words = 180
+
+# Ein Link im Entwurf haelt ihn zur Durchsicht zurueck. Eine Antwort braucht
+# selten einen, und ein untergeschobener waere schwer zu bemerken.
+allow_links = false
+
+# An solche Adressen wird nie geantwortet (Teilzeichenkette im lokalen Teil).
+never_reply_to = [
+    "noreply",
+    "no-reply",
+    "donotreply",
+    "mailer-daemon",
+    "postmaster",
+    "bounce",
+]
+
+# Wird woertlich unter jeden Entwurf gesetzt. Kommt von dir, nicht vom Modell.
+signature = ""
+
+
+[skills.mail_send]
+max_per_run = 10
+
+# Ab so vielen eigenen Nachrichten an eine Adresse gilt sie als bekannter
+# Kontakt. Verhindert, dass ein einzelner Hoeflichkeitsgruss genuegt.
+allowlist_threshold = 3
+
+# Wie viele gesendete Nachrichten "jarvis mail allowlist refresh" durchsieht.
+allowlist_scan = 300
+
+# Immer erlaubt, ohne Zaehlung.
+allowlist_manual = []
+
+# Immer verboten, schlaegt alles andere. Ganze Domains als "@example.com".
+allowlist_blocked = []
 """

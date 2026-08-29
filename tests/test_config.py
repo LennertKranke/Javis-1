@@ -27,17 +27,19 @@ def test_vorlage_ist_gueltig(home):
     assert set(config.capabilities) == {
         "mail",
         "mail_reply",
+        "mail_send",
         "calendar",
         "research",
         "briefing",
     }
+    # Alles startet auf Stufe 0 -- auch das Senden.
     assert all(int(c.autonomy_level) == 0 for c in config.capabilities.values())
-    # Einordnen erreicht niemanden, Antworten schon.
+    # Einordnen und Entwerfen erreichen niemanden, Senden schon.
     assert config.capabilities["mail"].requires_outbound is False
-    assert config.capabilities["mail_reply"].requires_outbound is True
-    # Antworten bleibt bis Phase 3 abgeschaltet, damit ein Umlegen von dry_run
-    # es nicht mit freischaltet.
-    assert config.capabilities["mail_reply"].enabled is False
+    assert config.capabilities["mail_reply"].requires_outbound is False
+    assert config.capabilities["mail_send"].requires_outbound is True
+    # Die Umschaltung aus Abschnitt 6 ist genau dieser eine Wert.
+    assert config.permits("mail_send", 1) is False
 
 
 def test_beispieldatei_im_repo_stimmt_mit_der_vorlage_ueberein():

@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 from jarvis.core.db import transaction
 
-__all__ = ["MailRecord", "MailStore"]
+__all__ = ["MailRecord", "MailStore", "ReplyRecord", "ReplyStore"]
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,7 @@ class MailRecord:
     decided_by: str | None
     labelled: bool
     audit_id: int | None
+    needs_reply: bool = False
 
 
 class MailStore:
@@ -53,6 +54,7 @@ class MailStore:
         category: str | None = None,
         decided_by: str | None = None,
         labelled: bool = False,
+        needs_reply: bool = False,
         audit_id: int | None = None,
     ) -> None:
         jetzt = datetime.now(UTC).isoformat(timespec="seconds")
@@ -61,14 +63,15 @@ class MailStore:
                 """
                 INSERT INTO mail_messages
                     (message_id, thread_id, first_seen, last_seen, category,
-                     decided_by, labelled, audit_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     decided_by, labelled, needs_reply, audit_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (message_id) DO UPDATE SET
-                    last_seen  = excluded.last_seen,
-                    category   = excluded.category,
-                    decided_by = excluded.decided_by,
-                    labelled   = excluded.labelled,
-                    audit_id   = excluded.audit_id
+                    last_seen   = excluded.last_seen,
+                    category    = excluded.category,
+                    decided_by  = excluded.decided_by,
+                    labelled    = excluded.labelled,
+                    needs_reply = excluded.needs_reply,
+                    audit_id    = excluded.audit_id
                 """,
                 (
                     message_id,
@@ -78,6 +81,7 @@ class MailStore:
                     category,
                     decided_by,
                     int(bool(labelled)),
+                    int(bool(needs_reply)),
                     audit_id,
                 ),
             )
@@ -113,6 +117,179 @@ class MailStore:
                 decided_by=row["decided_by"],
                 labelled=bool(row["labelled"]),
                 audit_id=row["audit_id"],
+                needs_reply=bool(row["needs_reply"]),
             )
             for row in rows
         ]
+
+    def awaiting_reply(self, categories: Collection[str], *, limit: int = 25) -> list[str]:
+        """Nachrichten, die eine Antwort brauchen und noch keine geplant haben."""
+        if not categories:
+            return []
+        platzhalter = ",".join("?" * len(categories))
+        zeilen = self._conn.execute(
+            f"""
+            SELECT m.message_id FROM mail_messages AS m
+            LEFT JOIN mail_replies AS r ON r.message_id = m.message_id
+            WHERE m.needs_reply = 1
+              AND m.category IN ({platzhalter})
+              AND r.message_id IS NULL
+            ORDER BY m.last_seen ASC
+            LIMIT ?
+            """,
+            (*categories, limit),
+        ).fetchall()
+        return [z["message_id"] for z in zeilen]
+
+
+@dataclass(frozen=True)
+class ReplyRecord:
+    message_id: str
+    thread_id: str
+    recipient: str
+    subject: str
+    fingerprint: str
+    planned_at: str
+    disposition: str
+    needs_human: bool
+    draft_id: str | None = None
+    drafted_at: str | None = None
+    draft_fingerprint: str | None = None
+    sent_at: str | None = None
+
+
+class ReplyStore:
+    """Was geantwortet werden sollte, und was tatsaechlich daraus wurde.
+
+    `fingerprint` haelt fest, wie die Antwort im Moment der Entscheidung
+    aussah. `draft_fingerprint` haelt fest, was spaeter wirklich im Postfach
+    lag. Stimmen beide ueberein, ist der Entwurf der angekuendigte -- das ist
+    die Abnahmebedingung aus Abschnitt 6.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def plan(
+        self,
+        *,
+        message_id: str,
+        thread_id: str,
+        recipient: str,
+        subject: str,
+        fingerprint: str,
+        disposition: str,
+        needs_human: bool = False,
+        draft_id: str | None = None,
+        draft_fingerprint: str | None = None,
+        audit_id: int | None = None,
+    ) -> None:
+        jetzt = datetime.now(UTC).isoformat(timespec="seconds")
+        gezeichnet = jetzt if draft_id else None
+        with transaction(self._conn):
+            self._conn.execute(
+                """
+                INSERT INTO mail_replies
+                    (message_id, thread_id, recipient, subject, fingerprint, planned_at,
+                     disposition, needs_human, draft_id, drafted_at, draft_fingerprint,
+                     audit_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (message_id) DO UPDATE SET
+                    disposition       = excluded.disposition,
+                    needs_human       = excluded.needs_human,
+                    draft_id          = COALESCE(excluded.draft_id, mail_replies.draft_id),
+                    drafted_at        = COALESCE(excluded.drafted_at, mail_replies.drafted_at),
+                    draft_fingerprint = COALESCE(
+                        excluded.draft_fingerprint, mail_replies.draft_fingerprint
+                    )
+                """,
+                (
+                    message_id,
+                    thread_id,
+                    recipient,
+                    subject,
+                    fingerprint,
+                    jetzt,
+                    disposition,
+                    int(bool(needs_human)),
+                    draft_id,
+                    gezeichnet,
+                    draft_fingerprint,
+                    audit_id,
+                ),
+            )
+
+    def mark_sent(self, message_id: str) -> None:
+        jetzt = datetime.now(UTC).isoformat(timespec="seconds")
+        with transaction(self._conn):
+            self._conn.execute(
+                "UPDATE mail_replies SET disposition = 'sent', sent_at = ? WHERE message_id = ?",
+                (jetzt, message_id),
+            )
+
+    def mark(self, message_id: str, disposition: str) -> None:
+        with transaction(self._conn):
+            self._conn.execute(
+                "UPDATE mail_replies SET disposition = ? WHERE message_id = ?",
+                (disposition, message_id),
+            )
+
+    def get(self, message_id: str) -> ReplyRecord | None:
+        zeile = self._conn.execute(
+            "SELECT * FROM mail_replies WHERE message_id = ?", (message_id,)
+        ).fetchone()
+        return self._record(zeile) if zeile else None
+
+    def pending_for_send(self, *, limit: int = 25) -> list[ReplyRecord]:
+        """Fertige Entwuerfe, die niemand zurueckhaelt."""
+        zeilen = self._conn.execute(
+            """
+            SELECT * FROM mail_replies
+            WHERE disposition = 'drafted' AND needs_human = 0
+              AND draft_id IS NOT NULL AND sent_at IS NULL
+            ORDER BY planned_at ASC LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [self._record(z) for z in zeilen]
+
+    def with_drafts(self, *, limit: int = 200) -> list[ReplyRecord]:
+        zeilen = self._conn.execute(
+            "SELECT * FROM mail_replies WHERE draft_id IS NOT NULL "
+            "ORDER BY planned_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [self._record(z) for z in zeilen]
+
+    def recent(self, limit: int = 20) -> list[ReplyRecord]:
+        zeilen = self._conn.execute(
+            "SELECT * FROM mail_replies ORDER BY planned_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [self._record(z) for z in zeilen]
+
+    def counts_by_disposition(self) -> dict[str, int]:
+        zeilen = self._conn.execute(
+            "SELECT disposition, COUNT(*) AS anzahl FROM mail_replies "
+            "GROUP BY disposition ORDER BY anzahl DESC"
+        ).fetchall()
+        return {z["disposition"]: z["anzahl"] for z in zeilen}
+
+    def total(self) -> int:
+        return int(self._conn.execute("SELECT COUNT(*) FROM mail_replies").fetchone()[0])
+
+    @staticmethod
+    def _record(zeile: sqlite3.Row) -> ReplyRecord:
+        return ReplyRecord(
+            message_id=zeile["message_id"],
+            thread_id=zeile["thread_id"] or "",
+            recipient=zeile["recipient"],
+            subject=zeile["subject"],
+            fingerprint=zeile["fingerprint"],
+            planned_at=zeile["planned_at"],
+            disposition=zeile["disposition"],
+            needs_human=bool(zeile["needs_human"]),
+            draft_id=zeile["draft_id"],
+            drafted_at=zeile["drafted_at"],
+            draft_fingerprint=zeile["draft_fingerprint"],
+            sent_at=zeile["sent_at"],
+        )

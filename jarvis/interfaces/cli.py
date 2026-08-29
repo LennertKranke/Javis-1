@@ -27,7 +27,13 @@ from jarvis.core.secrets import default_store
 from jarvis.llm.providers import build_providers
 from jarvis.llm.router import Router, RouterError
 from jarvis.skills.mail import GmailAuth, GmailAuthError, GmailClient, GmailError, MailStore
+from jarvis.skills.mail.allowlist import Allowlist
+from jarvis.skills.mail.compose import fingerprint_of_draft
+from jarvis.skills.mail.gmail import DRAFTING, READ_ONLY, SENDING
+from jarvis.skills.mail.reply import MailDraftSkill, MailSendSkill, SendOptions
 from jarvis.skills.mail.skill import MailOptions, MailSkill
+from jarvis.skills.mail.store import ReplyStore
+from jarvis.skills.mail.style import StyleStore, extract_profile
 from jarvis.skills.runner import run_skill
 
 ACCENT = "\033[36m"
@@ -333,6 +339,21 @@ def cmd_verify(args: argparse.Namespace, out: Out) -> int:
 # --------------------------------------------------------------------------- #
 
 
+def _gmail(config, capabilities):
+    """Baut einen Gmail-Client mit genau den Rechten, die er braucht."""
+    secrets = default_store()
+    options = MailOptions(config.skill_options("mail"), known_tasks=set(config.llm.tasks))
+    auth = GmailAuth(
+        secrets, client_secret_name=options.client_secret, token_name=options.token_secret
+    )
+    return auth, GmailClient(auth, capabilities=capabilities)
+
+
+def _send_capabilities(config):
+    """Senden nur, wenn die Stufe es hergibt -- sonst gar nicht erst im Client."""
+    return SENDING if config.permits("mail_send", 1) else DRAFTING
+
+
 def _mail_parts(config, conn, *, max_per_run: int | None = None):
     """Baut Gmail-Client, Router und Faehigkeit aus der Konfiguration."""
     secrets = default_store()
@@ -494,6 +515,256 @@ def cmd_mail_state(args: argparse.Namespace, out: Out) -> int:
         conn.close()
 
 
+def cmd_mail_style(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        store = StyleStore(conn)
+        if args.refresh:
+            _, client = _gmail(config, READ_ONLY)
+            try:
+                ids = client.list_message_ids("in:sent", args.anzahl)
+                koerper = [parse_sent_body(client.get_message(mid)) for mid in ids]
+            except GmailError as exc:
+                out.line(f"Gmail: {exc}")
+                return 1
+            profil = extract_profile([k for k in koerper if k])
+            store.save(profil)
+            out.line(f"{len(ids)} gesendete Nachrichten ausgewertet.")
+        else:
+            profil = store.load()
+
+        out.line()
+        out.line(profil.describe())
+        if store.updated_at():
+            out.line()
+            out.line(f"  {out.dim('Stand: ' + str(store.updated_at()))}")
+        out.line(f"  {out.dim('Gespeichert werden nur diese Kennzahlen, kein Nachrichtentext.')}")
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+def parse_sent_body(roh: dict) -> str:
+    from jarvis.skills.mail.message import parse_message
+
+    return parse_message(roh).body
+
+
+def _reply_teile(config, conn, *, max_per_run=None):
+    _, client = _gmail(config, DRAFTING)
+    secrets = default_store()
+    router = Router(config.llm, build_providers(config.llm, secrets))
+    skill = MailDraftSkill.from_config(
+        config,
+        client=client,
+        router=router,
+        mail_store=MailStore(conn),
+        reply_store=ReplyStore(conn),
+        style=StyleStore(conn).load(),
+    )
+    if max_per_run:
+        skill.options.max_per_run = max_per_run
+    return client, skill
+
+
+def cmd_mail_draft(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        _, skill = _reply_teile(config, conn, max_per_run=args.anzahl)
+        audit = AuditLog(conn)
+        gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
+        try:
+            bericht = run_skill(skill, gate=gate, audit=audit)
+        except GmailAuthError as exc:
+            out.line(str(exc))
+            return 1
+        except GmailError as exc:
+            out.line(f"Gmail: {exc}")
+            return 1
+
+        out.line()
+        out.line(f"{out.accent('Durchlauf')} {skill.name}")
+        out.line()
+        out.field("Gefunden", str(bericht.polled))
+        nachsatz = "  (Trockenlauf)" if config.dry_run and bericht.dry_run else ""
+        out.field("Entworfen", f"{bericht.acted}{nachsatz}")
+        if bericht.dry_run:
+            out.field("Nur beurteilt", str(bericht.dry_run))
+        out.field("Uebersprungen", str(bericht.skipped))
+        if bericht.blocked:
+            out.field("Blockiert", str(bericht.blocked))
+        if bericht.failed:
+            out.field("Fehler", str(bericht.failed))
+        zurueck = sum(1 for e in ReplyStore(conn).recent(bericht.polled or 1) if e.needs_human)
+        if zurueck:
+            out.field("Zur Durchsicht", str(zurueck))
+        for fehler in bericht.errors[:5]:
+            out.line(f"  {out.dim(fehler)}")
+        out.line()
+        return 1 if bericht.failed else 0
+    finally:
+        conn.close()
+
+
+def cmd_mail_send(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        capabilities = _send_capabilities(config)
+        _, client = _gmail(config, capabilities)
+        skill = MailSendSkill.from_config(
+            config, client=client, reply_store=ReplyStore(conn), conn=conn
+        )
+        if args.anzahl:
+            skill.options.max_per_run = args.anzahl
+        audit = AuditLog(conn)
+        gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
+        try:
+            bericht = run_skill(skill, gate=gate, audit=audit)
+        except GmailAuthError as exc:
+            out.line(str(exc))
+            return 1
+        except GmailError as exc:
+            out.line(f"Gmail: {exc}")
+            return 1
+
+        stufe = int(config.capability("mail_send").autonomy_level)
+        out.line()
+        out.line(f"{out.accent('Durchlauf')} {skill.name}")
+        out.line()
+        out.field("Stufe", f"{stufe} (Senden verlangt 1)")
+        out.field("Senderecht", "ja" if "send" in capabilities else out.bold("nein"))
+        out.field("Gefunden", str(bericht.polled))
+        out.field("Gesendet", str(bericht.acted))
+        if bericht.dry_run:
+            out.field("Nur beurteilt", str(bericht.dry_run))
+        if bericht.skipped:
+            out.field("Zurueckgehalten", str(bericht.skipped))
+        if bericht.blocked:
+            out.field("Blockiert", str(bericht.blocked))
+        if bericht.failed:
+            out.field("Fehler", str(bericht.failed))
+        for fehler in bericht.errors[:5]:
+            out.line(f"  {out.dim(fehler)}")
+        out.line()
+        return 1 if bericht.failed else 0
+    finally:
+        conn.close()
+
+
+def cmd_mail_allowlist(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        options = SendOptions(config.skill_options("mail_send"))
+        allowlist = Allowlist(
+            conn,
+            manual=options.allowlist_manual,
+            blocked=options.allowlist_blocked,
+            threshold=options.allowlist_threshold,
+        )
+        if args.refresh:
+            _, client = _gmail(config, READ_ONLY)
+            try:
+                eigene = client.address()
+                gezaehlt = allowlist.refresh_from_sent(
+                    client, max_messages=options.allowlist_scan, own_address=eigene
+                )
+            except GmailError as exc:
+                out.line(f"Gmail: {exc}")
+                return 1
+            out.line(f"{len(gezaehlt)} Adressen aus gesendeten Nachrichten gezaehlt.")
+
+        out.line()
+        out.field("Schwelle", f"{allowlist.threshold} eigene Nachrichten")
+        out.field("Erlaubt", str(allowlist.count(only_permitted=True)))
+        out.field("Erfasst", str(allowlist.count()))
+        if options.allowlist_manual:
+            out.field("Von Hand", ", ".join(options.allowlist_manual))
+        if options.allowlist_blocked:
+            out.field("Gesperrt", ", ".join(options.allowlist_blocked))
+
+        eintraege = allowlist.entries(limit=args.anzahl)
+        if eintraege:
+            out.line()
+            out.table(
+                ["ADRESSE", "EIGENE", "ERLAUBT", "ZULETZT"],
+                [
+                    [
+                        e.address,
+                        str(e.sent_count),
+                        "ja" if allowlist.permits(e.address).allowed else "nein",
+                        (e.last_seen or "--")[:10],
+                    ]
+                    for e in eintraege
+                ],
+            )
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+def cmd_mail_compare(args: argparse.Namespace, out: Out) -> int:
+    """Die Abnahmeprobe: stimmt der Entwurf im Postfach mit dem Protokoll ueberein?"""
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        _, client = _gmail(config, DRAFTING)
+        eintraege = ReplyStore(conn).with_drafts(limit=args.anzahl)
+        if not eintraege:
+            out.line("Keine Entwuerfe vorhanden.")
+            return 0
+
+        zeilen, abweichungen = [], 0
+        for eintrag in eintraege:
+            try:
+                roh = client.get_draft(str(eintrag.draft_id))
+                tatsaechlich = fingerprint_of_draft(roh)
+            except GmailError as exc:
+                zeilen.append([str(eintrag.draft_id), eintrag.recipient, f"FEHLER: {exc}"])
+                abweichungen += 1
+                continue
+            passt = tatsaechlich == eintrag.fingerprint
+            if not passt:
+                abweichungen += 1
+            zeilen.append(
+                [
+                    str(eintrag.draft_id),
+                    eintrag.recipient,
+                    "stimmt ueberein" if passt else out.bold("WEICHT AB"),
+                ]
+            )
+
+        out.line()
+        out.table(["ENTWURF", "EMPFAENGER", "ABGLEICH"], zeilen)
+        out.line()
+        out.field("Geprueft", str(len(eintraege)))
+        out.field("Abweichungen", str(abweichungen))
+        out.line()
+        return 1 if abweichungen else 0
+    finally:
+        conn.close()
+
+
 # --------------------------------------------------------------------------- #
 # Einstieg
 # --------------------------------------------------------------------------- #
@@ -555,6 +826,28 @@ def build_parser() -> argparse.ArgumentParser:
     m = mail_sub.add_parser("state", help="Was bisher beurteilt wurde")
     m.add_argument("-n", "--anzahl", type=int, default=15, help="Anzahl Zeilen")
     m.set_defaults(func=cmd_mail_state)
+
+    m = mail_sub.add_parser("style", help="Schreibstil zeigen oder neu ableiten")
+    m.add_argument("--refresh", action="store_true", help="aus gesendeten Mails neu ableiten")
+    m.add_argument("-n", "--anzahl", type=int, default=200, help="wie viele durchsehen")
+    m.set_defaults(func=cmd_mail_style)
+
+    m = mail_sub.add_parser("draft", help="Antwortentwuerfe schreiben")
+    m.add_argument("-n", "--anzahl", type=int, default=None, help="Obergrenze")
+    m.set_defaults(func=cmd_mail_draft)
+
+    m = mail_sub.add_parser("send", help="Fertige Entwuerfe senden (verlangt Stufe 1)")
+    m.add_argument("-n", "--anzahl", type=int, default=None, help="Obergrenze")
+    m.set_defaults(func=cmd_mail_send)
+
+    m = mail_sub.add_parser("allowlist", help="Wer eine Antwort bekommen darf")
+    m.add_argument("--refresh", action="store_true", help="aus gesendeten Mails neu zaehlen")
+    m.add_argument("-n", "--anzahl", type=int, default=25, help="Anzahl Zeilen")
+    m.set_defaults(func=cmd_mail_allowlist)
+
+    m = mail_sub.add_parser("compare", help="Entwuerfe gegen das Protokoll abgleichen")
+    m.add_argument("-n", "--anzahl", type=int, default=100, help="wie viele pruefen")
+    m.set_defaults(func=cmd_mail_compare)
 
     return parser
 

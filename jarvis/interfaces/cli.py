@@ -768,18 +768,19 @@ def cmd_web(args: argparse.Namespace, out: Out) -> int:
     from jarvis.interfaces.web import create_app
     from jarvis.interfaces.web.security import load_or_create_token
 
+    # Beide Wege -- Datei und Schalter -- gehen durch dieselbe Pruefung. Ein
+    # ConfigError landet in main() und beendet mit Code 2.
+    web = config.web.with_overrides(host=args.host, port=args.port)
     token = load_or_create_token(paths.home)
-    host = args.host or config.web.host
-    port = args.port or config.web.port
-    adresse = f"http://{host}:{port}/?token={token}"
 
     out.line()
     out.line(f"{out.accent('JARVIS')} {out.dim('Dashboard')}")
     out.line()
-    out.field("Adresse", adresse)
+    out.field("Adresse", f"{web.base_url}/?token={token}")
     out.field("Token", str(paths.home / "web-token"))
     out.field("Freigaben", "wirken nur ohne Trockenlauf" if config.dry_run else "wirken")
     out.line()
+    out.line(f"  {out.dim('Die vollstaendige Adresse mit ?token= im Browser oeffnen.')}")
     out.line(f"  {out.dim('Beenden mit Strg-C.')}")
     out.line()
     # uvicorn blockiert gleich. Die Adresse mit dem Token ist der einzige Weg
@@ -788,9 +789,9 @@ def cmd_web(args: argparse.Namespace, out: Out) -> int:
     out.stream.flush()
 
     uvicorn.run(
-        create_app(home=paths.home, token=token, port=port),
-        host=host,
-        port=port,
+        create_app(home=paths.home, token=token, port=web.port),
+        host=web.host,
+        port=web.port,
         log_level="warning",
         access_log=False,
     )

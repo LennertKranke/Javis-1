@@ -382,3 +382,30 @@ def test_web_host_ausserhalb_von_localhost_wird_abgelehnt(home, capsys):
     err = capsys.readouterr().err
     assert code == 2
     assert "web.host" in err
+
+
+def test_web_host_schalter_umgeht_die_loopback_sperre_nicht(home, capsys):
+    """Sonst waere die Sperre ueber einen Schalter zu umgehen."""
+    run(home, "init", capsys=capsys)
+    code = main(["--home", str(home), "web", "--host", "0.0.0.0"])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "web.host" in err
+    assert "ausschliesslich lokal" in err
+
+
+def test_web_port_schalter_wird_geprueft(home, capsys):
+    run(home, "init", capsys=capsys)
+    code = main(["--home", str(home), "web", "--port", "80"])
+    assert code == 2
+    assert "web.port" in capsys.readouterr().err
+
+
+def test_web_erlaubt_die_anderen_loopback_schreibweisen(home, capsys, monkeypatch):
+    run(home, "init", capsys=capsys)
+    gestartet = {}
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: gestartet.update(kwargs))
+    code, out = run(home, "web", "--host", "localhost", capsys=capsys)
+    assert code == 0
+    assert "http://localhost:8765/?token=" in out
+    assert gestartet["host"] == "localhost"

@@ -210,6 +210,25 @@ class WebConfig:
     port: int = 8765
     refresh_seconds: int = 0
 
+    @property
+    def base_url(self) -> str:
+        """Die Adresse, die in einen Browser gehoert."""
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        return f"http://{host}:{self.port}"
+
+    def with_overrides(self, *, host: str | None = None, port: int | None = None) -> WebConfig:
+        """Wendet Werte von der Kommandozeile an -- durch dieselbe Pruefung.
+
+        Ohne das haette `--host` die Loopback-Sperre umgangen, die nur beim
+        Lesen der Konfigurationsdatei greift: der Server lauscht dann am Netz,
+        und die Sperre waere eine Empfehlung.
+        """
+        return _validate_web(
+            self.host if host is None else host,
+            self.port if port is None else port,
+            self.refresh_seconds,
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Stoppschalter (Prinzip 2.4)
@@ -444,25 +463,37 @@ def _parse_rate_limits(raw: Any, where: str) -> tuple[RateLimit, ...]:
     return tuple(sorted(limits))
 
 
-def _parse_web(raw: Any) -> WebConfig:
-    if not isinstance(raw, dict):
-        raise ConfigError("web: erwartet eine Tabelle")
-    _reject_unknown(raw, {"host", "port", "refresh_seconds"}, "web")
+def _validate_web(host: Any, port: Any, refresh: Any) -> WebConfig:
+    """Die eine Stelle, an der Wirt und Port geprueft werden.
 
-    host = _as_str(raw.get("host", "127.0.0.1"), "web.host")
+    Konfigurationsdatei und Kommandozeile gehen beide hier durch, damit die
+    Loopback-Sperre nicht ueber einen Schalter zu umgehen ist.
+    """
+    host = _as_str(host, "web.host")
     if host not in LOOPBACK:
         erlaubt = ", ".join(sorted(LOOPBACK))
         raise ConfigError(
             f"web.host: {host!r} ist nicht erlaubt. Das Dashboard gibt Entscheidungen "
             f"frei und laeuft ausschliesslich lokal (erlaubt: {erlaubt})."
         )
-    port = _as_int(raw.get("port", 8765), "web.port")
+    port = _as_int(port, "web.port")
     if not 1024 <= port <= 65535:
         raise ConfigError("web.port: muss zwischen 1024 und 65535 liegen")
-    refresh = _as_int(raw.get("refresh_seconds", 0), "web.refresh_seconds")
+    refresh = _as_int(refresh, "web.refresh_seconds")
     if refresh and not 5 <= refresh <= 3600:
         raise ConfigError("web.refresh_seconds: 0 oder zwischen 5 und 3600")
     return WebConfig(host=host, port=port, refresh_seconds=refresh)
+
+
+def _parse_web(raw: Any) -> WebConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError("web: erwartet eine Tabelle")
+    _reject_unknown(raw, {"host", "port", "refresh_seconds"}, "web")
+    return _validate_web(
+        raw.get("host", "127.0.0.1"),
+        raw.get("port", 8765),
+        raw.get("refresh_seconds", 0),
+    )
 
 
 def _parse_skills(raw: Any) -> dict[str, dict[str, Any]]:

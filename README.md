@@ -357,8 +357,9 @@ Formular an localhost abschicken, und der Browser tut es.
   Referer, wird abgelehnt.
 - **Content-Security-Policy** ohne Skripte, ohne fremde Quellen, ohne
   Einbettung in fremde Rahmen.
-- **`web.host`** laesst nur Loopback zu; alles andere weist die Konfiguration
-  beim Laden ab.
+- **`web.host`** laesst nur Loopback zu (`127.0.0.1`, `localhost`, `::1`).
+  Das gilt fuer die Konfigurationsdatei *und* fuer `--host`: beide gehen durch
+  dieselbe Pruefung, sonst waere die Sperre ueber einen Schalter zu umgehen.
 
 Das Protokoll zeigt Betreffzeilen aus fremden Mails. Jeder Wert, der auf die
 Seite geht, wird maskiert -- ungefiltertes Markup waere hier kein

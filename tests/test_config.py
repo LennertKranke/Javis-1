@@ -182,3 +182,35 @@ def test_unbekannte_faehigkeit_ist_ein_fehler(home):
 def test_stufen_haben_deutsche_bezeichnungen():
     assert AutonomyLevel(0).label == "Schattenbetrieb"
     assert AutonomyLevel(3).label == "Alles ausser Gesperrtes"
+
+
+# --- Dashboard --------------------------------------------------------------- #
+
+
+def test_web_bindet_nur_an_loopback(home):
+    for host in ("0.0.0.0", "192.168.1.5", "example.com", "::"):
+        with pytest.raises(ConfigError, match=r"web\.host"):
+            laden(home, {"capabilities": {}, "web": {"host": host}})
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
+def test_web_erlaubte_wirte(home, host):
+    assert laden(home, {"capabilities": {}, "web": {"host": host}}).web.host == host
+
+
+def test_web_ueberschreiben_geht_durch_dieselbe_pruefung(home):
+    from jarvis.core.config import WebConfig
+
+    web = WebConfig()
+    assert web.with_overrides(host="localhost", port=9000).port == 9000
+    with pytest.raises(ConfigError, match=r"web\.host"):
+        web.with_overrides(host="0.0.0.0")
+    with pytest.raises(ConfigError, match=r"web\.port"):
+        web.with_overrides(port=80)
+
+
+def test_web_adresse_fuer_den_browser(home):
+    from jarvis.core.config import WebConfig
+
+    assert WebConfig().base_url == "http://127.0.0.1:8765"
+    assert WebConfig(host="::1", port=9000).base_url == "http://[::1]:9000"

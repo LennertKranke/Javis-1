@@ -782,6 +782,10 @@ def cmd_web(args: argparse.Namespace, out: Out) -> int:
     out.line()
     out.line(f"  {out.dim('Beenden mit Strg-C.')}")
     out.line()
+    # uvicorn blockiert gleich. Die Adresse mit dem Token ist der einzige Weg
+    # hinein -- sie darf nicht in einem Puffer stehen bleiben, wenn die Ausgabe
+    # kein Terminal ist.
+    out.stream.flush()
 
     uvicorn.run(
         create_app(home=paths.home, token=token, port=port),

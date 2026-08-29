@@ -1,0 +1,102 @@
+# JARVIS -- Konfiguration
+#
+# Diese Datei bestimmt, was JARVIS darf. Der Code bestimmt, wie er es tut.
+# Unbekannte Schluessel sind ein Fehler, damit Tippfehler nicht stumm bleiben.
+
+# Trockenlauf: es wird entschieden und protokolliert, aber nichts geht hinaus.
+# Bleibt an, bis eine Faehigkeit nachweislich vernuenftige Entscheidungen trifft.
+dry_run = true
+
+log_level = "INFO"
+
+# Obergrenze fuer normalisierten Fremdtext, in Zeichen.
+sanitize_max_chars = 20000
+
+
+# --------------------------------------------------------------------------- #
+# Faehigkeiten
+#
+# autonomy_level ist die gewaehrte Stufe (Abschnitt 3):
+#   0 Schattenbetrieb   entscheidet alles, sendet nichts
+#   1 Allowlist         sendet nur an freigegebene Adressen
+#   2 Kategorien        sendet in freigegebenen Kategorien an bekannte Kontakte
+#   3 Ausser Gesperrtes sendet, ausser die Kategorie ist gesperrt
+#
+# Neue Faehigkeiten starten immer auf 0. rate_limits ist Pflicht, sobald die
+# Faehigkeit nach aussen wirkt.
+# --------------------------------------------------------------------------- #
+
+[capabilities.mail]
+autonomy_level = 0
+requires_outbound = true
+rate_limits = { hour = 10, day = 40 }
+
+[capabilities.calendar]
+autonomy_level = 0
+requires_outbound = true
+rate_limits = { hour = 5, day = 20 }
+
+[capabilities.research]
+autonomy_level = 0
+requires_outbound = true
+rate_limits = { hour = 20, day = 100 }
+
+[capabilities.briefing]
+autonomy_level = 0
+requires_outbound = false
+
+
+# --------------------------------------------------------------------------- #
+# Modelle
+#
+# local = true bedeutet: laeuft auf diesem Rechner, verlaesst ihn nicht.
+# secret nennt den Namen des Keychain-Eintrags, nie den Wert selbst.
+# --------------------------------------------------------------------------- #
+
+[llm.providers.anthropic]
+kind = "anthropic"
+model = "claude-opus-5"
+local = false
+secret = "anthropic_api_key"
+max_tokens = 16000
+timeout = 120.0
+effort = "high"
+
+[llm.providers.ollama]
+kind = "ollama"
+model = "llama3.1:8b"
+local = true
+base_url = "http://127.0.0.1:11434"
+max_tokens = 8192
+timeout = 120.0
+
+# Antwortet immer dasselbe, ohne Netz. Fuer Trockenlaeufe und Tests.
+[llm.providers.trocken]
+kind = "static"
+model = "static"
+local = true
+reply = "{}"
+
+
+# --------------------------------------------------------------------------- #
+# Aufgabenverteilung
+#
+# Die Reihenfolge ist die Rueckfallkette: faellt der erste Anbieter aus, wird
+# der naechste versucht. confidential = true laesst ausschliesslich lokale
+# Anbieter zu und wird beim Laden und beim Routen geprueft.
+# --------------------------------------------------------------------------- #
+
+[llm.tasks.classify]
+providers = ["ollama", "anthropic"]
+effort = "low"
+# Auf true setzen, sobald Postfachinhalte den Rechner nicht mehr verlassen sollen.
+# Dann faellt "anthropic" aus dieser Kette heraus und die Konfiguration meldet das.
+confidential = false
+
+[llm.tasks.draft]
+providers = ["anthropic", "ollama"]
+effort = "high"
+
+[llm.tasks.personal]
+providers = ["ollama"]
+confidential = true

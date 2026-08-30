@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from zoneinfo import ZoneInfo
+
 from jarvis.core.audit import AuditLog
 from jarvis.core.config import StopSwitch
 from jarvis.core.db import open_database
@@ -503,3 +505,60 @@ def test_fehlerhafte_kalendereinstellungen_werden_gemeldet(home, capsys):
     code = main(["--home", str(home), "calendar", "poll"])
     assert code == 2
     assert "skills.calendar.window_days" in capsys.readouterr().err
+
+
+def test_status_nennt_die_abweichung_beim_geheimnisspeicher(home, capsys, monkeypatch):
+    """Eine Ausnahme, die nirgends auftaucht, wird zur Regel."""
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "env")
+    run(home, "init", capsys=capsys)
+    _, out = run(home, "status", "--ohne-anbieter", capsys=capsys)
+    assert "environment" in out
+    assert "Abschnitt 4" in out
+
+
+def test_status_schweigt_wenn_nur_die_keychain_gilt(home, capsys, monkeypatch):
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "keychain")
+    run(home, "init", capsys=capsys)
+    _, out = run(home, "status", "--ohne-anbieter", capsys=capsys)
+    assert "Abschnitt 4" not in out
+
+
+def test_calendar_state_zeigt_ortszeit(home, capsys):
+    """Gespeichert wird UTC, angezeigt gehoert die Zeit auf der Wanduhr."""
+    from datetime import UTC, datetime, timedelta
+
+    from jarvis.skills.calendar.store import CalendarStore
+
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace('timezone = ""', 'timezone = "Europe/Berlin"'),
+        encoding="utf-8",
+    )
+    beginn = (datetime.now(UTC) + timedelta(hours=3)).replace(minute=0, second=0, microsecond=0)
+    conn = open_database(home / "state.db")
+    CalendarStore(conn).remember(
+        event_id="e1",
+        calendar_id="primary",
+        starts_at=beginn.isoformat(),
+        ends_at=(beginn + timedelta(hours=1)).isoformat(),
+        summary="Zahnarzt",
+    )
+    conn.close()
+
+    code, out = run(home, "calendar", "state", capsys=capsys)
+    assert code == 0
+    erwartet = beginn.astimezone(ZoneInfo("Europe/Berlin")).strftime("%d.%m. %H:%M")
+    assert erwartet in out, f"erwartet {erwartet!r} in der Ausgabe"
+
+
+def test_fehlerhafte_zeitzone_wird_gemeldet(home, capsys):
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace('timezone = ""', 'timezone = "Europa/Berlin"'),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(home), "status", "--ohne-anbieter"])
+    assert code == 2
+    assert "timezone" in capsys.readouterr().err

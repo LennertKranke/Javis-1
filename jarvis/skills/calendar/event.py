@@ -16,9 +16,9 @@ kollidiert nicht mit einer Besprechung.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, tzinfo
 
-__all__ = ["Attendee", "CalendarEvent", "parse_event"]
+__all__ = ["Attendee", "CalendarEvent", "as_utc_text", "local_moment", "parse_event"]
 
 DECLINED = "declined"
 
@@ -42,6 +42,33 @@ def _zeitpunkt(roh: dict | None) -> tuple[datetime | None, bool]:
             return None, False
         return datetime.combine(tag, time.min, tzinfo=UTC), True
     return None, False
+
+
+def as_utc_text(moment: datetime | None) -> str | None:
+    """Die Speicherform: immer UTC.
+
+    Google liefert Ortszeit mit Versatz (`09:00+02:00`). Solche Texte lassen
+    sich nicht vergleichen: `09:00+02:00` steht vor `23:00+00:00`, ist aber
+    spaeter. Genau so vergleicht SQLite sie aber, wenn ein Zeitfenster
+    abgefragt wird. Auf UTC normalisiert stimmt die Textreihenfolge wieder mit
+    der zeitlichen ueberein.
+    """
+    if moment is None:
+        return None
+    return moment.astimezone(UTC).isoformat()
+
+
+def local_moment(gespeichert: str | None, zone: tzinfo) -> datetime | None:
+    """Aus der Speicherform zurueck in die Zeit, die auf der Uhr steht."""
+    if not gespeichert:
+        return None
+    try:
+        gelesen = datetime.fromisoformat(gespeichert)
+    except ValueError:
+        return None
+    if gelesen.tzinfo is None:
+        gelesen = gelesen.replace(tzinfo=UTC)
+    return gelesen.astimezone(zone)
 
 
 @dataclass(frozen=True)

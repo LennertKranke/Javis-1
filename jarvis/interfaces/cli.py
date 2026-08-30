@@ -31,6 +31,7 @@ from jarvis.core.secrets import default_store
 from jarvis.llm.providers import build_providers
 from jarvis.llm.router import Router, RouterError
 from jarvis.skills.briefing.store import BriefingStore
+from jarvis.skills.calendar.event import local_moment
 from jarvis.skills.calendar.google import has_calendar_scope
 from jarvis.skills.calendar.store import CalendarStore
 from jarvis.skills.factory import (
@@ -156,7 +157,11 @@ def cmd_status(args: argparse.Namespace, out: Out) -> int:
         str(config.source) if config.source else "Vorgabe (keine Datei, jarvis init)",
     )
     out.field("Trockenlauf", "an" if config.dry_run else out.bold("AUS"))
-    out.field("Zugangsdaten", default_store().describe())
+    speicher = default_store()
+    herkunft = speicher.describe()
+    if not speicher.keychain_only and speicher.backends:
+        herkunft += "  (Abschnitt 4 verlangt nur keychain)"
+    out.field("Zugangsdaten", herkunft)
 
     conn = None
     if paths.db_file.exists():
@@ -854,6 +859,12 @@ def _durchlauf(skill, config, conn, out: Out) -> int:
     return 1 if report.failed else 0
 
 
+def _ortszeit(gespeichert: str | None, zone) -> str:
+    """Gespeichert wird UTC, angezeigt wird die Zeit auf der eigenen Uhr."""
+    oertlich = local_moment(gespeichert, zone)
+    return oertlich.strftime("%d.%m. %H:%M") if oertlich else "ohne Zeit"
+
+
 def cmd_calendar_poll(args: argparse.Namespace, out: Out) -> int:
     paths = _paths(args)
     config = Config.load(home=paths.home)
@@ -875,6 +886,7 @@ def cmd_calendar_poll(args: argparse.Namespace, out: Out) -> int:
 
 def cmd_calendar_state(args: argparse.Namespace, out: Out) -> int:
     paths = _paths(args)
+    config = Config.load(home=paths.home)
     conn = _require_db(paths, out)
     if conn is None:
         return 1
@@ -887,10 +899,10 @@ def cmd_calendar_state(args: argparse.Namespace, out: Out) -> int:
             "Zustaende",
             "  ".join(f"{name} {anzahl}" for name, anzahl in sorted(zustaende.items())) or "--",
         )
-        jetzt = datetime.now(UTC)
+        jetzt = datetime.now(config.timezone)
         termine = store.between(
-            von=jetzt.isoformat(),
-            bis=(jetzt + timedelta(days=args.tage)).isoformat(),
+            von=jetzt.astimezone(UTC).isoformat(),
+            bis=(jetzt + timedelta(days=args.tage)).astimezone(UTC).isoformat(),
             limit=args.anzahl,
         )
         if termine:
@@ -899,7 +911,7 @@ def cmd_calendar_state(args: argparse.Namespace, out: Out) -> int:
                 ["BEGINN", "TERMIN", "ZUSTAND", "BEFUND"],
                 [
                     [
-                        (e.starts_at or "")[:16].replace("T", " ") or "ganztags",
+                        _ortszeit(e.starts_at, config.timezone),
                         e.summary[:40],
                         e.state,
                         (e.finding or "--")[:44],
@@ -924,7 +936,7 @@ def cmd_briefing(args: argparse.Namespace, out: Out) -> int:
         return 1
     try:
         store = BriefingStore(conn)
-        heute = datetime.now(UTC).date().isoformat()
+        heute = datetime.now(config.timezone).date().isoformat()
 
         if args.neu:
             code = _durchlauf(build_skill("briefing", config=config, conn=conn), config, conn, out)

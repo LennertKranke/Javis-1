@@ -7,7 +7,7 @@ normalisierte Titel -- der Rohtext bleibt im Kalender, wo er hingehoert.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -96,26 +96,38 @@ class CalendarStore:
                 (finding[:300], event_id),
             )
 
-    def clear_findings(self, keep: Collection[str]) -> int:
-        """Loescht Befunde zu Terminen, die nicht mehr in `keep` stehen.
+    def clear_stale_findings(self, aktuell: Mapping[str, str]) -> int:
+        """Loescht jeden gespeicherten Befund, der nicht mehr genau so gilt.
 
-        Ein Konflikt kann verschwinden, weil jemand einen Termin verschiebt.
-        Bliebe der Befund stehen, warnte das Briefing morgen vor etwas, das es
-        nicht mehr gibt. Mit dem Befund faellt auch `acted` weg: was nicht
-        gemeldet ist, gilt nicht als gemeldet -- kehrt der Konflikt zurueck,
-        wird er wieder aufgegriffen.
+        Verglichen wird der Befund selbst, nicht die blosse Tatsache, dass ein
+        Termin noch irgendwie in einem Konflikt steckt. Genau daran ging die
+        erste Fassung vorbei: lag A am Montag mit B ueber Kreuz und am Dienstag
+        mit C, blieb A "in einem Konflikt" -- und behielt den Satz ueber B,
+        obwohl B laengst verschoben war. Das Briefing warnte dann vor etwas,
+        das es nicht mehr gab.
+
+        Mit dem Befund faellt auch `acted` weg: was nicht gemeldet ist, gilt
+        nicht als gemeldet. Der Termin wird wieder aufgegriffen und bekommt
+        seinen jetzt gueltigen Befund.
         """
-        ids = list(keep)
-        platzhalter = ",".join("?" * len(ids))
-        bedingung = f" AND event_id NOT IN ({platzhalter})" if ids else ""
+        veraltet = [
+            zeile["event_id"]
+            for zeile in self._conn.execute(
+                "SELECT event_id, finding FROM calendar_events WHERE finding IS NOT NULL"
+            ).fetchall()
+            if aktuell.get(zeile["event_id"]) != zeile["finding"]
+        ]
+        if not veraltet:
+            return 0
+        platzhalter = ",".join("?" * len(veraltet))
         with transaction(self._conn):
-            cur = self._conn.execute(
+            self._conn.execute(
                 "UPDATE calendar_events SET finding = NULL, "
                 "state = CASE WHEN state = 'acted' THEN 'analysed' ELSE state END "
-                f"WHERE finding IS NOT NULL{bedingung}",
-                ids,
+                f"WHERE event_id IN ({platzhalter})",
+                veraltet,
             )
-            return int(cur.rowcount)
+        return len(veraltet)
 
     def handled(self, event_ids: Collection[str]) -> set[str]:
         if not event_ids:

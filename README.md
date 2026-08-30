@@ -100,8 +100,8 @@ davor.
 **2.2 -- Lesen und Handeln getrennt.** `Provider.complete()` nimmt Text und
 gibt Text. Die Schnittstelle kennt keine Werkzeuge, keine Funktionsaufrufe,
 keine Websuche -- was es nicht gibt, kann nicht benutzt werden. Eine echte
-Prozesstrennung mit Netz-Sandbox ist damit *nicht* erreicht; das bleibt eine
-spaetere Verschaerfung.
+Prozesstrennung mit Netz-Sandbox ist damit *nicht* erreicht; siehe
+[Bewusst zurueckgestellt](#bewusst-zurueckgestellt).
 
 **2.3 -- Fremde Inhalte sind Daten.** `sanitize()` normalisiert nach NFKC,
 entfernt HTML samt Skriptinhalt, loescht unsichtbare Zeichen (Zero-Width,
@@ -490,14 +490,60 @@ ist ein sehr bequemer Weg, fremden Text in ein System zu bekommen.
 ### Ein Befund verschwindet wieder
 
 Konflikte sind kein Dauerzustand: wer einen Termin verschiebt, loest ihn auf.
-Beim naechsten Durchlauf raeumt `clear_findings` die Befunde weg, die nicht
-mehr gelten -- und mit dem Befund faellt auch `acted` weg. Was nicht gemeldet
-ist, gilt nicht als gemeldet; kehrt der Konflikt zurueck, wird er wieder
+Beim naechsten Durchlauf raeumt `clear_stale_findings` weg, was nicht mehr
+gilt -- und mit dem Befund faellt auch `acted` weg. Was nicht gemeldet ist,
+gilt nicht als gemeldet; kehrt der Konflikt zurueck, wird er wieder
 aufgegriffen.
+
+Verglichen wird dabei der **Befund selbst**, nicht die blosse Tatsache, dass
+ein Termin noch irgendwie kollidiert. Die erste Fassung fragte nur Letzteres
+und hatte damit einen Fehler, den erst die Durchsicht fand:
+
+```
+Montag:    A <-> B     Befund auf A: "A ueberschneidet sich mit B"
+Dienstag:  B verschoben, C neu.  Jetzt A <-> C
+           A steckt weiter in einem Konflikt -- also blieb A unangetastet
+           und behielt den Satz ueber B.
+```
+
+Das Briefing warnte danach vor einem Termin, den es nicht mehr gab, *und*
+nannte den echten Konflikt ein zweites Mal. Jetzt bestimmt eine einzige
+Stelle -- `CalendarSkill._befunde()` -- welcher Befund fuer einen Termin gilt;
+`poll`, `decide` und `verify_targets` fragen dort. Stimmt der gespeicherte
+Satz nicht mehr damit ueberein, faellt er weg.
 
 Ein konfliktfreier Termin bleibt aus demselben Grund auf `analysed` statt auf
 `skipped`: morgen kann ein neuer Termin daneben liegen. Nur ein festgehaltener
 Befund ist endgueltig.
+
+### Zeit wird in UTC abgelegt und in Ortszeit gezeigt
+
+Zwei getrennte Dinge, die leicht durcheinandergehen:
+
+**Gespeichert wird UTC.** Google liefert Ortszeit mit Versatz
+(`09:00+02:00`). Solche Texte lassen sich nicht vergleichen -- `09:00+02:00`
+steht *vor* `23:00+00:00`, ist aber spaeter. Genau so vergleicht SQLite sie
+aber, wenn ein Zeitfenster abgefragt wird. `as_utc_text` normalisiert deshalb
+beim Schreiben, damit die Textreihenfolge wieder die zeitliche ist.
+
+**Gerechnet und gezeigt wird in deiner Zone.** Der Tag endet um Mitternacht
+auf deiner Uhr, nicht in Greenwich -- sonst faellt der Termin um halb eins
+nachts in den Vortag und taucht im Morgenbriefing gar nicht auf. Die Zone
+steht in der Konfiguration:
+
+```toml
+timezone = "Europe/Berlin"   # leer = die dieses Rechners
+```
+
+Leer heisst: aus `TZ` beziehungsweise `/etc/localtime` ermittelt, sonst der
+aktuelle Versatz. Ein Tippfehler ist ein Fehler, kein stiller Rueckfall auf
+UTC. Eine benannte Zone ist robuster als ein Versatz, weil sie ihre
+Sommerzeit kennt.
+
+**Ganztaegige Termine haben ein Datum, keinen Zeitpunkt.** Sie werden auf
+oertliche Mitternacht verankert, nicht auf UTC-Mitternacht. Sonst laege der
+Feiertag westlich von Greenwich vor seinem eigenen Tag und fiele aus dem
+Briefing -- in Berlin faellt das nicht auf, in New York schon.
 
 ### Das Briefing haengt nicht am Anbieter
 
@@ -524,6 +570,58 @@ keinen Schreibpfad im Code, und der Client wuerde ihn ohnehin abweisen.
 `calendar.readonly` ist neu im Token. Ein bestehender Token traegt sie nicht;
 `jarvis calendar poll` sagt das dann und nennt den Weg, statt in einen Fehler
 zu laufen, den niemand zuordnen kann.
+
+---
+
+## Bewusst zurueckgestellt
+
+Zwei Stellen weichen wissentlich von der Spezifikation ab. Sie stehen hier,
+damit aus einer Ausnahme nicht stillschweigend der Normalfall wird.
+
+### Keine echte Prozess- und Netztrennung (Abschnitt 2.2)
+
+Die Spezifikation verlangt, dass der Teil, der fremde Inhalte verarbeitet,
+weder Werkzeugzugriff noch Netzverbindung nach aussen hat.
+
+Erreicht ist davon die *logische* Haelfte: `Provider.complete()` nimmt Text und
+gibt Text zurueck, ohne Werkzeuge, Funktionsaufrufe oder Websuche -- die
+Schnittstelle bietet sie gar nicht erst an. Nicht erreicht ist die technische:
+alles laeuft in einem Prozess, und dieser Prozess darf ins Netz, weil er mit
+Gmail, Kalender und dem Anbieter spricht. Ein Fehler im Auswertungspfad ist
+damit nicht durch das Betriebssystem eingezaeunt, sondern nur dadurch, dass es
+den Weg im Code nicht gibt.
+
+Was noetig waere: der auswertende Teil als eigener Prozess ohne Netzrechte
+(unter macOS `sandbox-exec` oder ein eigener Nutzer mit Paketfilterregel), der
+ueber eine Pipe Text bekommt und Text zurueckgibt; die Netzaufrufe blieben im
+handelnden Teil. Das ist Arbeit an der Prozessarchitektur, nicht an einer
+einzelnen Datei -- und sie gehoert vor den Dauerbetrieb, nicht in eine
+Fachphase.
+
+### Zugangsdaten aus Umgebungsvariablen (Abschnitt 4)
+
+Die Spezifikation sagt: ausschliesslich in der macOS-Keychain. Der Code kennt
+zusaetzlich `JARVIS_SECRET_<NAME>`, weil sich sonst auf keinem anderen Rechner
+als deinem Mac entwickeln oder testen laesst. Es wird weiterhin keine Datei
+gelesen und nichts ins Repo geschrieben.
+
+Diese Ausnahme ist sichtbar statt stillschweigend: steht `environment` in der
+Kette, schreibt `jarvis status` es hin --
+
+```
+Zugangsdaten   keychain -> environment  (Abschnitt 4 verlangt nur keychain)
+```
+
+Im Dauerbetrieb auf dem Mac gehoert deshalb `JARVIS_SECRET_BACKEND=keychain`
+gesetzt; dann faellt der Rueckfall weg und der Hinweis verschwindet.
+
+### Kleinere bekannte Grenzen
+
+- **Kalender ohne Blaettern.** `list_events` holt eine Seite, hoechstens 250
+  Termine je Kalender und Fenster; ein `nextPageToken` wird nicht verfolgt.
+  Fuer wenige Tage in einem persoenlichen Kalender reicht das. Wer laengere
+  Fenster liest, braucht dort eine Schleife.
+- **Kein Daemon.** Durchlaeufe startet die Kommandozeile.
 
 ---
 

@@ -12,6 +12,11 @@ log_level = "INFO"
 # Obergrenze fuer normalisierten Fremdtext, in Zeichen.
 sanitize_max_chars = 20000
 
+# Zeitzone fuer Tagesgrenzen: welche Termine "heute" sind und wann das
+# Morgenbriefing den Tag wechselt. Leer heisst: die dieses Rechners.
+# Eine benannte Zone ist robuster, weil sie ihre Sommerzeit kennt.
+timezone = ""
+
 
 # --------------------------------------------------------------------------- #
 # Faehigkeiten

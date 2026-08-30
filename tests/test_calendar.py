@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -25,9 +25,12 @@ from tests.fixtures_calendar import FakeCalendarClient, termin
 JETZT = datetime(2026, 3, 2, 8, 0, tzinfo=UTC)
 
 
-def kalender_config(home, *, dry_run: bool = True, level: int = 0, **skill_optionen) -> Config:
+def kalender_config(
+    home, *, dry_run: bool = True, level: int = 0, zone: str = "", **skill_optionen
+) -> Config:
     raw = {
         "dry_run": dry_run,
+        "timezone": zone,
         "capabilities": {
             "calendar": {
                 "autonomy_level": level,
@@ -46,9 +49,9 @@ def kalender_config(home, *, dry_run: bool = True, level: int = 0, **skill_optio
     return Config.from_mapping(raw, paths=Paths(home=home))
 
 
-def baue_skill(home, conn, *, events=None, dry_run=True, level=0, **optionen):
+def baue_skill(home, conn, *, events=None, dry_run=True, level=0, zone="", **optionen):
     client = FakeCalendarClient(events)
-    config = kalender_config(home, dry_run=dry_run, level=level, **optionen)
+    config = kalender_config(home, dry_run=dry_run, level=level, zone=zone, **optionen)
     skill = CalendarSkill.from_config(config, client=client, store=CalendarStore(conn))
     skill._now = lambda: JETZT
     return skill, client, config
@@ -184,7 +187,7 @@ def test_verschwundener_befund_wird_geloescht_und_acted_faellt_weg(conn):
     store.remember(event_id="a", calendar_id="primary", state=STATE_ACTED)
     store.record_finding("a", "kollidiert mit b")
 
-    assert store.clear_findings(keep=["b"]) == 1
+    assert store.clear_stale_findings({}) == 1
     eintrag = store.get("a")
     assert eintrag is not None
     assert eintrag.finding is None
@@ -196,11 +199,24 @@ def test_bestehender_befund_bleibt_wenn_er_noch_gilt(conn):
     store.remember(event_id="a", calendar_id="primary", state=STATE_ACTED)
     store.record_finding("a", "kollidiert mit b")
 
-    assert store.clear_findings(keep=["a"]) == 0
+    assert store.clear_stale_findings({"a": "kollidiert mit b"}) == 0
     eintrag = store.get("a")
     assert eintrag is not None
     assert eintrag.finding == "kollidiert mit b"
     assert eintrag.state == STATE_ACTED
+
+
+def test_geaenderter_befund_zaehlt_als_veraltet(conn):
+    """Der Termin steckt weiter in einem Konflikt -- aber in einem anderen."""
+    store = CalendarStore(conn)
+    store.remember(event_id="a", calendar_id="primary", state=STATE_ACTED)
+    store.record_finding("a", "kollidiert mit b")
+
+    assert store.clear_stale_findings({"a": "kollidiert mit c"}) == 1
+    eintrag = store.get("a")
+    assert eintrag is not None
+    assert eintrag.finding is None
+    assert eintrag.state == STATE_ANALYSED
 
 
 # --------------------------------------------------------------------------- #
@@ -405,6 +421,93 @@ def test_konfliktfreier_termin_wird_weiter_angesehen(home, conn):
     assert zweiter.acted == 2
 
 
+def test_konfliktpartner_wechselt_a_b_wird_zu_a_c(home, conn):
+    """Der Fehler aus der Durchsicht: A blieb "im Konflikt", behielt aber B.
+
+    A liegt am Montag mit B ueber Kreuz, am Dienstag mit C. Wer nur fragt, ob A
+    noch irgendwie in einem Konflikt steckt, laesst den Satz ueber B stehen --
+    und das Briefing warnt vor einem Termin, den es nicht mehr gibt.
+    """
+
+    def lauf(events):
+        skill, _, config = baue_skill(home, conn, dry_run=False, events=events)
+        audit = AuditLog(conn)
+        return run_skill(
+            skill, gate=Gate(config, audit, RateLimiter(conn, config.capabilities)), audit=audit
+        )
+
+    A = termin(eid="A", titel="Zahnarzt")
+    B = termin(
+        eid="B",
+        titel="Standup",
+        start="2026-03-02T09:30:00+00:00",
+        ende="2026-03-02T10:30:00+00:00",
+    )
+    C = termin(
+        eid="C",
+        titel="Kundentermin",
+        start="2026-03-02T09:15:00+00:00",
+        ende="2026-03-02T11:00:00+00:00",
+    )
+
+    lauf([A, B])
+    zuerst = CalendarStore(conn).get("A")
+    assert zuerst is not None
+    assert "Standup" in (zuerst.finding or "")
+
+    # B ist verschoben, C ist neu. A kollidiert weiterhin -- nur mit jemand anderem.
+    lauf([A, C])
+
+    danach = CalendarStore(conn).get("A")
+    assert danach is not None
+    assert "Standup" not in (danach.finding or ""), "veralteter Befund ueber B blieb stehen"
+    assert "Kundentermin" in (danach.finding or "")
+
+    verschoben = CalendarStore(conn).get("B")
+    assert verschoben is not None
+    assert verschoben.finding is None
+    assert verschoben.state == STATE_ANALYSED
+
+
+def test_wechselnder_konflikt_steht_richtig_im_briefing(home, conn):
+    """Dieselbe Lage, aber von der Seite, auf der es auffaellt."""
+    from jarvis.skills.briefing.skill import build_facts
+    from jarvis.skills.mail.store import MailStore, ReplyStore
+
+    def lauf(events):
+        skill, _, config = baue_skill(home, conn, dry_run=False, events=events)
+        audit = AuditLog(conn)
+        return run_skill(
+            skill, gate=Gate(config, audit, RateLimiter(conn, config.capabilities)), audit=audit
+        )
+
+    A = termin(eid="A", titel="Zahnarzt")
+    B = termin(
+        eid="B",
+        titel="Standup",
+        start="2026-03-02T09:30:00+00:00",
+        ende="2026-03-02T10:30:00+00:00",
+    )
+    C = termin(
+        eid="C",
+        titel="Kundentermin",
+        start="2026-03-02T09:15:00+00:00",
+        ende="2026-03-02T11:00:00+00:00",
+    )
+    lauf([A, B])
+    lauf([A, C])
+
+    facts = build_facts(
+        date(2026, 3, 2),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+    )
+    zusammen = " | ".join(facts["konflikte"])
+    assert "Standup" not in zusammen, f"Briefing warnt vor einem alten Konflikt: {zusammen}"
+    assert "Kundentermin" in zusammen
+
+
 def test_verschwundener_konflikt_verschwindet_beim_naechsten_lauf(home, conn):
     def lauf(events):
         skill, _, config = baue_skill(home, conn, dry_run=False, events=events)
@@ -500,3 +603,130 @@ def test_verify_targets_weist_verschwundenen_konflikt_ab(home, conn):
     skill.poll()
     with pytest.raises(TargetMismatch):
         skill.verify_targets(entscheidung)
+
+
+# --------------------------------------------------------------------------- #
+# Zeitzonen
+# --------------------------------------------------------------------------- #
+
+
+def test_zeitstempel_werden_als_utc_abgelegt(home, conn):
+    """Sonst ist die Textreihenfolge in SQLite nicht die zeitliche."""
+    skill, _, _ = baue_skill(
+        home,
+        conn,
+        zone="Europe/Berlin",
+        events=[
+            termin(
+                eid="a",
+                start="2026-03-02T09:00:00+02:00",
+                ende="2026-03-02T10:00:00+02:00",
+            )
+        ],
+    )
+    skill.poll()
+    eintrag = CalendarStore(conn).get("a")
+    assert eintrag is not None
+    assert eintrag.starts_at == "2026-03-02T07:00:00+00:00"
+    assert eintrag.ends_at == "2026-03-02T08:00:00+00:00"
+
+
+def test_abgelegte_zeitstempel_sind_textlich_sortierbar(home, conn):
+    """Der eigentliche Grund fuer die Normalisierung."""
+    skill, _, _ = baue_skill(
+        home,
+        conn,
+        zone="Europe/Berlin",
+        events=[
+            # 01:00+02:00 ist 23:00 UTC am Vortag -- also frueher als das zweite.
+            termin(
+                eid="spaet",
+                start="2026-03-02T01:00:00+02:00",
+                ende="2026-03-02T02:00:00+02:00",
+            ),
+            termin(
+                eid="frueher",
+                start="2026-03-01T23:30:00+00:00",
+                ende="2026-03-02T00:30:00+00:00",
+            ),
+        ],
+    )
+    skill.poll()
+    gespeichert = [
+        z["starts_at"]
+        for z in conn.execute(
+            "SELECT starts_at FROM calendar_events ORDER BY starts_at ASC"
+        ).fetchall()
+    ]
+    assert gespeichert == sorted(gespeichert)
+    assert gespeichert[0].startswith("2026-03-01T23:00")
+
+
+def test_zeitangabe_zeigt_ortszeit(home, conn):
+    skill, _, _ = baue_skill(
+        home,
+        conn,
+        zone="Europe/Berlin",
+        events=[
+            termin(
+                eid="a",
+                titel="Zahnarzt",
+                start="2026-03-02T09:00:00+00:00",
+                ende="2026-03-02T10:00:00+00:00",
+            )
+        ],
+    )
+    events = skill.poll()
+    # 09:00 UTC ist im Maerz 10:00 in Berlin.
+    assert events[0].summary.startswith("02.03. 10:00")
+
+
+@pytest.mark.parametrize("zone", ["Europe/Berlin", "America/New_York", "Pacific/Auckland"])
+def test_ganztaegiger_termin_liegt_in_jeder_zone_im_richtigen_tag(home, conn, zone):
+    """Ein Feiertag darf nicht aus dem Briefing fallen, nur weil die Zone
+    westlich von Greenwich liegt."""
+    from datetime import date
+    from zoneinfo import ZoneInfo
+
+    from jarvis.skills.briefing.skill import build_facts
+    from jarvis.skills.mail.store import MailStore, ReplyStore
+
+    skill, _, _ = baue_skill(
+        home,
+        conn,
+        zone=zone,
+        events=[termin(eid="feiertag", titel="Feiertag", start="2026-03-02", ganztags=True)],
+    )
+    skill.poll()
+
+    z = ZoneInfo(zone)
+    facts = build_facts(
+        date(2026, 3, 2),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+        timezone=z,
+    )
+    assert [t["titel"] for t in facts["termine"]] == ["Feiertag"]
+    assert facts["termine"][0]["zeit"] == "ganztags"
+
+    # Am Vortag darf er nicht auftauchen.
+    davor = build_facts(
+        date(2026, 3, 1),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+        timezone=z,
+    )
+    assert davor["termine"] == []
+
+
+def test_ganztaegiger_termin_behaelt_sein_datum_in_der_uebersicht(home, conn):
+    skill, _, _ = baue_skill(
+        home,
+        conn,
+        zone="America/New_York",
+        events=[termin(eid="feiertag", titel="Feiertag", start="2026-03-02", ganztags=True)],
+    )
+    events = skill.poll()
+    assert events[0].summary.startswith("2026-03-02 ganztags")

@@ -16,7 +16,7 @@ Kalendereintrag ist ein bequemer Weg, fremden Text in ein System zu bekommen.
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta, tzinfo
 from typing import Any
 
 from jarvis.core.config import Config, ConfigError
@@ -29,8 +29,8 @@ from jarvis.skills.base import (
     TargetMismatch,
     register_skill,
 )
-from jarvis.skills.calendar.conflicts import find_conflicts
-from jarvis.skills.calendar.event import CalendarEvent, parse_event
+from jarvis.skills.calendar.conflicts import Finding, find_conflicts
+from jarvis.skills.calendar.event import CalendarEvent, as_utc_text, parse_event
 from jarvis.skills.calendar.google import CalendarClient
 from jarvis.skills.calendar.store import CalendarStore
 from jarvis.skills.mail.store import STATE_ACTED, STATE_ANALYSED
@@ -91,12 +91,14 @@ class CalendarSkill(Skill):
         client: CalendarClient,
         store: CalendarStore,
         sanitize_max_chars: int = 2000,
+        timezone: tzinfo = UTC,
         now: Any = None,
     ) -> None:
         self._options = options
         self._client = client
         self._store = store
         self._max_chars = sanitize_max_chars
+        self._zone = timezone
         self._now = now or (lambda: datetime.now(UTC))
         self._fenster: list[CalendarEvent] = []
 
@@ -109,6 +111,7 @@ class CalendarSkill(Skill):
             client=client,
             store=store,
             sanitize_max_chars=min(config.sanitize_max_chars, 2000),
+            timezone=config.timezone,
         )
 
     @property
@@ -125,6 +128,50 @@ class CalendarSkill(Skill):
         """Normalisierter Titel. Nie der Rohtext."""
         sauber = sanitize(event.summary or "(ohne Titel)", max_chars=self._max_chars)
         return sauber.text[:120] or "(ohne Titel)"
+
+    def _beginn(self, termin: CalendarEvent) -> str | None:
+        """Die Speicherform des Beginns, in UTC.
+
+        Ein ganztaegiger Termin hat ein Datum, keinen Zeitpunkt. `parse_event`
+        verankert ihn mangels Zone auf UTC-Mitternacht -- oestlich von
+        Greenwich faellt das nicht auf, westlich schon: dort beginnt der
+        oertliche Tag erst spaeter, und der Feiertag laege vor seinem eigenen
+        Tag. Hier ist die Zone bekannt, also wird er auf oertliche Mitternacht
+        gesetzt und liegt damit in jeder Zone im richtigen Tag.
+        """
+        if termin.starts_at is None:
+            return None
+        if termin.all_day:
+            return as_utc_text(
+                datetime.combine(termin.starts_at.date(), time.min, tzinfo=self._zone)
+            )
+        return as_utc_text(termin.starts_at)
+
+    def _ende(self, termin: CalendarEvent) -> str | None:
+        if termin.all_day and termin.ends_at is not None:
+            return as_utc_text(datetime.combine(termin.ends_at.date(), time.min, tzinfo=self._zone))
+        return as_utc_text(termin.ends_at)
+
+    def _befunde(self) -> dict[str, tuple[Finding, str]]:
+        """Der jetzt gueltige Befund je Termin, mit fertigem Satz dazu.
+
+        Eine einzige Stelle fuer poll, decide und verify_targets. Faenden die
+        drei ihre Befunde jeweils selbst, koennten sie auseinanderlaufen -- und
+        genau der Vergleich "gilt der gespeicherte Satz noch?" haenge dann in
+        der Luft. Steckt ein Termin in mehreren Konflikten, gewinnt der erste;
+        `find_conflicts` liefert sie in stabiler Reihenfolge.
+
+        Alles kommt aus dieser einen Rechnung zurueck, nichts wird nebenher
+        gemerkt: ein zwischengespeicherter Rest waere derselbe Fehler noch
+        einmal, nur eine Ebene tiefer.
+        """
+        titel = {t.event_id: self._titel(t) for t in self._fenster}
+        erste: dict[str, tuple[Finding, str]] = {}
+        for befund in find_conflicts(self._fenster, min_gap_minutes=self._options.min_gap_minutes):
+            satz = befund.describe(titel)
+            for eid in befund.event_ids:
+                erste.setdefault(eid, (befund, satz))
+        return erste
 
     def poll(self) -> list[Event]:
         jetzt = self._now()
@@ -147,19 +194,18 @@ class CalendarSkill(Skill):
             self._store.remember(
                 event_id=termin.event_id,
                 calendar_id=termin.calendar_id,
-                starts_at=termin.starts_at.isoformat() if termin.starts_at else None,
-                ends_at=termin.ends_at.isoformat() if termin.ends_at else None,
+                starts_at=self._beginn(termin),
+                ends_at=self._ende(termin),
                 all_day=termin.all_day,
                 summary=self._titel(termin),
             )
 
-        # Verschwundene Konflikte verschwinden auch aus dem Speicher.
-        noch_im_konflikt = {
-            eid
-            for befund in find_conflicts(gesammelt, min_gap_minutes=self._options.min_gap_minutes)
-            for eid in befund.event_ids
-        }
-        self._store.clear_findings(noch_im_konflikt)
+        # Was nicht mehr genau so gilt, verschwindet aus dem Speicher. Der
+        # Vergleich laeuft ueber den Befund selbst: ein Termin kann von einem
+        # Konflikt in einen anderen wechseln, ohne je konfliktfrei zu sein.
+        self._store.clear_stale_findings(
+            {eid: satz for eid, (_befund, satz) in self._befunde().items()}
+        )
 
         erledigt = self._store.handled([t.event_id for t in gesammelt])
         return [
@@ -173,27 +219,21 @@ class CalendarSkill(Skill):
             if termin.event_id not in erledigt
         ]
 
-    @staticmethod
-    def _zeitangabe(termin: CalendarEvent) -> str:
-        if termin.all_day:
-            return (termin.starts_at.date().isoformat() if termin.starts_at else "") + " ganztags"
+    def _zeitangabe(self, termin: CalendarEvent) -> str:
+        """Was auf der Uhr steht, nicht was in der Datenbank liegt."""
         if termin.starts_at is None:
             return "ohne Zeit"
-        return termin.starts_at.strftime("%d.%m. %H:%M")
+        if termin.all_day:
+            # Ein Datum, kein Zeitpunkt -- also auch nicht umzurechnen.
+            return f"{termin.starts_at.date().isoformat()} ganztags"
+        return termin.starts_at.astimezone(self._zone).strftime("%d.%m. %H:%M")
 
     def decide(self, event: Event) -> Decision:
         """Deterministisch. Kein Modell, keine Textauswertung."""
         termin: CalendarEvent = event.payload
-        titel = {t.event_id: self._titel(t) for t in self._fenster}
+        befunde = self._befunde()
 
-        eigene = [
-            befund
-            for befund in find_conflicts(
-                self._fenster, min_gap_minutes=self._options.min_gap_minutes
-            )
-            if termin.event_id in befund.event_ids
-        ]
-        if not eigene:
+        if termin.event_id not in befunde:
             return Decision(
                 skill=self.name,
                 event_key=event.key,
@@ -203,19 +243,15 @@ class CalendarSkill(Skill):
                 targets={"event_id": termin.event_id},
             )
 
-        befund = eigene[0]
+        befund, satz = befunde[termin.event_id]
         return Decision(
             skill=self.name,
             event_key=event.key,
             action="notice",
-            reason=befund.describe(titel),
+            reason=satz,
             decided_by="rule",
             fields={"art": befund.kind, "minuten": befund.minutes},
-            targets={
-                "event_id": termin.event_id,
-                "finding": befund.describe(titel),
-                "kind": befund.kind,
-            },
+            targets={"event_id": termin.event_id, "finding": satz, "kind": befund.kind},
         )
 
     def verify_targets(self, decision: Decision) -> Decision:
@@ -227,22 +263,14 @@ class CalendarSkill(Skill):
         if self._store.get(event_id) is None:
             raise TargetMismatch(f"Termin {event_id!r} ist nicht bekannt")
 
-        titel = {t.event_id: self._titel(t) for t in self._fenster}
-        passend = [
-            b
-            for b in find_conflicts(self._fenster, min_gap_minutes=self._options.min_gap_minutes)
-            if event_id in b.event_ids
-        ]
-        if not passend:
+        befunde = self._befunde()
+        if event_id not in befunde:
             raise TargetMismatch(f"Termin {event_id!r} hat keinen Konflikt mehr")
 
+        befund, satz = befunde[event_id]
         return replace(
             decision,
-            targets={
-                "event_id": event_id,
-                "finding": passend[0].describe(titel),
-                "kind": passend[0].kind,
-            },
+            targets={"event_id": event_id, "finding": satz, "kind": befund.kind},
         )
 
     def act(self, decision: Decision) -> Result:
@@ -273,8 +301,8 @@ class CalendarSkill(Skill):
         self._store.remember(
             event_id=decision.event_key,
             calendar_id=termin.calendar_id,
-            starts_at=termin.starts_at.isoformat() if termin.starts_at else None,
-            ends_at=termin.ends_at.isoformat() if termin.ends_at else None,
+            starts_at=self._beginn(termin),
+            ends_at=self._ende(termin),
             all_day=termin.all_day,
             summary=self._titel(termin),
             state=zustand,

@@ -131,7 +131,16 @@ class CalendarClient:
     def list_events(
         self, calendar_id: str, *, time_min: str, time_max: str, limit: int = 100
     ) -> list[dict]:
-        """Termine in einem Zeitfenster, wiederkehrende bereits aufgeloest."""
+        """Termine in einem Zeitfenster, wiederkehrende bereits aufgeloest.
+
+        Bewusst ohne Blaettern: es wird genau eine Seite geholt, hoechstens 250
+        Termine je Kalender und Fenster. Ein `nextPageToken` in der Antwort
+        wird nicht verfolgt. Fuer ein Fenster von wenigen Tagen in einem
+        persoenlichen Kalender reicht das; wer laengere Fenster oder sehr volle
+        Kalender liest, verliert stillschweigend den Rest -- dann gehoert hier
+        eine Schleife ueber `pageToken` hin. Bis dahin ist die Grenze eine
+        bekannte, keine uebersehene.
+        """
         kennung = urllib.parse.quote(calendar_id, safe="")
         antwort = self._call(
             "GET",

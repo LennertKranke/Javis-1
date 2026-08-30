@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -214,3 +215,39 @@ def test_web_adresse_fuer_den_browser(home):
 
     assert WebConfig().base_url == "http://127.0.0.1:8765"
     assert WebConfig(host="::1", port=9000).base_url == "http://[::1]:9000"
+
+
+# --------------------------------------------------------------------------- #
+# Zeitzone
+# --------------------------------------------------------------------------- #
+
+
+def test_leere_zeitzone_nimmt_die_des_rechners(home):
+    from jarvis.core.config import local_timezone
+
+    config = Config.from_mapping({"timezone": ""}, paths=Paths(home=home))
+    assert config.timezone == local_timezone()
+
+
+def test_zeitzone_wird_benannt_uebernommen(home):
+    from zoneinfo import ZoneInfo
+
+    config = Config.from_mapping({"timezone": "Europe/Berlin"}, paths=Paths(home=home))
+    assert config.timezone == ZoneInfo("Europe/Berlin")
+
+
+def test_unbekannte_zeitzone_ist_ein_fehler(home):
+    """Ein Tippfehler darf nicht stillschweigend auf UTC zurueckfallen."""
+    with pytest.raises(ConfigError, match="timezone"):
+        Config.from_mapping({"timezone": "Europe/Berln"}, paths=Paths(home=home))
+
+
+def test_zeitzone_muss_text_sein(home):
+    with pytest.raises(ConfigError):
+        Config.from_mapping({"timezone": 2}, paths=Paths(home=home))
+
+
+def test_die_vorlage_traegt_eine_brauchbare_zeitzone(home):
+    config = Config.load(home=home)
+    assert config.timezone is not None
+    assert datetime(2026, 8, 30, 12, 0, tzinfo=config.timezone).utcoffset() is not None

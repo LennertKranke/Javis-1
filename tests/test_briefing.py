@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -31,9 +32,12 @@ from jarvis.skills.runner import run_skill
 HEUTE = date(2026, 3, 2)
 
 
-def briefing_config(home, *, antwort: str = '{"text": "Zwei Termine, ein Konflikt."}') -> Config:
+def briefing_config(
+    home, *, antwort: str = '{"text": "Zwei Termine, ein Konflikt."}', zone: str = ""
+) -> Config:
     raw = {
         "dry_run": False,
+        "timezone": zone,
         "capabilities": {
             "briefing": {"autonomy_level": 0, "requires_outbound": False},
             "mail_reply": {
@@ -64,8 +68,15 @@ def briefing_config(home, *, antwort: str = '{"text": "Zwei Termine, ein Konflik
     return Config.from_mapping(raw, paths=Paths(home=home))
 
 
-def baue_skill(home, conn, *, antwort: str = '{"text": "Zwei Termine, ein Konflikt."}'):
-    config = briefing_config(home, antwort=antwort)
+def baue_skill(
+    home,
+    conn,
+    *,
+    antwort: str = '{"text": "Zwei Termine, ein Konflikt."}',
+    zone: str = "",
+    echte_uhr: bool = False,
+):
+    config = briefing_config(home, antwort=antwort, zone=zone)
     router = Router(config.llm, build_providers(config.llm, None))
     skill = BriefingSkill.from_config(
         config,
@@ -79,6 +90,8 @@ def baue_skill(home, conn, *, antwort: str = '{"text": "Zwei Termine, ein Konfli
             short_term=ShortTermContext(conn, scope="briefing"),
         ),
     )
+    if echte_uhr:
+        return skill, config
     skill._today = lambda: HEUTE
     return skill, config
 
@@ -460,3 +473,90 @@ def test_gespeicherte_tatsachen_sind_lesbares_json(home, conn):
     run_skill(skill, gate=Gate(config, audit, RateLimiter(conn, config.capabilities)), audit=audit)
     zeile = conn.execute("SELECT facts FROM briefings WHERE day = ?", ("2026-03-02",)).fetchone()
     assert json.loads(zeile["facts"])["tag"] == "2026-03-02"
+
+
+# --------------------------------------------------------------------------- #
+# Zeitzonen
+# --------------------------------------------------------------------------- #
+
+BERLIN = ZoneInfo("Europe/Berlin")
+
+
+def utc_termin(conn, *, eid, beginn_utc, titel):
+    """Legt einen Termin so ab, wie poll() ihn ablegen wuerde: in UTC."""
+    beginn = datetime.fromisoformat(beginn_utc).astimezone(UTC)
+    CalendarStore(conn).remember(
+        event_id=eid,
+        calendar_id="primary",
+        starts_at=beginn.isoformat(),
+        ends_at=(beginn + timedelta(hours=1)).isoformat(),
+        summary=titel,
+    )
+
+
+def test_termin_kurz_nach_ortsmitternacht_gehoert_zum_selben_tag(conn):
+    """00:30 in Berlin ist 22:30 UTC am Vortag -- und trotzdem heute."""
+    utc_termin(conn, eid="nacht", beginn_utc="2026-08-30T00:30:00+02:00", titel="Nachtschicht")
+
+    ohne_zone = build_facts(
+        date(2026, 8, 30),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+    )
+    assert ohne_zone["termine"] == [], "in UTC gerechnet faellt der Termin auf den Vortag"
+
+    mit_zone = build_facts(
+        date(2026, 8, 30),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+        timezone=BERLIN,
+    )
+    assert [t["titel"] for t in mit_zone["termine"]] == ["Nachtschicht"]
+    assert mit_zone["termine"][0]["zeit"] == "00:30"
+
+
+def test_termin_kurz_vor_ortsmitternacht_gehoert_zum_vortag(conn):
+    """Die andere Seite derselben Grenze."""
+    utc_termin(conn, eid="spaet", beginn_utc="2026-08-29T23:30:00+02:00", titel="Spaetschicht")
+    facts = build_facts(
+        date(2026, 8, 30),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+        timezone=BERLIN,
+    )
+    assert facts["termine"] == []
+
+
+def test_uhrzeit_im_briefing_ist_ortszeit(conn):
+    utc_termin(conn, eid="a", beginn_utc="2026-08-30T12:00:00+00:00", titel="Zahnarzt")
+    facts = build_facts(
+        date(2026, 8, 30),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+        timezone=BERLIN,
+    )
+    # 12:00 UTC ist im August 14:00 in Berlin.
+    assert facts["termine"][0]["zeit"] == "14:00"
+    assert "14:00 Zahnarzt" in plain_briefing(facts)
+
+
+def test_der_tag_wechselt_auf_der_eigenen_uhr(home, conn, monkeypatch):
+    """Um 00:30 Berliner Zeit ist der 30. -- in UTC noch der 29."""
+
+    class FesteZeit(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            fest = datetime(2026, 8, 29, 22, 30, tzinfo=UTC)
+            return fest.astimezone(tz) if tz else fest
+
+    monkeypatch.setattr("jarvis.skills.briefing.skill.datetime", FesteZeit)
+
+    berlin, _ = baue_skill(home, conn, zone="Europe/Berlin", echte_uhr=True)
+    assert berlin._today().isoformat() == "2026-08-30"
+
+    greenwich, _ = baue_skill(home, conn, zone="UTC", echte_uhr=True)
+    assert greenwich._today().isoformat() == "2026-08-29"

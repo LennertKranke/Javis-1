@@ -16,10 +16,11 @@ from __future__ import annotations
 import os
 import tomllib
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from enum import IntEnum
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 __all__ = [
     "DEFAULT_CONFIG_TOML",
@@ -35,6 +36,7 @@ __all__ = [
     "TaskRoute",
     "WebConfig",
     "jarvis_home",
+    "local_timezone",
     "url_host",
 ]
 
@@ -51,6 +53,30 @@ CONFIG_NAME = "config.toml"
 DB_NAME = "state.db"
 LOG_DIR_NAME = "logs"
 STOP_NAME = "STOP"
+
+
+def local_timezone() -> tzinfo:
+    """Die Zeitzone dieses Rechners, moeglichst als benannte Zone.
+
+    Eine benannte Zone (`Europe/Berlin`) kennt ihre Sommerzeit; ein blosser
+    Versatz kennt nur den von jetzt. Fuer eine Tagesgrenze macht das den
+    Unterschied, sobald die Umstellung dazwischen liegt. Der feste Versatz ist
+    deshalb nur der letzte Ausweg -- wem er nicht genuegt, der traegt die Zone
+    in die Konfiguration ein.
+    """
+    if name := os.environ.get("TZ", "").strip():
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    try:
+        ziel = Path("/etc/localtime").resolve()
+        teile = ziel.parts
+        if "zoneinfo" in teile:
+            return ZoneInfo("/".join(teile[teile.index("zoneinfo") + 1 :]))
+    except (OSError, ZoneInfoNotFoundError, ValueError):
+        pass
+    return datetime.now().astimezone().tzinfo or UTC
 
 
 def jarvis_home() -> Path:
@@ -285,6 +311,7 @@ class Config:
     dry_run: bool
     log_level: str
     sanitize_max_chars: int
+    timezone: tzinfo
     capabilities: dict[str, Capability]
     llm: LLMConfig
     skills: dict[str, dict[str, Any]]
@@ -353,6 +380,7 @@ class Config:
                 "dry_run",
                 "log_level",
                 "sanitize_max_chars",
+                "timezone",
                 "capabilities",
                 "llm",
                 "skills",
@@ -368,6 +396,7 @@ class Config:
         if max_chars < 1:
             raise ConfigError("sanitize_max_chars muss groesser als 0 sein")
 
+        zone = _parse_timezone(raw.get("timezone", ""))
         capabilities = _parse_capabilities(raw.get("capabilities", {}))
         llm = _parse_llm(raw.get("llm", {}))
         skills = _parse_skills(raw.get("skills", {}))
@@ -377,6 +406,7 @@ class Config:
             dry_run=dry_run,
             log_level=log_level,
             sanitize_max_chars=max_chars,
+            timezone=zone,
             capabilities=capabilities,
             llm=llm,
             skills=skills,
@@ -412,6 +442,19 @@ def _as_str(value: Any, where: str) -> str:
     if not isinstance(value, str):
         raise ConfigError(f"{where}: erwartet Text, gefunden {value!r}")
     return value
+
+
+def _parse_timezone(raw: Any) -> tzinfo:
+    """Leer heisst: die des Rechners. Ein Tippfehler ist ein Fehler."""
+    name = _as_str(raw, "timezone").strip()
+    if not name:
+        return local_timezone()
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ConfigError(
+            f"timezone: {name!r} ist keine bekannte Zone (erwartet etwa 'Europe/Berlin')"
+        ) from exc
 
 
 def _parse_capabilities(raw: Any) -> dict[str, Capability]:
@@ -677,6 +720,11 @@ log_level = "INFO"
 
 # Obergrenze fuer normalisierten Fremdtext, in Zeichen.
 sanitize_max_chars = 20000
+
+# Zeitzone fuer Tagesgrenzen: welche Termine "heute" sind und wann das
+# Morgenbriefing den Tag wechselt. Leer heisst: die dieses Rechners.
+# Eine benannte Zone ist robuster, weil sie ihre Sommerzeit kennt.
+timezone = ""
 
 
 # --------------------------------------------------------------------------- #

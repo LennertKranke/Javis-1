@@ -117,3 +117,23 @@ def test_backend_laesst_sich_erzwingen(monkeypatch):
     monkeypatch.setenv("JARVIS_SECRET_BACKEND", "none")
     assert default_store().backends == ()
     assert default_store().describe() == "keine"
+
+
+# --------------------------------------------------------------------------- #
+# Sichtbarkeit der Entwicklungsausnahme
+# --------------------------------------------------------------------------- #
+
+
+def test_nur_keychain_entspricht_abschnitt_4():
+    assert SecretStore([KeychainBackend()]).keychain_only is (KeychainBackend().available())
+
+
+def test_umgebung_in_der_kette_ist_keine_reine_keychain():
+    speicher = SecretStore([EnvironmentBackend()])
+    assert speicher.keychain_only is False
+    assert "environment" in speicher.describe()
+
+
+def test_leerer_speicher_behauptet_nicht_keychain_zu_sein():
+    """Sonst saehe "keine" aus wie "alles in Ordnung"."""
+    assert SecretStore([]).keychain_only is False

@@ -8,6 +8,13 @@ Der zweite Ruecken (`EnvironmentBackend`) existiert, weil sich sonst auf keinem
 anderen Rechner als deinem Mac entwickeln oder testen laesst. Er liest
 Umgebungsvariablen, keine Datei -- damit landet weiterhin nichts im Git.
 
+Das ist und bleibt eine Abweichung vom Wortlaut aus Abschnitt 4 ("ausschliesslich
+in der Keychain"). Sie ist bewusst gewaehlt und bewusst sichtbar: `keychain_only`
+sagt, ob die Lage der Vorgabe entspricht, `jarvis status` schreibt es hin, und im
+Dauerbetrieb auf dem Mac gehoert `JARVIS_SECRET_BACKEND=keychain` gesetzt. Ohne
+diese Sichtbarkeit waere aus der Entwicklungshilfe stillschweigend der Normalfall
+geworden.
+
 Eintrag in der Keychain anlegen:
     security add-generic-password -s jarvis -a anthropic_api_key -w
 """
@@ -136,6 +143,16 @@ class SecretStore:
 
     def describe(self) -> str:
         return " -> ".join(self.backends) if self._backends else "keine"
+
+    @property
+    def keychain_only(self) -> bool:
+        """Entspricht die Lage dem, was Abschnitt 4 verlangt?
+
+        Nein, sobald `environment` in der Kette steht. Das ist eine bewusste
+        Entwicklungsausnahme (siehe Modulkopf) -- aber eine, die man sehen
+        koennen muss. Eine Ausnahme, die nirgends auftaucht, wird zur Regel.
+        """
+        return bool(self._backends) and all(b.name == "keychain" for b in self._backends)
 
     def get(self, key: str) -> str | None:
         for backend in self._backends:

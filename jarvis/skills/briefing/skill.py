@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 from dataclasses import replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
 
 from jarvis.core.config import Config, ConfigError
@@ -37,6 +37,7 @@ from jarvis.skills.base import (
     register_skill,
 )
 from jarvis.skills.briefing.store import BriefingStore
+from jarvis.skills.calendar.event import local_moment
 from jarvis.skills.calendar.store import CalendarStore
 from jarvis.skills.mail.store import MailStore, ReplyStore
 
@@ -109,10 +110,21 @@ def build_facts(
     replies: ReplyStore,
     reply_categories: list[str] | None = None,
     overdue_days: int = 3,
+    timezone: tzinfo = UTC,
 ) -> dict[str, Any]:
-    """Die Tatsachen des Tages. Ausschliesslich aus eigenen Daten, ohne Modell."""
-    beginn = datetime.combine(tag, time.min, tzinfo=UTC).isoformat()
-    ende = datetime.combine(tag + timedelta(days=1), time.min, tzinfo=UTC).isoformat()
+    """Die Tatsachen des Tages. Ausschliesslich aus eigenen Daten, ohne Modell.
+
+    "Heute" endet um Mitternacht auf der eigenen Uhr, nicht um Mitternacht UTC.
+    Sonst faellt der Termin um halb eins nachts in den Vortag und taucht im
+    Morgenbriefing gar nicht auf. Gespeichert ist alles in UTC, die Grenzen
+    werden also von der Ortszeit dorthin umgerechnet.
+    """
+    beginn = datetime.combine(tag, time.min, tzinfo=timezone).astimezone(UTC).isoformat()
+    ende = (
+        datetime.combine(tag + timedelta(days=1), time.min, tzinfo=timezone)
+        .astimezone(UTC)
+        .isoformat()
+    )
 
     termine = calendar.between(von=beginn, bis=ende)
     befunde = calendar.findings(von=beginn, bis=ende)
@@ -121,7 +133,7 @@ def build_facts(
         "tag": tag.isoformat(),
         "termine": [
             {
-                "zeit": "ganztags" if e.all_day else (e.starts_at or "")[11:16],
+                "zeit": "ganztags" if e.all_day else _uhrzeit(e.starts_at, timezone),
                 "titel": e.summary,
             }
             for e in termine
@@ -132,6 +144,12 @@ def build_facts(
         "ueberfaellig_ab_tagen": overdue_days,
         "entwuerfe_offen": len(replies.pending_for_send(limit=50)),
     }
+
+
+def _uhrzeit(gespeichert: str | None, zone: tzinfo) -> str:
+    """Die Uhrzeit, wie sie an der Wand steht."""
+    oertlich = local_moment(gespeichert, zone)
+    return oertlich.strftime("%H:%M") if oertlich else "--:--"
 
 
 def _mails(anzahl: int) -> str:
@@ -191,6 +209,7 @@ class BriefingSkill(Skill):
         replies: ReplyStore,
         context: ContextBuilder | None = None,
         reply_categories: list[str] | None = None,
+        timezone: tzinfo = UTC,
         today: Any = None,
     ) -> None:
         self._options = options
@@ -201,7 +220,9 @@ class BriefingSkill(Skill):
         self._replies = replies
         self._context = context or ContextBuilder()
         self._reply_categories = reply_categories or []
-        self._today = today or (lambda: datetime.now(UTC).date())
+        self._zone = timezone
+        # Der Tag wechselt auf der eigenen Uhr, nicht in Greenwich.
+        self._today = today or (lambda: datetime.now(self._zone).date())
         self._schema = build_schema(options.max_words)
 
     @classmethod
@@ -234,6 +255,7 @@ class BriefingSkill(Skill):
             replies=replies,
             context=context,
             reply_categories=antwort_kategorien,
+            timezone=config.timezone,
         )
 
     @property
@@ -253,6 +275,7 @@ class BriefingSkill(Skill):
             replies=self._replies,
             reply_categories=self._reply_categories,
             overdue_days=self._options.overdue_days,
+            timezone=self._zone,
         )
         return [
             Event(
@@ -333,6 +356,7 @@ class BriefingSkill(Skill):
                     replies=self._replies,
                     reply_categories=self._reply_categories,
                     overdue_days=self._options.overdue_days,
+                    timezone=self._zone,
                 ),
             },
         )

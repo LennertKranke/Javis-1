@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from typing import Any
@@ -241,7 +241,7 @@ def create_app(
         try:
             store = BriefingStore(conn)
             eintraege = store.recent(limit=7)
-            heute = datetime.now(UTC).date().isoformat()
+            heute = datetime.now(konfiguration().timezone).date().isoformat()
 
             if not eintraege:
                 inhalt = "<h2>Briefing</h2>" + leer(

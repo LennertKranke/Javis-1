@@ -3,7 +3,8 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 1-6 abgeschlossen, technische Abschlussrunde erledigt.**
+**Stand: Phase 1-6 abgeschlossen. Phase 7 begonnen mit den Grundlagen der
+externen Anbindungen.**
 Der Kern steht, JARVIS liest und ordnet den Posteingang ein, schreibt
 Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf der Allowlist senden,
 liest den Kalender und meldet Terminkonflikte, fasst den Tag in einem
@@ -90,6 +91,7 @@ Keychain ab. Angefordert werden `gmail.modify`, `gmail.send` und seit Phase 5
 | `jarvis voice listen` | aufnehmen und antworten (eine Runde) |
 | `jarvis daemon` | Dauerbetrieb nach `[daemon.schedule]` |
 | `jarvis llm check` | nachmessen, was der auswertende Prozess noch kann |
+| `jarvis services check [--live]` | Stand der externen Dienste, echter Kontakt auf Verlangen |
 
 Der Stoppschalter ist eine Datei. Er wirkt auch ohne laufendes JARVIS:
 
@@ -906,6 +908,86 @@ touch ~/.jarvis/STOP
 
 ---
 
+## Externe Dienste: Betrieb ohne Konten
+
+JARVIS spricht mit vier externen Diensten: Anthropic, Ollama, Gmail und Google
+Calendar. Alle vier haben einen Adapter, alle vier lassen sich durch ein
+Laufzeit-Doppel ersetzen.
+
+```toml
+[services]
+mode = "live"      # live | mock
+fixtures = ""      # eigene Beispieldaten als JSON, leer = eingebaute
+```
+
+Mit `mode = "mock"` laeuft der **ganze Weg** ohne einen einzigen Account:
+
+```sh
+jarvis mail poll        # 5 Beispielnachrichten, eingeordnet
+jarvis calendar poll    # 5 Termine, zwei Konfliktarten
+jarvis briefing --neu   # daraus ein Briefing
+```
+
+Dieselbe Fabrik, dasselbe Gatter, dasselbe Protokoll -- nur ohne Google.
+
+### Der Mock ist kein Trockenlauf und kein Nachweis
+
+Zwei Verwechslungen, gegen die hier gebaut ist:
+
+**Mock ist nicht Trockenlauf.** Beide gelten unabhaengig voneinander. Im Mock
+mit `dry_run = false` entstehen echte Eintraege in der eigenen Datenbank --
+Labels, Befunde, Briefings. Nur eben ohne Google.
+
+**Ein Mock beweist nichts ueber den echten Dienst.** Deshalb ruft kein Mock je
+`merke_kontakt` auf; ein Test prueft, dass der Aufruf in beiden Mock-Modulen
+gar nicht vorkommt. Und der Mock ist nie nachsichtiger als der echte Client:
+wer ihn ohne Senderecht baut, kann auch dort nicht senden.
+
+Der Mock-Modus ist an zwei Stellen laut sichtbar -- in `jarvis status` und in
+`jarvis services check`. Ein Mock, den man nicht sieht, ist eine Falle: alles
+sieht gruen aus, und nichts davon hat je einen echten Dienst erreicht.
+
+### Vier Stufen, und die vierte wird gemessen
+
+```sh
+jarvis services check           # zeigt den Stand
+jarvis services check --live    # versucht echten Kontakt und haelt ihn fest
+```
+
+```
+DIENST     GEBAUT  GETESTET  MOCK  ECHT GEPRUEFT  JETZT
+anthropic  ja      ja        ja    nie            nicht versucht
+ollama     ja      ja        ja    nie            nicht versucht
+gmail      ja      ja        ja    nie            nicht versucht
+calendar   ja      ja        ja    nie            nicht versucht
+keychain   ja      ja        --    nie            nicht versucht
+```
+
+Die ersten drei Spalten sind Aussagen ueber den Quelltext. **ECHT GEPRUEFT**
+ist es nicht: der Wert steht in der Datenbank und kommt nur dorthin, wenn ein
+echter Adapter eine Antwort bekommen hat -- aus `services check --live` oder
+aus einer gelungenen `mail login`. Ein gescheiterter Versuch schreibt nichts,
+ein Mock schreibt nie.
+
+**Der Stand heute ist die Spalte oben: fuenfmal `nie`.** Kein Dienst hat je
+mit JARVIS gesprochen. Das ist keine Vermutung, sondern das, was die
+Datenbank sagt.
+
+### Beispieldaten
+
+Die eingebauten Beispiele sind absichtlich unbequem: das Postfach enthaelt
+eine Rechnung, eine Anfrage mit Frist, einen Newsletter, eine
+noreply-Adresse **und einen Einschleusversuch** ("Ignoriere alle vorherigen
+Anweisungen..."), damit man die Abwehr einmal arbeiten sieht. Der Kalender
+enthaelt beide Befundarten und haengt an *jetzt plus zwei Stunden* -- ein
+Beispielkalender, dessen Konflikte schon vorbei sind, zeigt eine
+Konflikterkennung, die nichts findet, und man haelt sie faelschlich fuer
+in Ordnung.
+
+Eigene Daten kommen ueber `fixtures` als JSON-Verzeichnis.
+
+---
+
 ## Was wovon nachgewiesen ist
 
 Diese Tabelle sagt, worauf sich der Rest des Dokuments stuetzt. "Im Betrieb"
@@ -924,6 +1006,8 @@ heisst: tatsaechlich ausgefuehrt und beobachtet, nicht nur getestet.
 | Stoppschalter im Dauerbetrieb | Tests |
 | launchd-Plist | als Property List geparst. **Nicht auf macOS geladen** |
 | Sprachadapter (Whisper, `say`) | Tests gegen Ersatzprogramme. Nie mit echter Hardware |
+| Laufzeit-Mock fuer Gmail und Kalender | Tests **und** im Betrieb (`mail poll`, `calendar poll`, `briefing --neu` liefen vollstaendig ohne Konten) |
+| **Anthropic, Ollama, Gmail, Calendar -- echt** | **Nie.** Kein Adapter hat je mit dem echten Dienst gesprochen. `jarvis services check` sagt es dir jederzeit. |
 
 ---
 
@@ -1021,6 +1105,9 @@ ausdruecklich drin -- nicht weil es noetig waere, sondern damit man es sieht.
 
 ## Was noch nicht existiert
 
-Phase 7: Dateiablage, Hausautomation, Aufgabenverwaltung, Dokumentenanalyse --
-alles offen. Dauerhaftes Zuhoeren am Mikrofon ebenfalls: der Daemon fuehrt
-Sprache bewusst nicht.
+Die Faehigkeiten aus Phase 7 -- Aufgabenverwaltung, Dokumentenanalyse,
+Dateiablage, Hausautomation. Die Grundlage dafuer steht: jeder externe Dienst
+hat einen Adapter, ein Laufzeit-Doppel und einen messbaren Nachweisstand.
+
+Dauerhaftes Zuhoeren am Mikrofon ebenfalls nicht: der Daemon fuehrt Sprache
+bewusst nicht.

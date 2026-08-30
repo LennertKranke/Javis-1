@@ -560,3 +560,47 @@ def test_der_tag_wechselt_auf_der_eigenen_uhr(home, conn, monkeypatch):
 
     greenwich, _ = baue_skill(home, conn, zone="UTC", echte_uhr=True)
     assert greenwich._today().isoformat() == "2026-08-29"
+
+
+def test_ein_konflikt_steht_nur_einmal_im_briefing(conn):
+    """Ein Konflikt haengt an beiden Terminen -- genannt wird er einmal."""
+    for eid, titel in (("a", "Zahnarzt"), ("b", "Standup")):
+        CalendarStore(conn).remember(
+            event_id=eid,
+            calendar_id="primary",
+            starts_at=datetime(2026, 3, 2, 9, 0, tzinfo=UTC).isoformat(),
+            ends_at=datetime(2026, 3, 2, 10, 0, tzinfo=UTC).isoformat(),
+            summary=titel,
+            finding="Zahnarzt ueberschneidet sich mit Standup",
+        )
+    facts = build_facts(
+        date(2026, 3, 2),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+    )
+    assert facts["konflikte"] == ["Zahnarzt ueberschneidet sich mit Standup"]
+    assert plain_briefing(facts).count("ueberschneidet sich") == 1
+
+
+def test_verschiedene_konflikte_bleiben_beide_stehen(conn):
+    for eid, titel, befund in (
+        ("a", "Zahnarzt", "Zahnarzt ueberschneidet sich mit Standup"),
+        ("b", "Standup", "Zahnarzt ueberschneidet sich mit Standup"),
+        ("c", "Kunde", "Nur 5 Minuten zwischen Standup und Kunde"),
+    ):
+        CalendarStore(conn).remember(
+            event_id=eid,
+            calendar_id="primary",
+            starts_at=datetime(2026, 3, 2, 9, 0, tzinfo=UTC).isoformat(),
+            ends_at=datetime(2026, 3, 2, 10, 0, tzinfo=UTC).isoformat(),
+            summary=titel,
+            finding=befund,
+        )
+    facts = build_facts(
+        date(2026, 3, 2),
+        calendar=CalendarStore(conn),
+        mail=MailStore(conn),
+        replies=ReplyStore(conn),
+    )
+    assert len(facts["konflikte"]) == 2

@@ -24,6 +24,7 @@ from jarvis.core.config import DEFAULT_CONFIG_TOML, Config, ConfigError, Paths
 from jarvis.core.context import ContextBuilder, ShortTermContext
 from jarvis.core.db import open_database
 from jarvis.core.gate import Gate
+from jarvis.core.integrations import merke_kontakt
 from jarvis.core.log import configure as configure_logging
 from jarvis.core.memory import CATEGORIES, LongTermMemory
 from jarvis.core.ratelimit import RateLimiter
@@ -165,6 +166,11 @@ def cmd_status(args: argparse.Namespace, out: Out) -> int:
         str(config.source) if config.source else "Vorgabe (keine Datei, jarvis init)",
     )
     out.field("Trockenlauf", "an" if config.dry_run else out.bold("AUS"))
+    if config.services.is_mock:
+        # Ein Mock, den man nicht sieht, ist eine Falle: alles sieht gruen aus,
+        # und nichts davon hat je einen echten Dienst erreicht.
+        out.field("Externe Dienste", out.bold("MOCK"))
+        out.line(f"  {out.dim('Gmail und Kalender sind Doppel. Details: jarvis services check')}")
     speicher = default_store()
     out.field("Zugangsdaten", f"{speicher.describe()}  ({speicher.mode})")
     abweichung = speicher.insecure_reason()
@@ -398,6 +404,11 @@ def cmd_mail_login(args: argparse.Namespace, out: Out) -> int:
     conn = _require_db(paths, out)
     if conn is None:
         return 1
+    if config.services.is_mock:
+        out.line("Im Mock-Modus gibt es nichts anzumelden.")
+        out.line(f"  {out.dim("Zum echten Betrieb: [services] mode = 'live'")}")
+        conn.close()
+        return 1
     try:
         secrets = default_store()
         if not secrets.writable:
@@ -411,7 +422,13 @@ def cmd_mail_login(args: argparse.Namespace, out: Out) -> int:
 
         client = gmail_client(config, READ_ONLY, secrets=secrets)
         darf_senden = "send" in send_capabilities(config)
-        out.line(f"Angemeldet als {client.address()}")
+        adresse = client.address()
+        # Eine gelungene Anmeldung ist der staerkste Nachweis, den es gibt:
+        # hier hat der echte Dienst nachweislich geantwortet.
+        merke_kontakt(conn, "gmail", detail=f"Anmeldung als {adresse}")
+        if has_calendar_scope(gmail_auth(config, secrets=secrets)):
+            merke_kontakt(conn, "calendar", detail="Kalenderrecht im Token")
+        out.line(f"Angemeldet als {adresse}")
         out.line(f"  {out.dim('Berechtigungen: gmail.modify und gmail.send')}")
         stand = "freigeschaltet" if darf_senden else "gesperrt (mail_send auf Stufe 0)"
         out.line(f"  {out.dim('Senden ist derzeit ' + stand)}")
@@ -897,7 +914,8 @@ def cmd_calendar_poll(args: argparse.Namespace, out: Out) -> int:
         skill = build_skill("calendar", config=config, conn=conn)
         if args.tage:
             skill.options.window_days = args.tage
-        if not has_calendar_scope(gmail_auth(config)):
+        # Im Mock-Modus gibt es keinen Token, den man pruefen koennte.
+        if not config.services.is_mock and not has_calendar_scope(gmail_auth(config)):
             out.line("Der vorhandene Token traegt kein Kalenderrecht.")
             out.line(f"  {out.dim('Einmal neu zustimmen: jarvis mail login')}")
             return 1
@@ -986,6 +1004,119 @@ def cmd_briefing(args: argparse.Namespace, out: Out) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Externe Dienste
+# --------------------------------------------------------------------------- #
+
+
+def _live_probe(name: str, config: Config, paths) -> tuple[bool, str]:
+    """Ein einziger, moeglichst kleiner echter Aufruf. Nur auf Verlangen.
+
+    Bewusst je Dienst der billigste Aufruf, den es gibt: die eigene Adresse,
+    die Kalenderliste, ein Ein-Wort-Prompt. Es geht darum, ob eine Antwort
+    kommt -- nicht darum, etwas zu holen.
+    """
+    from jarvis.core.secrets import default_store
+    from jarvis.llm.provider import Request
+    from jarvis.llm.providers import build_provider
+
+    speicher = default_store()
+    if name in ("anthropic", "ollama"):
+        anbieter_config = config.llm.providers.get(name)
+        if anbieter_config is None:
+            return False, "nicht konfiguriert"
+        anbieter = build_provider(anbieter_config, speicher)
+        antwort = anbieter.complete(Request.single("Antworte mit dem Wort OK."))
+        return True, f"{anbieter_config.model}, {len(antwort.text)} Zeichen"
+    if name == "gmail":
+        from jarvis.skills.mail.gmail import READ_ONLY
+
+        return True, gmail_client(config, READ_ONLY, secrets=speicher).address()
+    if name == "calendar":
+        from jarvis.skills.factory import calendar_client
+
+        kalender = calendar_client(config, secrets=speicher)
+        return True, f"{len(kalender.list_calendars())} Kalender"
+    if name == "keychain":
+        if not speicher.keychain_only:
+            return False, f"aktiv ist: {speicher.describe()}"
+        return True, speicher.describe()
+    return False, "unbekannter Dienst"
+
+
+def cmd_services_check(args: argparse.Namespace, out: Out) -> int:
+    """Zeigt je Dienst, wie weit er nachgewiesen ist.
+
+    Die ersten drei Spalten sind Aussagen ueber den Quelltext. Die vierte
+    kommt aus der Datenbank und steht nur dort, wenn der echte Dienst
+    tatsaechlich einmal geantwortet hat -- ein Mock schreibt sie nie.
+    """
+    from jarvis.core.integrations import DIENSTE, letzter_kontakt, merke_kontakt
+
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        out.line()
+        out.field("Betriebsart", config.services.mode)
+        if config.services.is_mock:
+            out.line(
+                f"  {out.alarm(' MOCK ')}  Gmail und Kalender sind Doppel. "
+                f"Nichts geht hinaus, nichts kommt von Google."
+            )
+        out.line()
+
+        fehler = 0
+        zeilen = []
+        for eintrag in DIENSTE:
+            kontakt = letzter_kontakt(conn, eintrag.name)
+            if args.live:
+                try:
+                    ok, detail = _live_probe(eintrag.name, config, paths)
+                except Exception as exc:
+                    ok, detail = False, f"{type(exc).__name__}: {exc}"[:60]
+                if ok and not config.services.is_mock:
+                    kontakt = merke_kontakt(conn, eintrag.name, detail=detail)
+                elif ok and config.services.is_mock:
+                    detail = "Mock -- zaehlt nicht als Nachweis"
+                else:
+                    fehler += 1
+                jetzt = detail
+            else:
+                jetzt = "nicht versucht"
+
+            zeilen.append(
+                [
+                    eintrag.name,
+                    "ja",
+                    "ja" if eintrag.lokal_getestet else "nein",
+                    "ja" if eintrag.mock else "--",
+                    kontakt.wann[:16].replace("T", " ") if kontakt else "nie",
+                    jetzt[:40],
+                ]
+            )
+
+        out.table(
+            ["DIENST", "GEBAUT", "GETESTET", "MOCK", "ECHT GEPRUEFT", "JETZT"],
+            zeilen,
+        )
+        out.line()
+        if not args.live:
+            hinweis = "Echten Kontakt versuchen und festhalten: jarvis services check --live"
+            out.line(f"  {out.dim(hinweis)}")
+        fussnote = (
+            "ECHT GEPRUEFT: letzter erfolgreiche Kontakt mit dem echten Dienst, "
+            "aus 'services check --live' oder 'mail login'. Ein Mock schreibt hier nie."
+        )
+        out.line(f"  {out.dim(fussnote)}")
+        out.line()
+        return 1 if fehler else 0
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------------- #
 # Dauerbetrieb
 # --------------------------------------------------------------------------- #
 
@@ -1021,6 +1152,11 @@ def cmd_daemon(args: argparse.Namespace, out: Out) -> int:
     out.field("Zeitplan", plan)
     out.field("Takt", f"{config.daemon.tick_seconds} s")
     out.field("Trockenlauf", "an" if config.dry_run else out.bold("AUS"))
+    if config.services.is_mock:
+        # Ein Mock, den man nicht sieht, ist eine Falle: alles sieht gruen aus,
+        # und nichts davon hat je einen echten Dienst erreicht.
+        out.field("Externe Dienste", out.bold("MOCK"))
+        out.line(f"  {out.dim('Gmail und Kalender sind Doppel. Details: jarvis services check')}")
     out.field("Protokoll", str(paths.log_dir / "jarvis.jsonl"))
     out.line()
     out.line(f"  {out.dim('Beenden mit Strg-C. Anhalten jederzeit: jarvis stop')}")
@@ -1410,6 +1546,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default=None, help="statt [web].host")
     p.add_argument("--port", type=int, default=None, help="statt [web].port")
     p.set_defaults(func=cmd_web)
+
+    dienste = sub.add_parser("services", help="Externe Dienste und ihr Nachweis")
+    dienste_sub = dienste.add_subparsers(dest="unterbefehl", required=True)
+    d = dienste_sub.add_parser("check", help="Wie weit jeder Dienst nachgewiesen ist")
+    d.add_argument(
+        "--live", action="store_true", help="einen echten Aufruf versuchen und festhalten"
+    )
+    d.set_defaults(func=cmd_services_check)
 
     p = sub.add_parser("daemon", help="Dauerbetrieb starten (Zeitplan aus [daemon])")
     p.set_defaults(func=cmd_daemon)

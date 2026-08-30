@@ -20,6 +20,7 @@ auf die Rechte des Clients gleichermassen.
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from jarvis.core.config import Config, ConfigError
 from jarvis.core.context import ContextBuilder, ShortTermContext
@@ -31,10 +32,12 @@ from jarvis.skills.base import Skill
 from jarvis.skills.briefing.skill import BriefingSkill
 from jarvis.skills.briefing.store import BriefingStore
 from jarvis.skills.calendar.google import CALENDAR_READ, CalendarClient
+from jarvis.skills.calendar.mock import MockCalendarClient
 from jarvis.skills.calendar.skill import CalendarSkill
 from jarvis.skills.calendar.store import CalendarStore
 from jarvis.skills.mail.allowlist import Allowlist
 from jarvis.skills.mail.gmail import DRAFTING, LABELLING, SENDING, GmailAuth, GmailClient
+from jarvis.skills.mail.mock import MockGmailClient
 from jarvis.skills.mail.reply import MailDraftSkill, MailSendSkill, SendOptions
 from jarvis.skills.mail.skill import MailOptions, MailSkill
 from jarvis.skills.mail.store import MailStore, ReplyStore
@@ -66,14 +69,30 @@ def gmail_auth(config: Config, *, secrets: SecretStore | None = None) -> GmailAu
     )
 
 
+def _fixtures(config: Config) -> Path | None:
+    pfad = config.services.fixtures.strip()
+    return Path(pfad).expanduser() if pfad else None
+
+
 def gmail_client(
     config: Config, capabilities: frozenset[str], *, secrets: SecretStore | None = None
-) -> GmailClient:
+) -> GmailClient | MockGmailClient:
+    """Der echte Client -- oder das Laufzeit-Doppel, wenn `[services]` es sagt.
+
+    Die Faehigkeiten gehen unveraendert weiter. Ein Mock, der mehr duerfte
+    als der echte Client, waere ein Mock, dem man nichts glauben kann.
+    """
+    if config.services.is_mock:
+        return MockGmailClient(capabilities, fixtures=_fixtures(config))
     return GmailClient(gmail_auth(config, secrets=secrets), capabilities=capabilities)
 
 
-def calendar_client(config: Config, *, secrets: SecretStore | None = None) -> CalendarClient:
-    """Immer nur lesend. Einen Schreibpfad gibt es im Client nicht."""
+def calendar_client(
+    config: Config, *, secrets: SecretStore | None = None
+) -> CalendarClient | MockCalendarClient:
+    """Immer nur lesend. Einen Schreibpfad gibt es in keinem der beiden."""
+    if config.services.is_mock:
+        return MockCalendarClient(capabilities=CALENDAR_READ, fixtures=_fixtures(config))
     return CalendarClient(gmail_auth(config, secrets=secrets), capabilities=CALENDAR_READ)
 
 

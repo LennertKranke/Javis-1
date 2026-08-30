@@ -294,6 +294,25 @@ overdue_days = 3
 
 
 # --------------------------------------------------------------------------- #
+# Externe Dienste
+#
+#   live   Gmail und Kalender sprechen mit Google.
+#   mock   Beide werden durch Laufzeit-Doppel ersetzt. Damit laeuft der ganze
+#          Weg ohne Konten -- lesen, einordnen, Entwerfen, Briefing. Nichts
+#          geht hinaus, und "jarvis services check" sagt hin, dass der Mock
+#          laeuft. Ein Mock zaehlt nie als Nachweis, dass der echte Dienst
+#          erreichbar ist.
+#
+# fixtures: Verzeichnis mit eigenen Beispieldaten als JSON. Leer heisst:
+# die eingebauten Beispiele.
+# --------------------------------------------------------------------------- #
+
+[services]
+mode = "live"
+fixtures = ""
+
+
+# --------------------------------------------------------------------------- #
 # Dauerbetrieb
 #
 # Der Daemon ist eine Uhr, kein zweites Gehirn. Er ruft dieselben Durchlaeufe

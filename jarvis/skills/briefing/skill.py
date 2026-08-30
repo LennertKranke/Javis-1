@@ -138,7 +138,10 @@ def build_facts(
             }
             for e in termine
         ],
-        "konflikte": [e.finding for e in befunde if e.finding],
+        # Ein Konflikt betrifft zwei Termine und steht deshalb an beiden.
+        # Ohne diese Zusammenfassung nennt das Briefing ihn zweimal -- was
+        # erst auffiel, als der Laufzeit-Mock einen echten Kalender nachbaute.
+        "konflikte": list(dict.fromkeys(e.finding for e in befunde if e.finding)),
         "mails_ohne_antwort": len(mail.awaiting_reply(reply_categories or [], limit=50)),
         "seit_tagen_offen": mail.overdue(reply_categories or [], days=overdue_days),
         "ueberfaellig_ab_tagen": overdue_days,

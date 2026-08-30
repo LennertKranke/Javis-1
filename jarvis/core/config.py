@@ -34,6 +34,7 @@ __all__ = [
     "Paths",
     "ProviderConfig",
     "RateLimit",
+    "ServiceConfig",
     "StopSwitch",
     "TaskRoute",
     "VoiceConfig",
@@ -235,6 +236,31 @@ class LLMConfig:
 LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
+SERVICE_MODES = ("live", "mock")
+
+
+@dataclass(frozen=True)
+class ServiceConfig:
+    """Externe Dienste: echt oder Mock.
+
+    `mock` ersetzt Gmail und Kalender durch Laufzeit-Doppel, damit sich der
+    ganze Weg ohne Konten ansehen laesst. Es ist ausdruecklich kein
+    Trockenlauf-Ersatz: der Mock laeuft durch dieselben Faehigkeiten und
+    dasselbe Gatter, und `dry_run` gilt unveraendert.
+
+    Der Modus steht in der Konfiguration und nicht in einer
+    Umgebungsvariablen: er aendert, womit JARVIS spricht, und das gehoert an
+    dieselbe Stelle wie alles andere, was er darf.
+    """
+
+    mode: str = "live"
+    fixtures: str = ""
+
+    @property
+    def is_mock(self) -> bool:
+        return self.mode == "mock"
+
+
 @dataclass(frozen=True)
 class DaemonConfig:
     """Der Dauerbetrieb. Eine Uhr, sonst nichts.
@@ -392,6 +418,7 @@ class Config:
     web: WebConfig
     voice: VoiceConfig
     daemon: DaemonConfig
+    services: ServiceConfig
     source: Path | None
 
     @property
@@ -460,6 +487,7 @@ class Config:
                 "capabilities",
                 "llm",
                 "daemon",
+                "services",
                 "skills",
                 "voice",
                 "web",
@@ -481,6 +509,7 @@ class Config:
         web = _parse_web(raw.get("web", {}))
         voice = _parse_voice(raw.get("voice", {}), known_tasks=set(llm.tasks))
         daemon = _parse_daemon(raw.get("daemon", {}), known_capabilities=set(capabilities))
+        services = _parse_services(raw.get("services", {}))
         return cls(
             paths=paths,
             dry_run=dry_run,
@@ -493,6 +522,7 @@ class Config:
             web=web,
             voice=voice,
             daemon=daemon,
+            services=services,
             source=source,
         )
 
@@ -632,6 +662,20 @@ def _parse_web(raw: Any) -> WebConfig:
         raw.get("host", "127.0.0.1"),
         raw.get("port", 8765),
         raw.get("refresh_seconds", 0),
+    )
+
+
+def _parse_services(raw: Any) -> ServiceConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError("services: erwartet eine Tabelle")
+    _reject_unknown(raw, {"mode", "fixtures"}, "services")
+    modus = _as_str(raw.get("mode", "live"), "services.mode").strip()
+    if modus not in SERVICE_MODES:
+        erlaubt = ", ".join(SERVICE_MODES)
+        raise ConfigError(f"services.mode: {modus!r} unbekannt (erlaubt: {erlaubt})")
+    return ServiceConfig(
+        mode=modus,
+        fixtures=_as_str(raw.get("fixtures", ""), "services.fixtures").strip(),
     )
 
 
@@ -1162,6 +1206,25 @@ max_words = 200
 # Ab wie vielen Tagen eine unbeantwortete Anfrage als Frist gilt. Gerechnet
 # wird ab dem ersten Sehen, nicht ab dem letzten Durchlauf.
 overdue_days = 3
+
+
+# --------------------------------------------------------------------------- #
+# Externe Dienste
+#
+#   live   Gmail und Kalender sprechen mit Google.
+#   mock   Beide werden durch Laufzeit-Doppel ersetzt. Damit laeuft der ganze
+#          Weg ohne Konten -- lesen, einordnen, Entwerfen, Briefing. Nichts
+#          geht hinaus, und "jarvis services check" sagt hin, dass der Mock
+#          laeuft. Ein Mock zaehlt nie als Nachweis, dass der echte Dienst
+#          erreichbar ist.
+#
+# fixtures: Verzeichnis mit eigenen Beispieldaten als JSON. Leer heisst:
+# die eingebauten Beispiele.
+# --------------------------------------------------------------------------- #
+
+[services]
+mode = "live"
+fixtures = ""
 
 
 # --------------------------------------------------------------------------- #

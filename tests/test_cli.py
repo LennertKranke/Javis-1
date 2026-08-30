@@ -660,3 +660,161 @@ def test_fehlerhafte_spracheinstellungen_werden_gemeldet(home, capsys):
     code = main(["--home", str(home), "voice", "check"])
     assert code == 2
     assert "voice.wake_word" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# Externe Dienste
+# --------------------------------------------------------------------------- #
+
+
+def mock_modus(home):
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace('mode = "live"', 'mode = "mock"'),
+        encoding="utf-8",
+    )
+
+
+def test_services_check_ohne_datenbank(home, capsys):
+    code, out = run(home, "services", "check", capsys=capsys)
+    assert code == 1
+    assert "jarvis init" in out
+
+
+def test_services_check_zeigt_alle_vier_stufen(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "services", "check", capsys=capsys)
+    assert code == 0
+    for spalte in ("DIENST", "GEBAUT", "GETESTET", "MOCK", "ECHT GEPRUEFT"):
+        assert spalte in out
+    for name in ("anthropic", "ollama", "gmail", "calendar", "keychain"):
+        assert name in out
+
+
+def dienstzeilen(ausgabe: str) -> dict[str, str]:
+    """Nur die Tabellenzeilen, nach Dienstnamen. Fussnoten zaehlen nicht mit."""
+    zeilen = {}
+    for roh in ausgabe.splitlines():
+        teile = roh.split()
+        if len(teile) >= 5 and teile[0] in {
+            "anthropic",
+            "ollama",
+            "gmail",
+            "calendar",
+            "keychain",
+        }:
+            zeilen[teile[0]] = roh
+    return zeilen
+
+
+def test_services_check_sagt_nie_wenn_nichts_echt_lief(home, capsys):
+    """Der wichtigste Satz der Tabelle: nichts hat je einen echten Dienst erreicht."""
+    run(home, "init", capsys=capsys)
+    _, out = run(home, "services", "check", capsys=capsys)
+    zeilen = dienstzeilen(out)
+    assert len(zeilen) == 5
+    for name, zeile in zeilen.items():
+        assert " nie " in zeile, f"{name}: erwartet 'nie', gefunden {zeile!r}"
+
+
+def test_services_check_zeigt_einen_festgehaltenen_kontakt(home, capsys):
+    from jarvis.core.integrations import merke_kontakt
+
+    run(home, "init", capsys=capsys)
+    conn = open_database(home / "state.db")
+    merke_kontakt(conn, "gmail", detail="Anmeldung als ich@example.com")
+    conn.close()
+
+    _, out = run(home, "services", "check", capsys=capsys)
+    zeilen = dienstzeilen(out)
+    assert " nie " not in zeilen["gmail"], "der festgehaltene Kontakt fehlt"
+    assert "2" in zeilen["gmail"], "kein Zeitpunkt in der Zeile"
+    for name in ("anthropic", "ollama", "calendar", "keychain"):
+        assert " nie " in zeilen[name]
+
+
+def test_services_check_meldet_den_mock_modus(home, capsys):
+    run(home, "init", capsys=capsys)
+    mock_modus(home)
+    _, out = run(home, "services", "check", capsys=capsys)
+    assert "MOCK" in out
+    assert "Nichts geht hinaus" in out
+
+
+def test_ein_live_versuch_im_mock_zaehlt_nicht_als_nachweis(home, capsys):
+    run(home, "init", capsys=capsys)
+    mock_modus(home)
+    _, out = run(home, "services", "check", "--live", capsys=capsys)
+    assert "zaehlt nicht als Nachweis" in out
+
+    conn = open_database(home / "state.db")
+    try:
+        from jarvis.core.integrations import letzter_kontakt
+
+        assert letzter_kontakt(conn, "gmail") is None
+    finally:
+        conn.close()
+
+
+def test_ein_live_versuch_ohne_zugangsdaten_endet_mit_fehlercode(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "services", "check", "--live", capsys=capsys)
+    assert code == 1
+    for zeile in dienstzeilen(out).values():
+        assert " nie " in zeile, "ein gescheiterter Versuch wurde als Nachweis gewertet"
+
+
+def test_status_meldet_den_mock_modus(home, capsys):
+    run(home, "init", capsys=capsys)
+    mock_modus(home)
+    _, out = run(home, "status", "--ohne-anbieter", capsys=capsys)
+    assert "MOCK" in out
+
+
+def test_status_schweigt_im_live_modus(home, capsys):
+    run(home, "init", capsys=capsys)
+    _, out = run(home, "status", "--ohne-anbieter", capsys=capsys)
+    assert "MOCK" not in out
+
+
+def test_mail_poll_laeuft_im_mock_ohne_anmeldung(home, capsys):
+    run(home, "init", capsys=capsys)
+    mock_modus(home)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8")
+        .replace(
+            'providers = ["ollama", "anthropic"]\neffort = "low"',
+            'providers = ["trocken", "ollama"]\neffort = "low"',
+        )
+        .replace(
+            'reply = "{}"',
+            'reply = \'{"kategorie": "rechnung", "dringlichkeit": 1, '
+            '"antwort_noetig": false, "begruendung": "Beispiel"}\'',
+        ),
+        encoding="utf-8",
+    )
+    code, out = run(home, "mail", "poll", capsys=capsys)
+    assert code == 0
+    assert "Gefunden" in out
+    assert "5" in out
+
+
+def test_mail_login_im_mock_meldet_dass_es_nichts_gibt(home, capsys):
+    run(home, "init", capsys=capsys)
+    mock_modus(home)
+    code, out = run(home, "mail", "login", capsys=capsys)
+    assert code == 1
+    assert "Mock-Modus" in out
+
+
+def test_fehlerhafte_dienstkonfiguration_wird_gemeldet(home, capsys):
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace('mode = "live"', 'mode = "halb"'),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(home), "services", "check"])
+    assert code == 2
+    assert "services.mode" in capsys.readouterr().err

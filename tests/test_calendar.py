@@ -730,3 +730,156 @@ def test_ganztaegiger_termin_behaelt_sein_datum_in_der_uebersicht(home, conn):
     )
     events = skill.poll()
     assert events[0].summary.startswith("2026-03-02 ganztags")
+
+
+# --------------------------------------------------------------------------- #
+# Blaettern
+# --------------------------------------------------------------------------- #
+
+
+class SeitenClient(CalendarClient):
+    """Ein echter Client, dem nur der Netzaufruf ersetzt wurde.
+
+    Damit laeuft die tatsaechliche Blaetterlogik samt Endpunktpruefung -- nur
+    die Antwort kommt aus der Liste statt aus dem Netz.
+    """
+
+    def __init__(self, seiten, *, fehler_ab: int | None = None):
+        super().__init__(auth=None, capabilities=CALENDAR_READ)  # type: ignore[arg-type]
+        self.seiten = seiten
+        self.fehler_ab = fehler_ab
+        self.aufrufe: list[dict] = []
+
+    def _call(self, method, path, *, params=None):
+        self.aufrufe.append(dict(params or {}))
+        nummer = len(self.aufrufe)
+        if self.fehler_ab is not None and nummer >= self.fehler_ab:
+            raise GmailError("Kalender antwortet mit HTTP 500")
+        return self.seiten[nummer - 1]
+
+
+def seite(*ids, weiter: str | None = None):
+    inhalt: dict = {"items": [termin(eid=i, titel=f"Termin {i}") for i in ids]}
+    if weiter:
+        inhalt["nextPageToken"] = weiter
+    return inhalt
+
+
+def test_alle_seiten_werden_gelesen():
+    client = SeitenClient(
+        [
+            seite("a", "b", weiter="t1"),
+            seite("c", "d", weiter="t2"),
+            seite("e"),
+        ]
+    )
+    ergebnis = client.list_events("primary", time_min="A", time_max="B", limit=100)
+    assert [e["id"] for e in ergebnis] == ["a", "b", "c", "d", "e"]
+    assert len(client.aufrufe) == 3
+
+
+def test_der_token_wird_weitergereicht():
+    client = SeitenClient([seite("a", weiter="t1"), seite("b")])
+    client.list_events("primary", time_min="A", time_max="B", limit=100)
+    assert "pageToken" not in client.aufrufe[0]
+    assert client.aufrufe[1]["pageToken"] == "t1"
+
+
+def test_ohne_naechste_seite_ist_schluss():
+    client = SeitenClient([seite("a", "b")])
+    ergebnis = client.list_events("primary", time_min="A", time_max="B", limit=100)
+    assert [e["id"] for e in ergebnis] == ["a", "b"]
+    assert len(client.aufrufe) == 1
+
+
+def test_eine_leere_naechste_seite_beendet_das_blaettern():
+    """Token vorhanden, Seite leer -- sonst liefe das endlos."""
+    client = SeitenClient([seite("a", weiter="t1"), seite(weiter="t2")])
+    ergebnis = client.list_events("primary", time_min="A", time_max="B", limit=100)
+    assert [e["id"] for e in ergebnis] == ["a"]
+    assert len(client.aufrufe) == 2
+
+
+def test_ein_leerer_kalender_ergibt_eine_leere_liste():
+    client = SeitenClient([seite()])
+    assert client.list_events("primary", time_min="A", time_max="B", limit=100) == []
+
+
+def test_doppelte_kennungen_werden_uebersprungen():
+    """Aendert sich der Kalender waehrend des Blaetterns, kann sich etwas wiederholen."""
+    client = SeitenClient([seite("a", "b", weiter="t1"), seite("b", "c")])
+    ergebnis = client.list_events("primary", time_min="A", time_max="B", limit=100)
+    assert [e["id"] for e in ergebnis] == ["a", "b", "c"]
+
+
+def test_die_reihenfolge_bleibt_ueber_seiten_hinweg_stabil():
+    client = SeitenClient([seite("a", "b", weiter="t1"), seite("c", "d")])
+    zuerst = [e["id"] for e in client.list_events("primary", time_min="A", time_max="B")]
+    client.aufrufe.clear()
+    nochmal = [e["id"] for e in client.list_events("primary", time_min="A", time_max="B")]
+    assert zuerst == nochmal == ["a", "b", "c", "d"]
+
+
+def test_die_obergrenze_beendet_das_blaettern():
+    client = SeitenClient([seite("a", "b", weiter="t1"), seite("c", "d", weiter="t2")])
+    ergebnis = client.list_events("primary", time_min="A", time_max="B", limit=3)
+    assert [e["id"] for e in ergebnis] == ["a", "b", "c"]
+
+
+def test_die_obergrenze_verkleinert_die_letzte_seite():
+    """Sonst holte der letzte Abruf mehr, als noch gebraucht wird."""
+    client = SeitenClient([seite("a", "b", weiter="t1"), seite("c")])
+    client.list_events("primary", time_min="A", time_max="B", limit=3)
+    assert client.aufrufe[1]["maxResults"] == 1
+
+
+def test_ein_fehler_auf_einer_folgeseite_gilt_nicht_als_vollstaendig():
+    """Der wichtigste Fall: eine halbe Liste darf nicht die Liste sein.
+
+    Sonst raeumte die Konflikterkennung Befunde weg, deren Gegenstueck nur
+    auf der fehlenden Seite stand.
+    """
+    client = SeitenClient([seite("a", "b", weiter="t1"), seite("c")], fehler_ab=2)
+    with pytest.raises(GmailError):
+        client.list_events("primary", time_min="A", time_max="B", limit=100)
+
+
+def test_ein_fehler_auf_der_ersten_seite_kommt_ebenfalls_durch():
+    client = SeitenClient([seite("a")], fehler_ab=1)
+    with pytest.raises(GmailError):
+        client.list_events("primary", time_min="A", time_max="B", limit=100)
+
+
+def test_endloses_blaettern_wird_abgebrochen():
+    """Ein Server, der immer denselben Token schickt, darf uns nicht festhalten."""
+    from jarvis.skills.calendar.google import MAX_SEITEN
+
+    class Endlos(SeitenClient):
+        def _call(self, method, path, *, params=None):
+            self.aufrufe.append(dict(params or {}))
+            nummer = len(self.aufrufe)
+            return {"items": [termin(eid=f"e{nummer}")], "nextPageToken": "immer-derselbe"}
+
+    client = Endlos([])
+    with pytest.raises(GmailError, match="Seiten"):
+        client.list_events("primary", time_min="A", time_max="B", limit=100000)
+    assert len(client.aufrufe) <= MAX_SEITEN + 1
+
+
+def test_ein_sehr_grosser_kalender_wird_vollstaendig_gelesen():
+    seiten = []
+    for s in range(5):
+        ids = [f"e{s}_{i}" for i in range(250)]
+        seiten.append(seite(*ids, weiter=f"t{s}" if s < 4 else None))
+    client = SeitenClient(seiten)
+    ergebnis = client.list_events("primary", time_min="A", time_max="B", limit=5000)
+    assert len(ergebnis) == 1250
+    assert len({e["id"] for e in ergebnis}) == 1250
+
+
+def test_das_blaettern_bleibt_lesend():
+    """Die Endpunktpruefung gilt weiter -- auch fuer Folgeseiten."""
+    client = SeitenClient([seite("a", weiter="t1"), seite("b")])
+    client.list_events("primary", time_min="A", time_max="B", limit=100)
+    with pytest.raises(GmailError):
+        client._check_endpoint("POST", "/calendars/primary/events")

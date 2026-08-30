@@ -274,8 +274,10 @@ window_days = 7
 # 0 schaltet diese Pruefung ab; Ueberschneidungen werden weiter gemeldet.
 min_gap_minutes = 15
 
-# Obergrenze je Durchlauf und Kalender.
-max_per_run = 100
+# Obergrenze je Durchlauf und Kalender, ueber alle Seiten zusammen.
+# Der Client blaettert ueber nextPageToken, bis das Fenster abgearbeitet
+# oder diese Zahl erreicht ist.
+max_per_run = 250
 
 
 [skills.briefing]
@@ -289,6 +291,36 @@ max_words = 200
 # Ab wie vielen Tagen eine unbeantwortete Anfrage als Frist gilt. Gerechnet
 # wird ab dem ersten Sehen, nicht ab dem letzten Durchlauf.
 overdue_days = 3
+
+
+# --------------------------------------------------------------------------- #
+# Dauerbetrieb
+#
+# Der Daemon ist eine Uhr, kein zweites Gehirn. Er ruft dieselben Durchlaeufe
+# auf, die auch die Kommandozeile aufruft -- Autonomiestufen, Gatter,
+# Ratenbegrenzung und Stoppschalter gelten unveraendert.
+#
+# enabled bleibt false, bis du es umlegst. Ein Assistent, der nach
+# "jarvis init" von selbst losliefe, waere genau das, was Abschnitt 3
+# verhindern will.
+#
+# In schedule steht, welche Faehigkeit in welchem Abstand (Minuten) laeuft.
+# Was nicht darin steht, laeuft nicht. Absichtlich fehlen mail_reply und
+# mail_send: was Entwuerfe schreibt oder sendet, laeuft erst dann von selbst,
+# wenn du ihm eine Weile zugesehen hast.
+#
+# briefing darf oft laufen, ohne etwas zu kosten: liegt das Briefing des
+# Tages schon vor, findet der Durchlauf nichts zu tun und fragt kein Modell.
+# --------------------------------------------------------------------------- #
+
+[daemon]
+enabled = false
+tick_seconds = 30
+
+[daemon.schedule]
+mail = 15
+calendar = 60
+briefing = 60
 
 
 # --------------------------------------------------------------------------- #

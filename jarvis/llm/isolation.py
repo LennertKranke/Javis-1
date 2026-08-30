@@ -301,3 +301,72 @@ def _letzte_zeile(text: str) -> str:
         if zeile.strip():
             return zeile.strip()
     return ""
+
+
+@dataclass(frozen=True)
+class Sondenlauf:
+    """Was die Sonde in einem Lauf erreicht hat."""
+
+    ok: bool
+    mode: str
+    befunde: dict
+    fehler: str | None = None
+
+
+def sonde_starten(
+    *,
+    mode: str,
+    home: Path | None = None,
+    python: str | None = None,
+    timeout: float = 60.0,
+) -> Sondenlauf:
+    """Startet `llm/probe.py` -- ohne oder mit Sandbox -- und liest den Bericht.
+
+    Erst der Vergleich zweier Laeufe zeigt, ob die Sandbox etwas bewirkt. Ein
+    einzelner Lauf beweist nichts: dass eine Datei fehlt, kann auch heissen,
+    dass es sie gar nicht gibt.
+    """
+    lauf_python = python or sys.executable
+    with tempfile.TemporaryDirectory(prefix="jarvis-probe-") as ordner:
+        befehl = [lauf_python, "-m", "jarvis.llm.probe"]
+        if home is not None:
+            # Als Argument, nicht als Umgebungsvariable: JARVIS_* wird
+            # gefiltert, und die Sonde saehe sonst am falschen Ort nach.
+            befehl.append(str(home))
+        if mode == "sandbox":
+            if not sandbox_available():
+                return Sondenlauf(
+                    ok=False,
+                    mode=mode,
+                    befunde={},
+                    fehler="sandbox-exec steht auf diesem System nicht zur Verfuegung",
+                )
+            befehl = sandbox_command(befehl, schreibbar=ordner)
+
+        umgebung = child_env(home=ordner) if mode != "geerbt" else dict(os.environ)
+        try:
+            lauf = subprocess.run(
+                befehl,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=umgebung,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return Sondenlauf(ok=False, mode=mode, befunde={}, fehler=str(exc))
+
+        zeile = _letzte_zeile(lauf.stdout)
+        if not zeile:
+            kurz = (lauf.stderr or "").strip().splitlines()
+            return Sondenlauf(
+                ok=False,
+                mode=mode,
+                befunde={},
+                fehler=f"kein Bericht (Code {lauf.returncode}): "
+                f"{kurz[-1] if kurz else 'ohne Ausgabe'}",
+            )
+        try:
+            return Sondenlauf(ok=True, mode=mode, befunde=json.loads(zeile))
+        except json.JSONDecodeError as exc:
+            return Sondenlauf(ok=False, mode=mode, befunde={}, fehler=f"unlesbarer Bericht ({exc})")

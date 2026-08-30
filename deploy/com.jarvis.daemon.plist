@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd-Eintrag fuer den JARVIS-Dauerbetrieb.
+
+  Einrichten:
+      cp deploy/com.jarvis.daemon.plist ~/Library/LaunchAgents/
+      # Die drei Pfade unten anpassen: Programm, Arbeitsverzeichnis, HOME.
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jarvis.daemon.plist
+      launchctl kickstart -p gui/$(id -u)/com.jarvis.daemon
+
+  Anhalten:
+      launchctl bootout gui/$(id -u)/com.jarvis.daemon
+      # Sofort und unabhaengig davon wirkt weiterhin:  touch ~/.jarvis/STOP
+
+  Bewusst gesetzt:
+    KeepAlive/SuccessfulExit=false  : nach einem sauberen Ende (SIGTERM,
+      Stoppschalter) nicht sofort neu starten. Sonst kaempfte launchd gegen
+      eine bewusste Entscheidung an.
+    ThrottleInterval=60             : nach einem Absturz eine Minute warten,
+      statt in einer Schleife neu zu starten.
+    ProcessType=Background          : das System darf den Prozess drosseln.
+    Kein RunAtLoad-Sofortstart ohne Netz: der Daemon vertraegt Ausfaelle,
+      aber ein Start direkt beim Anmelden trifft oft noch kein Netz.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jarvis.daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Pfad zum uv-Projekt oder direkt zum venv-Python anpassen. -->
+        <string>/opt/homebrew/bin/uv</string>
+        <string>run</string>
+        <string>--directory</string>
+        <string>/Users/DEIN_NAME/Projekte/jarvis</string>
+        <string>jarvis</string>
+        <string>daemon</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/DEIN_NAME/Projekte/jarvis</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>JARVIS_HOME</key>
+        <string>/Users/DEIN_NAME/.jarvis</string>
+        <!--
+          Abschnitt 4: ausschliesslich die Keychain. Ohne diese Zeile gilt auf
+          macOS ohnehin schon Keychain-only; sie steht hier, damit es in der
+          Datei sichtbar ist. Niemals ein Geheimnis in diese Datei schreiben :
+          plists sind lesbar und landen leicht in einem Backup.
+        -->
+        <key>JARVIS_SECRET_BACKEND</key>
+        <string>keychain</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/DEIN_NAME/.jarvis/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/DEIN_NAME/.jarvis/logs/launchd.err.log</string>
+</dict>
+</plist>

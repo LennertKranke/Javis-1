@@ -137,3 +137,76 @@ def test_umgebung_in_der_kette_ist_keine_reine_keychain():
 def test_leerer_speicher_behauptet_nicht_keychain_zu_sein():
     """Sonst saehe "keine" aus wie "alles in Ordnung"."""
     assert SecretStore([]).keychain_only is False
+
+
+# --------------------------------------------------------------------------- #
+# Keychain-only als Produktionsverhalten (Abschnitt 4)
+# --------------------------------------------------------------------------- #
+
+
+def test_auf_macos_gibt_es_keinen_stillen_rueckfall(monkeypatch):
+    """Der eigentliche Punkt: ein fehlender Eintrag sah aus wie ein vorhandener."""
+    monkeypatch.setattr("jarvis.core.secrets.sys.platform", "darwin")
+    monkeypatch.delenv("JARVIS_SECRET_BACKEND", raising=False)
+    speicher = default_store()
+    assert "environment" not in speicher.backends
+
+
+def test_ohne_macos_ist_die_umgebung_der_entwicklungspfad(monkeypatch):
+    monkeypatch.setattr("jarvis.core.secrets.sys.platform", "linux")
+    monkeypatch.delenv("JARVIS_SECRET_BACKEND", raising=False)
+    speicher = default_store()
+    assert speicher.backends == ("environment",)
+    assert speicher.violates_spec is False
+    assert "Entwicklungspfad" in (speicher.insecure_reason() or "")
+
+
+def test_auf_macos_ist_die_umgebung_ein_verstoss(monkeypatch):
+    monkeypatch.setattr("jarvis.core.secrets.sys.platform", "darwin")
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "env")
+    speicher = default_store()
+    assert speicher.violates_spec is True
+    assert "Keychain" in (speicher.insecure_reason() or "")
+
+
+def test_die_umgebung_bleibt_auf_macos_ausdruecklich_waehlbar(monkeypatch):
+    """Sie wird nicht verboten -- nur nicht mehr stillschweigend genommen."""
+    monkeypatch.setattr("jarvis.core.secrets.sys.platform", "darwin")
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "env")
+    monkeypatch.setenv("JARVIS_SECRET_TESTWERT", "vorhanden")
+    assert default_store().get("testwert") == "vorhanden"
+
+
+def test_reine_keychain_ist_kein_verstoss(monkeypatch):
+    monkeypatch.setattr("jarvis.core.secrets.sys.platform", "darwin")
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "keychain")
+    speicher = default_store()
+    assert speicher.violates_spec is False
+    assert speicher.insecure_reason() is None
+
+
+def test_der_modus_wird_mitgefuehrt(monkeypatch):
+    for wahl in ("keychain", "env", "none"):
+        monkeypatch.setenv("JARVIS_SECRET_BACKEND", wahl)
+        assert default_store().mode == wahl
+
+
+# --------------------------------------------------------------------------- #
+# Nie ein Wert nach draussen
+# --------------------------------------------------------------------------- #
+
+
+def test_der_fehler_nennt_den_namen_nicht_den_wert(monkeypatch):
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "env")
+    monkeypatch.setenv("JARVIS_SECRET_ANTHROPIC_API_KEY", "sk-streng-geheim")
+    speicher = default_store()
+    with pytest.raises(SecretsError) as fehler:
+        speicher.require("gibtsnicht")
+    assert "gibtsnicht" in str(fehler.value)
+    assert "sk-streng-geheim" not in str(fehler.value)
+
+
+def test_describe_nennt_nur_die_quellen(monkeypatch):
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "env")
+    monkeypatch.setenv("JARVIS_SECRET_ANTHROPIC_API_KEY", "sk-streng-geheim")
+    assert "sk-streng-geheim" not in default_store().describe()

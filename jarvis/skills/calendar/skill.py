@@ -64,7 +64,9 @@ class CalendarOptions:
 
         self.window_days = self._zahl(roh, "window_days", 1, 60)
         self.min_gap_minutes = self._zahl(roh, "min_gap_minutes", 0, 240)
-        self.max_per_run = self._zahl(roh, "max_per_run", 1, 250)
+        # Seit der Client blaettert, ist das die Gesamtzahl je Kalender und
+        # Durchlauf, nicht mehr die Groesse einer Seite.
+        self.max_per_run = self._zahl(roh, "max_per_run", 1, 5000)
 
     @staticmethod
     def _zahl(roh: dict[str, Any], name: str, min_wert: int, max_wert: int) -> int:

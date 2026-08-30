@@ -383,3 +383,117 @@ def test_die_vertraulichkeitssperre_gilt_auch_getrennt(home):
     gebaut = build_providers(llm_config(home).llm, SecretStore([]))
     assert gebaut["ollama"].local is True
     assert gebaut["ollama"].name == "ollama"
+
+
+# --------------------------------------------------------------------------- #
+# Kein Geheimnis nach draussen
+# --------------------------------------------------------------------------- #
+
+GEHEIM = "sk-ANT-streng-geheim-4711"
+
+
+def test_der_schluessel_erscheint_weder_in_stdout_noch_in_stderr(tmp_path):
+    """Ein echter Lauf, mit echtem Schluessel: taucht er irgendwo auf?"""
+    fracht = json.dumps(
+        {
+            "provider": {
+                "name": "anthropic",
+                "kind": "anthropic",
+                "model": "claude-opus-5",
+                "local": False,
+                "secret": "anthropic_key",
+            },
+            "secret": GEHEIM,
+            "request": {"messages": [{"role": "user", "content": "hallo"}]},
+        }
+    )
+    lauf = subprocess.run(
+        [sys.executable, "-m", "jarvis.llm.isolated"],
+        input=fracht,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert GEHEIM not in lauf.stdout
+    assert GEHEIM not in lauf.stderr
+
+
+def test_der_schluessel_steht_in_keinem_protokolleintrag(home, conn):
+    """Der Router protokolliert Ausfaelle -- aber nie mit dem Schluessel darin."""
+    from jarvis.core.audit import AuditLog
+
+    anbieter = SubprocessProvider(EXTERN, secret=GEHEIM)
+    with pytest.raises(ProviderError):
+        anbieter.complete(Request.single("hallo"))
+
+    AuditLog(conn).record(
+        capability="mail",
+        kind="decision",
+        outcome="failed",
+        detail={"error": "Anbieter ausgefallen"},
+    )
+    zeilen = conn.execute("SELECT * FROM audit_log").fetchall()
+    for zeile in zeilen:
+        assert GEHEIM not in json.dumps(dict(zeile), default=str)
+
+
+def test_die_fracht_traegt_nur_diesen_einen_schluessel():
+    """Kein zweiter Anbieter, kein Gmail-Token -- genau einer."""
+    fracht = SubprocessProvider(EXTERN, secret=GEHEIM).payload(Request.single("hallo"))
+    als_text = json.dumps(fracht)
+    assert als_text.count(GEHEIM) == 1
+    assert fracht["provider"]["secret"] == "anthropic_key"  # nur der Name
+
+
+def test_die_sonde_gibt_keinen_inhalt_preis(tmp_path):
+    """Ein Pruefwerkzeug, das Geheimnisse ausdruckt, waere selbst das Leck."""
+    from jarvis.llm.probe import befunde
+
+    geheim = tmp_path / "state.db"
+    geheim.write_text("SEHR-GEHEIMER-INHALT", encoding="utf-8")
+    bericht = json.dumps(befunde(home=tmp_path))
+    assert "SEHR-GEHEIMER-INHALT" not in bericht
+    assert '"ok": true' in bericht.lower() or '"ok":true' in bericht.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Die Sonde und ihr Vergleich
+# --------------------------------------------------------------------------- #
+
+
+def test_die_sonde_unterscheidet_abgelehnt_von_verweigert():
+    """Ein abgelehnter Verbindungsversuch beweist, dass er erlaubt war."""
+    from jarvis.llm.probe import _netz
+
+    # Auf 127.0.0.1:1 lauscht nichts -- der Aufruf selbst ist aber erlaubt.
+    befund = _netz("127.0.0.1", 1, timeout=2.0)
+    assert befund["ok"] is True
+
+
+def test_die_sonde_laeuft_wirklich_als_prozess(home):
+    from jarvis.llm.isolation import sonde_starten
+
+    lauf = sonde_starten(mode="subprocess", home=home)
+    assert lauf.ok is True
+    assert lauf.befunde["jarvis_env"] == []
+    assert lauf.befunde["pid"] != __import__("os").getpid()
+
+
+def test_die_sonde_sieht_das_basisverzeichnis_am_richtigen_ort(home):
+    """Sonst bestaetigte die Pruefung sich selbst: nichts da heisst nicht verboten."""
+    from jarvis.llm.isolation import sonde_starten
+
+    (home / "state.db").write_text("x", encoding="utf-8")
+    lauf = sonde_starten(mode="subprocess", home=home)
+    assert lauf.befunde["checks"]["jarvis_datenbank"]["ok"] is True
+
+
+def test_die_sandbox_sonde_meldet_wenn_es_sie_nicht_gibt(home):
+    from jarvis.llm.isolation import sandbox_available, sonde_starten
+
+    if sandbox_available():  # pragma: no cover - haengt am System
+        pytest.skip("Auf diesem System gibt es sandbox-exec")
+    lauf = sonde_starten(mode="sandbox", home=home)
+    assert lauf.ok is False
+    assert "sandbox-exec" in (lauf.fehler or "")

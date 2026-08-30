@@ -166,10 +166,13 @@ def cmd_status(args: argparse.Namespace, out: Out) -> int:
     )
     out.field("Trockenlauf", "an" if config.dry_run else out.bold("AUS"))
     speicher = default_store()
-    herkunft = speicher.describe()
-    if not speicher.keychain_only and speicher.backends:
-        herkunft += "  (Abschnitt 4 verlangt nur keychain)"
-    out.field("Zugangsdaten", herkunft)
+    out.field("Zugangsdaten", f"{speicher.describe()}  ({speicher.mode})")
+    abweichung = speicher.insecure_reason()
+    if abweichung and speicher.violates_spec:
+        out.line(f"  {out.alarm(' UNSICHER ')}  {abweichung}")
+        exit_code = 1
+    elif abweichung:
+        out.line(f"  {out.dim(abweichung)}")
 
     conn = None
     if paths.db_file.exists():
@@ -983,6 +986,126 @@ def cmd_briefing(args: argparse.Namespace, out: Out) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Dauerbetrieb
+# --------------------------------------------------------------------------- #
+
+
+def cmd_daemon(args: argparse.Namespace, out: Out) -> int:
+    """Startet die Uhr. Beendet sich auf Strg-C oder SIGTERM."""
+    import signal
+
+    from jarvis.daemon import Daemon, LockBusy
+
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    if not paths.db_file.exists():
+        out.line("Keine Datenbank. Erst: jarvis init")
+        return 1
+    if not config.daemon.enabled:
+        out.line("Der Daemon ist nicht eingeschaltet.")
+        out.line(f"  {out.dim('In der Konfiguration: [daemon] enabled = true')}")
+        return 2
+    if not config.daemon.schedule:
+        out.line("Kein Zeitplan hinterlegt ([daemon.schedule]).")
+        return 2
+
+    logger = configure_logging(paths.log_dir, level=config.log_level)
+    daemon = Daemon(config=config, paths=paths, logger=logger.getChild("daemon"))
+    signal.signal(signal.SIGTERM, daemon.anhalten)
+    signal.signal(signal.SIGINT, daemon.anhalten)
+
+    plan = "  ".join(f"{k} alle {v} min" for k, v in sorted(config.daemon.schedule.items()))
+    out.line()
+    out.line(f"{out.accent('JARVIS')} {out.dim('Dauerbetrieb')}")
+    out.line()
+    out.field("Zeitplan", plan)
+    out.field("Takt", f"{config.daemon.tick_seconds} s")
+    out.field("Trockenlauf", "an" if config.dry_run else out.bold("AUS"))
+    out.field("Protokoll", str(paths.log_dir / "jarvis.jsonl"))
+    out.line()
+    out.line(f"  {out.dim('Beenden mit Strg-C. Anhalten jederzeit: jarvis stop')}")
+    out.line()
+    out.stream.flush()
+
+    try:
+        return daemon.run()
+    except LockBusy as exc:
+        out.line(f"{exc}")
+        return 3
+
+
+# --------------------------------------------------------------------------- #
+# Modelltrennung
+# --------------------------------------------------------------------------- #
+
+PRUEFPUNKTE = (
+    ("jarvis_verzeichnis", "~/.jarvis lesen"),
+    ("jarvis_datenbank", "state.db lesen"),
+    ("keychain_verzeichnis", "Keychain-Dateien lesen"),
+    ("keychain_kommando", "security aufrufen"),
+    ("netz_ausgehend", "Netz nach aussen"),
+)
+
+
+def cmd_llm_check(args: argparse.Namespace, out: Out) -> int:
+    """Misst nach, was der auswertende Prozess tatsaechlich noch kann.
+
+    Eine Sandbox, die man nicht nachmisst, ist eine Behauptung. Gemessen wird
+    zweimal -- ohne und mit Trennung -- weil ein einzelner Lauf nichts
+    beweist: dass etwas fehlt, kann auch heissen, dass es das nie gab.
+    """
+    from jarvis.llm.isolation import sandbox_available, sonde_starten
+
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    eingestellt = config.llm.isolation
+
+    out.line()
+    out.field("Eingestellt", f"[llm] isolation = {eingestellt}")
+    out.field("Plattform", f"{sys.platform}")
+    out.field("sandbox-exec", "vorhanden" if sandbox_available() else "nicht vorhanden")
+    out.line()
+
+    laeufe = {}
+    for modus in ("geerbt", "subprocess", "sandbox"):
+        laeufe[modus] = sonde_starten(mode=modus, home=paths.home)
+
+    spalten = ["PRUEFUNG"]
+    gemessen = [m for m in ("geerbt", "subprocess", "sandbox") if laeufe[m].ok]
+    spalten += [m.upper() for m in gemessen]
+
+    zeilen = []
+    for schluessel, beschriftung in PRUEFPUNKTE:
+        zeile = [beschriftung]
+        for modus in gemessen:
+            befund = laeufe[modus].befunde.get("checks", {}).get(schluessel, {})
+            zeile.append("moeglich" if befund.get("ok") else "verweigert")
+        zeilen.append(zeile)
+
+    zeile = ["JARVIS-Variablen"]
+    for modus in gemessen:
+        anzahl = len(laeufe[modus].befunde.get("jarvis_env", []))
+        zeile.append(f"{anzahl} sichtbar")
+    zeilen.append(zeile)
+
+    if zeilen and len(spalten) > 1:
+        out.table(spalten, zeilen)
+    out.line()
+
+    for modus in ("geerbt", "subprocess", "sandbox"):
+        if not laeufe[modus].ok:
+            out.line(f"  {out.dim(modus + ': ' + (laeufe[modus].fehler or 'kein Befund'))}")
+
+    out.line()
+    out.line(f"  {out.dim('geerbt = ohne Trennung, nur als Vergleichswert.')}")
+    if not laeufe["sandbox"].ok:
+        hinweis = "Die Sandbox-Stufe wurde hier nicht gemessen. Sie braucht macOS."
+        out.line(f"  {out.dim(hinweis)}")
+    out.line()
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # Sprache
 # --------------------------------------------------------------------------- #
 
@@ -1287,6 +1410,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default=None, help="statt [web].host")
     p.add_argument("--port", type=int, default=None, help="statt [web].port")
     p.set_defaults(func=cmd_web)
+
+    p = sub.add_parser("daemon", help="Dauerbetrieb starten (Zeitplan aus [daemon])")
+    p.set_defaults(func=cmd_daemon)
+
+    modell = sub.add_parser("llm", help="Modelltrennung nachmessen")
+    modell_sub = modell.add_subparsers(dest="unterbefehl", required=True)
+    m = modell_sub.add_parser("check", help="Was der auswertende Prozess noch kann")
+    m.set_defaults(func=cmd_llm_check)
 
     sprache = sub.add_parser("voice", help="Sprache: vorlesen und anhalten")
     sprache_sub = sprache.add_subparsers(dest="unterbefehl", required=True)

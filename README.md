@@ -3,13 +3,16 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 6 abgeschlossen, Prozesstrennung nach Abschnitt 2.2 eingebaut.** Der Kern steht, JARVIS liest und ordnet den
-Posteingang ein, schreibt Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf
-der Allowlist senden, liest den Kalender und meldet Terminkonflikte, fasst den
-Tag in einem Morgenbriefing zusammen, und zeigt Zustand, Protokoll, Briefing
-und anstehende Entscheidungen in einer Weboberflaeche auf localhost. Sprache
-kommt als dritte Bedienweise dazu: JARVIS liest auf Zuruf vor und laesst sich
-anhalten -- handeln kann er auf Zuruf nicht. Es gibt noch keinen Daemon.
+**Stand: Phase 1-6 abgeschlossen, technische Abschlussrunde erledigt.**
+Der Kern steht, JARVIS liest und ordnet den Posteingang ein, schreibt
+Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf der Allowlist senden,
+liest den Kalender und meldet Terminkonflikte, fasst den Tag in einem
+Morgenbriefing zusammen, und zeigt Zustand, Protokoll, Briefing und
+anstehende Entscheidungen in einer Weboberflaeche auf localhost. Sprache ist
+die dritte Bedienweise: JARVIS liest auf Zuruf vor und laesst sich anhalten,
+handeln kann er auf Zuruf nicht. Ein Daemon fuehrt die Durchlaeufe nach
+Zeitplan aus. Was davon wie nachgewiesen ist, steht in
+[Was wovon nachgewiesen ist](#was-wovon-nachgewiesen-ist).
 
 ---
 
@@ -85,6 +88,8 @@ Keychain ab. Angefordert werden `gmail.modify`, `gmail.send` und seit Phase 5
 | `jarvis voice ask "..."` | einen getippten Satz durch dieselbe Kette |
 | `jarvis voice hear <datei>` | eine fertige Aufnahme auswerten |
 | `jarvis voice listen` | aufnehmen und antworten (eine Runde) |
+| `jarvis daemon` | Dauerbetrieb nach `[daemon.schedule]` |
+| `jarvis llm check` | nachmessen, was der auswertende Prozess noch kann |
 
 Der Stoppschalter ist eine Datei. Er wirkt auch ohne laufendes JARVIS:
 
@@ -725,7 +730,7 @@ Jetzt laeuft der Modellaufruf woanders:
 ```
 Elternprozess                        Kindprozess
   Gmail, Kalender, Keychain            nur der eine Modellschluessel
-  Datenbank, Gatter, Protokoll         kein JARVIS_HOME, keine Datenbank
+  Datenbank, Gatter, Protokoll         keine JARVIS_-Variablen, leeres HOME
   berechnet die Ziele                  sieht kein Ziel
         |                                     ^
         |  Text + Schema  (stdin)             |
@@ -733,6 +738,37 @@ Elternprozess                        Kindprozess
         |  JSON            (stdout)           |
         +<------------------------------------+
 ```
+
+### Was jede Stufe wirklich leistet
+
+Hier stand vorher "kein Weg zur Datenbank". Das war zu stark, und die Messung
+hat es widerlegt: `subprocess` nimmt dem Kind die Umgebungsvariablen und die
+Code-Pfade, **nicht** den Dateizugriff. Wer im Kind einen absoluten Pfad
+oeffnet, kommt an `~/.jarvis` heran. Erst `sandbox` laesst das Betriebssystem
+nein sagen.
+
+`jarvis llm check` misst das nach -- einmal ohne Trennung als Vergleichswert,
+einmal mit. Auf diesem Entwicklungsrechner (Linux, kein `sandbox-exec`):
+
+```
+PRUEFUNG                GEERBT      SUBPROCESS
+~/.jarvis lesen         moeglich    moeglich
+state.db lesen          moeglich    moeglich
+Netz nach aussen        moeglich    moeglich
+JARVIS-Variablen        2 sichtbar  0 sichtbar
+```
+
+Was `subprocess` damit tatsaechlich garantiert:
+
+* keine `JARVIS_`-Variable im Kind, also auch kein Gmail-Token aus der
+  Umgebung und kein Zeiger auf das Basisverzeichnis
+* ein leeres `HOME`, das nach dem Aufruf verschwindet
+* der Modellschluessel ueber die Standardeingabe statt ueber `ps`
+* keine Faehigkeit, kein Gatter, keine Datenbankanbindung im Kind: die
+  Module werden dort nicht importiert
+
+Was es **nicht** garantiert: dass das Kind keine Datei oeffnen kann. Dafuer
+ist `sandbox` da, und die ist auf macOS nicht nachgemessen (siehe unten).
 
 ### Drei Stufen
 
@@ -770,9 +806,11 @@ oder Kommandozeile -- dort stuende er in `ps`.
 
 ### Was im Kind fehlt
 
-`llm/isolated.py` importiert keine Faehigkeit, kein Gatter, keine Datenbank
-und keinen Schluesselbund. Es baut genau einen Anbieter mit genau einem
-Geheimnis und stellt genau eine Anfrage. Ein Test prueft das strukturell.
+`llm/isolated.py` importiert keine Faehigkeit, kein Gatter, keine
+Datenbankanbindung und keinen Schluesselbund. Es baut genau einen Anbieter mit
+genau einem Geheimnis und stellt genau eine Anfrage. Ein Test prueft das
+strukturell -- das ist eine Aussage ueber die Code-Pfade, nicht ueber die
+Rechte des Prozesses.
 
 Faellt dort etwas aus, kommt es als JSON zurueck, nicht als Prozessabsturz --
 und die Fehlerart (`unavailable`, `timeout`, `refused`) ueberlebt den
@@ -793,51 +831,186 @@ anders sieht, setzt `isolation = "off"` und sieht die Folge in `jarvis status`.
 
 ---
 
+## Dauerbetrieb
+
+Der Daemon ist eine Uhr, kein zweites Gehirn. Er ruft dieselben Durchlaeufe
+auf, die auch die Kommandozeile aufruft. Autonomiestufen, Gatter,
+Ratenbegrenzung und Stoppschalter gelten unveraendert -- er darf nichts, was
+`jarvis mail poll` nicht auch duerfte.
+
+```toml
+[daemon]
+enabled = false        # bleibt aus, bis du es umlegst
+tick_seconds = 30
+
+[daemon.schedule]      # Faehigkeit = Abstand in Minuten
+mail = 15
+calendar = 60
+briefing = 60
+```
+
+```sh
+jarvis daemon          # im Vordergrund, Strg-C beendet
+```
+
+**Was nicht im Zeitplan steht, laeuft nicht.** `mail_reply` und `mail_send`
+fehlen dort absichtlich: was Entwuerfe schreibt oder sendet, laeuft erst dann
+von selbst, wenn du ihm eine Weile zugesehen hast. Ein neuer Eintrag ist eine
+bewusste Zeile in der Konfiguration, kein Nebeneffekt.
+
+### Wie er sich verhaelt
+
+| | |
+|---|---|
+| **Einzelinstanz** | Sperrdatei mit `flock`. Eine zweite Instanz endet mit Code 3 und nennt die PID der ersten. Nach einem Absturz gibt das Betriebssystem die Sperre frei -- eine liegengebliebene Datei blockiert nichts. |
+| **Beenden** | SIGTERM oder SIGINT setzen eine Fahne; der laufende Durchlauf endet, dann ist Schluss. Gemessen: rund 1 s, unabhaengig vom Takt. |
+| **Stoppschalter** | Vor jedem Job geprueft. Ist er gesetzt, faengt der Job gar nicht erst an -- auch nicht mit dem Beurteilen. Das Gatter prueft danach noch einmal. |
+| **Fehler** | Ein gescheiterter Job wird protokolliert, der Daemon laeuft weiter. Ein Fehler im Tick selbst ebenso. |
+| **Neustart** | Der Zeitpunkt des letzten Laufs steht in der Datenbank, nicht im Speicher. Ein Daemon in einer Neustartschleife arbeitet den Plan nicht jedesmal von vorn ab. |
+| **Fehlgeschlagene Jobs** | zaehlen als Lauf. Sonst rennt der Daemon bei jedem Tick gegen dieselbe Wand. |
+
+### Er kostet keine zusaetzlichen Modellaufrufe
+
+Der Daemon fragt nie selbst ein Modell. Die Faehigkeiten entscheiden weiter,
+wann sie eines brauchen, und die bestehende Sparsamkeit gilt unveraendert:
+eine bereits beurteilte Mail wird wiederverwendet, ein vorhandenes Briefing
+nicht neu geschrieben, Terminkonflikte sind ohnehin reine Rechnung. Ein Test
+prueft, dass ein Durchlauf ohne neue Arbeit **null** Modellaufrufe ausloest.
+
+Deshalb darf `briefing` auch stuendlich im Plan stehen: liegt das Briefing des
+Tages schon vor, findet der Durchlauf nichts zu tun. Nebeneffekt: das Briefing
+entsteht kurz nach Mitternacht, nicht um sieben. Wen das stoert, setzt den
+Abstand hoch und laesst es zur gewuenschten Zeit von Hand laufen.
+
+### launchd
+
+`deploy/com.jarvis.daemon.plist` ist vorbereitet; drei Pfade darin sind
+anzupassen.
+
+```sh
+cp deploy/com.jarvis.daemon.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jarvis.daemon.plist
+launchctl bootout   gui/$(id -u)/com.jarvis.daemon     # anhalten
+```
+
+Bewusst gesetzt: `KeepAlive.SuccessfulExit = false`, damit `launchd` nach
+einem sauberen Ende nicht sofort neu startet und gegen eine bewusste
+Entscheidung ankaempft; `ThrottleInterval = 60`, damit ein Absturz keine
+Neustartschleife wird.
+
+Unabhaengig davon wirkt weiterhin sofort:
+
+```sh
+touch ~/.jarvis/STOP
+```
+
+---
+
+## Was wovon nachgewiesen ist
+
+Diese Tabelle sagt, worauf sich der Rest des Dokuments stuetzt. "Im Betrieb"
+heisst: tatsaechlich ausgefuehrt und beobachtet, nicht nur getestet.
+
+| Eigenschaft | Nachweis |
+|---|---|
+| Prozesstrennung `subprocess` | Tests **und** im Betrieb (`jarvis briefing --neu` gegen einen lokalen Ollama-Ersatz; der Aufruf lief nachweislich im zweiten Prozess) |
+| Keine `JARVIS_`-Variable im Kind | Tests **und** im Betrieb gemessen, im Vergleich zur geerbten Umgebung |
+| Kein Dateischutz durch `subprocess` | im Betrieb gemessen: `~/.jarvis` bleibt lesbar. Deshalb steht es so da. |
+| Sandbox-Stufe | nur Tests. **Nie auf macOS ausgefuehrt** -- Entwicklungsumgebung ist Linux |
+| Keychain-only | Tests (Plattform simuliert). Auf echtem macOS nicht ausgefuehrt |
+| Kalender-Pagination | Tests, mehrere Seiten, Duplikate, Fehler auf Folgeseite |
+| Daemon: Start, Einzelinstanz, SIGTERM | Tests **und** im Betrieb (zweite Instanz abgewiesen, SIGTERM nach 1 s bei 20 s Takt) |
+| Daemon: Fehlerfaelle | Tests. Zusaetzlich im Betrieb beobachtet: fehlende Gmail-Zugangsdaten liessen `mail` und `calendar` scheitern, der Daemon lief weiter |
+| Stoppschalter im Dauerbetrieb | Tests |
+| launchd-Plist | als Property List geparst. **Nicht auf macOS geladen** |
+| Sprachadapter (Whisper, `say`) | Tests gegen Ersatzprogramme. Nie mit echter Hardware |
+
+---
+
 ## Bewusst zurueckgestellt
 
 Diese Stellen weichen wissentlich von der Spezifikation ab oder sind nicht
 vollstaendig geprueft. Sie stehen hier,
 damit aus einer Ausnahme nicht stillschweigend der Normalfall wird.
 
-### Die Sandbox-Stufe ist nicht auf Hardware geprueft
+### Die Sandbox-Stufe ist auf macOS nicht nachgemessen
 
-`isolation = "subprocess"` ist vollstaendig geprueft. Die Stufe `"sandbox"`
-baut zusaetzlich ein `sandbox-exec`-Profil, das dem Kind den Zugriff auf
-`~/.jarvis` und den Schluesselbund verweigert. Profil und Aufruf sind
-getestet, ausgefuehrt wurde `sandbox-exec` nie -- es gibt es nur unter macOS,
-und die Entwicklungsumgebung ist Linux. Ohne macOS meldet die Stufe das
-sauber, statt stillschweigend ungeschuetzt zu laufen.
+Das ist die wichtigste offene Stelle, und sie ist keine Nachlaessigkeit,
+sondern eine Grenze der Entwicklungsumgebung: die ist Linux, `sandbox-exec`
+gibt es nur unter macOS. Profil, Aufruf und Fehlerverhalten sind getestet;
+**ausgefuehrt wurde `sandbox-exec` nie**.
 
-Ausserdem bleibt das Netz im Profil offen: den Anbieter zu erreichen ist die
-einzige Aufgabe des Kindes, und `sandbox-exec` filtert ohnehin nicht nach
-Zielhost. Der Schutz liegt darin, dass dort keine Zugangsdaten fuer etwas
-anderes liegen.
+Nachmessen laesst sich das in einem Schritt, auf deinem Mac:
 
-### Zugangsdaten aus Umgebungsvariablen (Abschnitt 4)
-
-Die Spezifikation sagt: ausschliesslich in der macOS-Keychain. Der Code kennt
-zusaetzlich `JARVIS_SECRET_<NAME>`, weil sich sonst auf keinem anderen Rechner
-als deinem Mac entwickeln oder testen laesst. Es wird weiterhin keine Datei
-gelesen und nichts ins Repo geschrieben.
-
-Diese Ausnahme ist sichtbar statt stillschweigend: steht `environment` in der
-Kette, schreibt `jarvis status` es hin --
-
-```
-Zugangsdaten   keychain -> environment  (Abschnitt 4 verlangt nur keychain)
+```sh
+jarvis llm check
 ```
 
-Im Dauerbetrieb auf dem Mac gehoert deshalb `JARVIS_SECRET_BACKEND=keychain`
-gesetzt; dann faellt der Rueckfall weg und der Hinweis verschwindet.
+Erwartet wird dort eine dritte Spalte SANDBOX, in der die ersten vier Zeilen
+auf `verweigert` stehen und "Netz nach aussen" auf `moeglich`. Steht dort
+etwas anderes, gilt die Stufe als nicht wirksam -- dann bitte melden, statt
+sie zu benutzen.
+
+Zwei Dinge, die auch bei erfolgreicher Messung gelten:
+
+* **Das Netz bleibt offen.** Den Anbieter zu erreichen ist die einzige
+  Aufgabe des Kindes, und `sandbox-exec` filtert nicht nach Zielhost. Der
+  Schutz liegt darin, dass dort keine Zugangsdaten fuer etwas anderes liegen.
+* **`sandbox-exec` gilt bei Apple als veraltet.** Es funktioniert weiter, aber
+  Apple weist beim Aufruf darauf hin. Der von Apple unterstuetzte Weg waere
+  die App Sandbox mit Entitlements, und die setzt eine signierte, gebuendelte
+  Anwendung voraus -- das waere ein anderer Zuschnitt des ganzen Projekts.
+  Solange JARVIS ein Kommandozeilenwerkzeug ist, ist `sandbox-exec` das, was
+  die Plattform hergibt. Diese Einschaetzung stammt aus der Dokumentationslage
+  und ist hier nicht gegen ein aktuelles macOS geprueft.
+
+### Zugangsdaten: Keychain-only auf macOS
+
+Auf macOS ist die Keychain die einzige Quelle. Es gibt dort **keinen stillen
+Rueckfall** mehr auf Umgebungsvariablen: fehlt ein Eintrag, scheitert der
+Aufruf laut. Genau dieser Durchrutscher war die alte Abweichung von
+Abschnitt 4 -- ein fehlender Keychain-Eintrag sah aus wie ein vorhandener.
+
+| `JARVIS_SECRET_BACKEND` | auf macOS | sonst |
+|---|---|---|
+| nicht gesetzt (`auto`) | nur Keychain | nur Umgebung (Entwicklungspfad) |
+| `keychain` | nur Keychain | nichts (es gibt keine) |
+| `env` | nur Umgebung, **Verstoss** | nur Umgebung |
+| `none` | nichts | nichts |
+
+Der Entwicklungspfad bleibt, weil sich sonst auf keinem anderen Rechner als
+deinem Mac testen laesst. Er liest Umgebungsvariablen, keine Datei -- damit
+landet weiterhin nichts im Git.
+
+`jarvis status` unterscheidet beides:
+
+```
+Zugangsdaten   environment  (auto)
+  Entwicklungspfad: ... Die macOS-Keychain gibt es auf diesem System nicht.
+```
+
+```
+Zugangsdaten   environment  (env)
+  UNSICHER   Zugangsdaten kommen aus Klartext-Umgebungsvariablen, nicht aus
+             der Keychain. Abschnitt 4 verlangt die Keychain: ...
+```
+
+Der zweite Fall setzt zusaetzlich den Rueckgabewert auf 1 -- ein Skript merkt
+es also auch ohne hinzusehen. Der erste nicht: auf Linux ist die Umgebung
+kein Verstoss, sondern der einzige Weg.
+
+Es geht nie ein Wert nach draussen. `require()` nennt den Namen des Eintrags,
+nicht seinen Inhalt; `describe()` nennt nur die Quellen. Getestet ist
+ausserdem, dass der Modellschluessel weder in `stdout` noch in `stderr` des
+auswertenden Prozesses noch im Protokoll auftaucht.
+
+Im `launchd`-Eintrag unter `deploy/` steht `JARVIS_SECRET_BACKEND=keychain`
+ausdruecklich drin -- nicht weil es noetig waere, sondern damit man es sieht.
 
 ### Kleinere bekannte Grenzen
 
-- **Kalender ohne Blaettern.** `list_events` holt eine Seite, hoechstens 250
-  Termine je Kalender und Fenster; ein `nextPageToken` wird nicht verfolgt.
-  Fuer wenige Tage in einem persoenlichen Kalender reicht das. Wer laengere
-  Fenster liest, braucht dort eine Schleife.
-- **Kein Daemon.** Durchlaeufe startet die Kommandozeile; `jarvis voice
-  listen` macht eine Runde, nicht mehr.
+- **Sprache ohne Dauerschleife.** `jarvis voice listen` macht eine Runde,
+  nicht mehr. Dauerhaftes Zuhoeren am Mikrofon ist bewusst nicht im Daemon.
 - **Sprache nur auf diesem Rechner geprueft, nicht auf Hardware.** Die
   Adapter fuer `whisper.cpp`, `say` und die Aufnahme sind gegen Ersatz-
   programme getestet, nicht gegen ein echtes Mikrofon -- die gibt es in der
@@ -848,6 +1021,6 @@ gesetzt; dann faellt der Rueckfall weg und der Hinweis verschwindet.
 
 ## Was noch nicht existiert
 
-Es gibt noch keinen `daemon.py` und keine launchd-plist: Durchlaeufe startet
-man vorerst von Hand oder ueber einen eigenen Eintrag in der Aufgabenplanung.
-Damit fehlt auch das dauerhafte Zuhoeren.
+Phase 7: Dateiablage, Hausautomation, Aufgabenverwaltung, Dokumentenanalyse --
+alles offen. Dauerhaftes Zuhoeren am Mikrofon ebenfalls: der Daemon fuehrt
+Sprache bewusst nicht.

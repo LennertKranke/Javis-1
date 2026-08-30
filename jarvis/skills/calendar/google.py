@@ -25,12 +25,23 @@ from jarvis.skills.mail.gmail import GmailAuth, GmailAuthError, GmailError
 __all__ = [
     "CALENDAR_READ",
     "CALENDAR_SCOPE",
+    "MAX_SEITEN",
+    "SEITENGROESSE",
     "CalendarClient",
     "has_calendar_scope",
 ]
 
 CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 API_ROOT = "https://www.googleapis.com/calendar/v3"
+
+#: Termine je Abruf. Google erlaubt mehr, aber grosse Seiten machen einen
+#: Abbruch teurer, ohne etwas zu sparen.
+SEITENGROESSE = 250
+
+#: Notbremse gegen einen Server, der immer denselben Token zurueckgibt.
+#: Bei `SEITENGROESSE` Terminen je Seite sind das 10000 Termine im Fenster --
+#: wer so viele hat, hat ein zu grosses Fenster gewaehlt, keinen Fehler.
+MAX_SEITEN = 40
 
 ENDPOINTS_BY_CAPABILITY: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
     "read": (
@@ -133,24 +144,58 @@ class CalendarClient:
     ) -> list[dict]:
         """Termine in einem Zeitfenster, wiederkehrende bereits aufgeloest.
 
-        Bewusst ohne Blaettern: es wird genau eine Seite geholt, hoechstens 250
-        Termine je Kalender und Fenster. Ein `nextPageToken` in der Antwort
-        wird nicht verfolgt. Fuer ein Fenster von wenigen Tagen in einem
-        persoenlichen Kalender reicht das; wer laengere Fenster oder sehr volle
-        Kalender liest, verliert stillschweigend den Rest -- dann gehoert hier
-        eine Schleife ueber `pageToken` hin. Bis dahin ist die Grenze eine
-        bekannte, keine uebersehene.
+        Blaettert ueber `nextPageToken`, bis das Fenster abgearbeitet oder
+        `limit` erreicht ist. `orderBy=startTime` gilt seitenuebergreifend,
+        die Reihenfolge bleibt also stabil.
+
+        Scheitert eine Folgeseite, wird der Fehler durchgereicht -- eine
+        halbe Terminliste darf nicht als die Terminliste gelten. Der Grund ist
+        nicht Ordnungsliebe: die Konflikterkennung raeumt Befunde weg, deren
+        Gegenstueck sie nicht mehr sieht. Eine fehlende Seite loeschte damit
+        gueltige Konflikte, und niemand merkte es.
         """
         kennung = urllib.parse.quote(calendar_id, safe="")
-        antwort = self._call(
-            "GET",
-            f"/calendars/{kennung}/events",
-            params={
+        gesammelt: list[dict] = []
+        gesehen: set[str] = set()
+        token: str | None = None
+        seite = 0
+
+        while len(gesammelt) < limit:
+            seite += 1
+            if seite > MAX_SEITEN:
+                raise GmailError(
+                    f"Kalender {calendar_id!r} liefert mehr als {MAX_SEITEN} Seiten. "
+                    f"Das Zeitfenster ist zu gross (skills.calendar.window_days)."
+                )
+            params: dict[str, Any] = {
                 "timeMin": time_min,
                 "timeMax": time_max,
                 "singleEvents": "true",
                 "orderBy": "startTime",
-                "maxResults": max(1, min(limit, 250)),
-            },
-        )
-        return list(antwort.get("items") or [])
+                "maxResults": max(1, min(limit - len(gesammelt), SEITENGROESSE)),
+            }
+            if token:
+                params["pageToken"] = token
+
+            antwort = self._call("GET", f"/calendars/{kennung}/events", params=params)
+            eintraege = list(antwort.get("items") or [])
+
+            for eintrag in eintraege:
+                # Dieselbe Kennung kann ueber Seitengrenzen hinweg erneut
+                # auftauchen, wenn sich der Kalender waehrend des Blaetterns
+                # aendert. Der erste Treffer gewinnt, damit die Reihenfolge
+                # stabil bleibt.
+                kennzeichen = str(eintrag.get("id", ""))
+                if kennzeichen and kennzeichen in gesehen:
+                    continue
+                gesehen.add(kennzeichen)
+                gesammelt.append(eintrag)
+                if len(gesammelt) >= limit:
+                    break
+
+            token = antwort.get("nextPageToken") or None
+            if not token or not eintraege:
+                # Keine weitere Seite, oder eine leere: hier ist Schluss.
+                break
+
+        return gesammelt

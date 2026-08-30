@@ -4,16 +4,24 @@ Abschnitt 4 verlangt: Zugangsdaten ausschliesslich in der Keychain, niemals im
 Repo. Das Interface hat deshalb kein `set` und keinen Dateipfad -- es kann nur
 lesen, und es kann nur aus Quellen lesen, die ausserhalb des Projekts liegen.
 
-Der zweite Ruecken (`EnvironmentBackend`) existiert, weil sich sonst auf keinem
-anderen Rechner als deinem Mac entwickeln oder testen laesst. Er liest
-Umgebungsvariablen, keine Datei -- damit landet weiterhin nichts im Git.
+Auf macOS ist die Keychain die einzige Quelle. Es gibt dort keinen stillen
+Rueckfall mehr: fehlt ein Eintrag, scheitert der Aufruf laut, statt
+stillschweigend eine Klartext-Umgebungsvariable zu nehmen. Genau dieser
+Durchrutscher war die Abweichung von Abschnitt 4 -- ein fehlender
+Keychain-Eintrag sah aus wie ein vorhandener.
 
-Das ist und bleibt eine Abweichung vom Wortlaut aus Abschnitt 4 ("ausschliesslich
-in der Keychain"). Sie ist bewusst gewaehlt und bewusst sichtbar: `keychain_only`
-sagt, ob die Lage der Vorgabe entspricht, `jarvis status` schreibt es hin, und im
-Dauerbetrieb auf dem Mac gehoert `JARVIS_SECRET_BACKEND=keychain` gesetzt. Ohne
-diese Sichtbarkeit waere aus der Entwicklungshilfe stillschweigend der Normalfall
-geworden.
+Der zweite Ruecken (`EnvironmentBackend`) bleibt, weil sich sonst auf keinem
+anderen Rechner als deinem Mac entwickeln oder testen laesst. Er liest
+Umgebungsvariablen, keine Datei -- damit landet weiterhin nichts im Git. Auf
+Nicht-macOS ist er der Normalfall, auf macOS nur nach ausdruecklicher Wahl
+(`JARVIS_SECRET_BACKEND=env`).
+
+Jede Abweichung ist sichtbar: `insecure_reason()` sagt sie in einem Satz,
+`jarvis status` schreibt sie hin. Eine Abweichung, die nirgends auftaucht,
+wird zur Regel.
+
+Ausgegeben wird nie ein Wert -- weder in Fehlern noch in Logs noch im
+Protokoll. `require()` nennt den Namen des Eintrags, nicht seinen Inhalt.
 
 Eintrag in der Keychain anlegen:
     security add-generic-password -s jarvis -a anthropic_api_key -w
@@ -38,6 +46,7 @@ __all__ = [
 
 KEYCHAIN_SERVICE = "jarvis"
 ENV_PREFIX = "JARVIS_SECRET_"
+BACKEND_ENV = "JARVIS_SECRET_BACKEND"
 
 
 class SecretsError(RuntimeError):
@@ -134,8 +143,14 @@ class EnvironmentBackend:
 class SecretStore:
     """Fragt die Rueckwaende der Reihe nach. Der erste Treffer gewinnt."""
 
-    def __init__(self, backends: list[SecretBackend]) -> None:
+    def __init__(self, backends: list[SecretBackend], *, mode: str = "auto") -> None:
         self._backends = [b for b in backends if b.available()]
+        self._mode = mode
+
+    @property
+    def mode(self) -> str:
+        """Wie der Speicher gewaehlt wurde. Nur zur Anzeige."""
+        return self._mode
 
     @property
     def backends(self) -> tuple[str, ...]:
@@ -146,13 +161,39 @@ class SecretStore:
 
     @property
     def keychain_only(self) -> bool:
-        """Entspricht die Lage dem, was Abschnitt 4 verlangt?
-
-        Nein, sobald `environment` in der Kette steht. Das ist eine bewusste
-        Entwicklungsausnahme (siehe Modulkopf) -- aber eine, die man sehen
-        koennen muss. Eine Ausnahme, die nirgends auftaucht, wird zur Regel.
-        """
+        """Entspricht die Lage dem, was Abschnitt 4 verlangt?"""
         return bool(self._backends) and all(b.name == "keychain" for b in self._backends)
+
+    @property
+    def violates_spec(self) -> bool:
+        """Ein echter Verstoss gegen Abschnitt 4 -- nicht bloss ein Hinweis.
+
+        Nur auf macOS. Dort gibt es die Keychain, dort ist eine
+        Klartext-Umgebungsvariable eine Entscheidung gegen sie. Auf einem
+        System ohne Keychain ist die Umgebung der einzige Weg; das ist der
+        Entwicklungspfad und kein Verstoss.
+        """
+        return sys.platform == "darwin" and bool(self._backends) and not self.keychain_only
+
+    def insecure_reason(self) -> str | None:
+        """Warum diese Lage von Abschnitt 4 abweicht -- oder None.
+
+        Eine Abweichung, die nirgends auftaucht, wird zur Regel. `jarvis
+        status` schreibt diesen Satz hin; wie laut, entscheidet
+        `violates_spec`.
+        """
+        if not self._backends or self.keychain_only:
+            return None
+        if self.violates_spec:
+            return (
+                "Zugangsdaten kommen aus Klartext-Umgebungsvariablen, nicht aus der "
+                "Keychain. Abschnitt 4 verlangt die Keychain: JARVIS_SECRET_BACKEND "
+                "loeschen oder auf 'keychain' setzen."
+            )
+        return (
+            "Entwicklungspfad: Zugangsdaten kommen aus Umgebungsvariablen. Die "
+            "macOS-Keychain gibt es auf diesem System nicht."
+        )
 
     def get(self, key: str) -> str | None:
         for backend in self._backends:
@@ -205,15 +246,31 @@ class SecretStore:
 
 
 def default_store() -> SecretStore:
-    """Keychain zuerst, Umgebung als Rueckfall.
+    """Auf macOS ausschliesslich die Keychain. Sonst nichts, ohne Ansage.
 
-    `JARVIS_SECRET_BACKEND` erzwingt eine Wahl: keychain, env oder none.
+    Frueher haengte `auto` die Umgebung als stillen Rueckfall an -- auch auf
+    dem Mac. Fehlte dort ein Keychain-Eintrag, rutschte die Suche
+    stillschweigend auf eine Klartext-Variable durch, statt laut zu scheitern.
+    Genau das verbietet Abschnitt 4.
+
+    Jetzt gilt:
+
+      macOS, auto      nur Keychain. Kein Rueckfall, keine Ausnahme.
+      sonst, auto      nur Umgebung -- die Keychain gibt es dort nicht. Das
+                       ist der Entwicklungspfad und wird als solcher gemeldet.
+      env              Umgebung, ausdruecklich gewaehlt. Auch auf dem Mac
+                       moeglich, aber nur so: als bewusste Entscheidung, die
+                       `jarvis status` sichtbar macht.
+      keychain         nur Keychain, ueberall.
+      none             gar nichts.
     """
-    choice = os.environ.get("JARVIS_SECRET_BACKEND", "auto").lower()
+    choice = os.environ.get(BACKEND_ENV, "auto").lower()
     if choice == "keychain":
-        return SecretStore([KeychainBackend()])
+        return SecretStore([KeychainBackend()], mode="keychain")
     if choice == "env":
-        return SecretStore([EnvironmentBackend()])
+        return SecretStore([EnvironmentBackend()], mode="env")
     if choice == "none":
-        return SecretStore([])
-    return SecretStore([KeychainBackend(), EnvironmentBackend()])
+        return SecretStore([], mode="none")
+    if sys.platform == "darwin":
+        return SecretStore([KeychainBackend()], mode="auto")
+    return SecretStore([EnvironmentBackend()], mode="auto")

@@ -513,7 +513,26 @@ def test_status_nennt_die_abweichung_beim_geheimnisspeicher(home, capsys, monkey
     run(home, "init", capsys=capsys)
     _, out = run(home, "status", "--ohne-anbieter", capsys=capsys)
     assert "environment" in out
-    assert "Abschnitt 4" in out
+    assert "Umgebungsvariablen" in out
+
+
+def test_status_meldet_den_verstoss_laut_und_mit_fehlercode(home, capsys, monkeypatch):
+    """Auf macOS ist die Umgebung ein Verstoss, nicht bloss ein Hinweis."""
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "env")
+    monkeypatch.setattr("jarvis.core.secrets.sys.platform", "darwin")
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "status", "--ohne-anbieter", capsys=capsys)
+    assert code == 1
+    assert "UNSICHER" in out
+    assert "Keychain" in out
+
+
+def test_status_bleibt_ruhig_wenn_nur_die_keychain_gilt(home, capsys, monkeypatch):
+    monkeypatch.setenv("JARVIS_SECRET_BACKEND", "keychain")
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "status", "--ohne-anbieter", capsys=capsys)
+    assert code == 0
+    assert "UNSICHER" not in out
 
 
 def test_status_schweigt_wenn_nur_die_keychain_gilt(home, capsys, monkeypatch):

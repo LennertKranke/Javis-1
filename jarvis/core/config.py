@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, tzinfo
 from enum import IntEnum
 from pathlib import Path
@@ -29,6 +29,7 @@ __all__ = [
     "Capability",
     "Config",
     "ConfigError",
+    "DaemonConfig",
     "LLMConfig",
     "Paths",
     "ProviderConfig",
@@ -235,6 +236,25 @@ LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 @dataclass(frozen=True)
+class DaemonConfig:
+    """Der Dauerbetrieb. Eine Uhr, sonst nichts.
+
+    `enabled` steht auf false, bis jemand es ausdruecklich umlegt. Ein
+    Assistent, der nach `jarvis init` von selbst losliefe, waere genau das,
+    was Abschnitt 3 verhindern will -- auch wenn er dabei nur im Trockenlauf
+    entscheidet.
+
+    `schedule` nennt Faehigkeit und Abstand in Minuten. Was nicht darin steht,
+    laeuft nicht. Faehigkeiten, die nach aussen wirken, gehoeren hier nicht
+    hinein, solange man ihnen nicht zusieht.
+    """
+
+    enabled: bool = False
+    tick_seconds: int = 30
+    schedule: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class VoiceConfig:
     """Sprache als zusaetzliche Bedienweise.
 
@@ -371,6 +391,7 @@ class Config:
     skills: dict[str, dict[str, Any]]
     web: WebConfig
     voice: VoiceConfig
+    daemon: DaemonConfig
     source: Path | None
 
     @property
@@ -438,6 +459,7 @@ class Config:
                 "timezone",
                 "capabilities",
                 "llm",
+                "daemon",
                 "skills",
                 "voice",
                 "web",
@@ -458,6 +480,7 @@ class Config:
         skills = _parse_skills(raw.get("skills", {}))
         web = _parse_web(raw.get("web", {}))
         voice = _parse_voice(raw.get("voice", {}), known_tasks=set(llm.tasks))
+        daemon = _parse_daemon(raw.get("daemon", {}), known_capabilities=set(capabilities))
         return cls(
             paths=paths,
             dry_run=dry_run,
@@ -469,6 +492,7 @@ class Config:
             skills=skills,
             web=web,
             voice=voice,
+            daemon=daemon,
             source=source,
         )
 
@@ -608,6 +632,37 @@ def _parse_web(raw: Any) -> WebConfig:
         raw.get("host", "127.0.0.1"),
         raw.get("port", 8765),
         raw.get("refresh_seconds", 0),
+    )
+
+
+def _parse_daemon(raw: Any, *, known_capabilities: set[str]) -> DaemonConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError("daemon: erwartet eine Tabelle")
+    _reject_unknown(raw, {"enabled", "tick_seconds", "schedule"}, "daemon")
+
+    takt = _as_int(raw.get("tick_seconds", 30), "daemon.tick_seconds")
+    if not 5 <= takt <= 3600:
+        raise ConfigError("daemon.tick_seconds: muss zwischen 5 und 3600 liegen")
+
+    roh_plan = raw.get("schedule", {})
+    if not isinstance(roh_plan, dict):
+        raise ConfigError("daemon.schedule: erwartet eine Tabelle")
+    plan: dict[str, int] = {}
+    for name, minuten in roh_plan.items():
+        if name not in known_capabilities:
+            bekannt = ", ".join(sorted(known_capabilities)) or "keine"
+            raise ConfigError(
+                f"daemon.schedule.{name}: keine bekannte Faehigkeit (bekannt: {bekannt})"
+            )
+        wert = _as_int(minuten, f"daemon.schedule.{name}")
+        if not 1 <= wert <= 10080:
+            raise ConfigError(f"daemon.schedule.{name}: muss zwischen 1 Minute und 7 Tagen liegen")
+        plan[name] = wert
+
+    return DaemonConfig(
+        enabled=_as_bool(raw.get("enabled", False), "daemon.enabled"),
+        tick_seconds=takt,
+        schedule=plan,
     )
 
 
@@ -1090,8 +1145,10 @@ window_days = 7
 # 0 schaltet diese Pruefung ab; Ueberschneidungen werden weiter gemeldet.
 min_gap_minutes = 15
 
-# Obergrenze je Durchlauf und Kalender.
-max_per_run = 100
+# Obergrenze je Durchlauf und Kalender, ueber alle Seiten zusammen.
+# Der Client blaettert ueber nextPageToken, bis das Fenster abgearbeitet
+# oder diese Zahl erreicht ist.
+max_per_run = 250
 
 
 [skills.briefing]
@@ -1105,6 +1162,36 @@ max_words = 200
 # Ab wie vielen Tagen eine unbeantwortete Anfrage als Frist gilt. Gerechnet
 # wird ab dem ersten Sehen, nicht ab dem letzten Durchlauf.
 overdue_days = 3
+
+
+# --------------------------------------------------------------------------- #
+# Dauerbetrieb
+#
+# Der Daemon ist eine Uhr, kein zweites Gehirn. Er ruft dieselben Durchlaeufe
+# auf, die auch die Kommandozeile aufruft -- Autonomiestufen, Gatter,
+# Ratenbegrenzung und Stoppschalter gelten unveraendert.
+#
+# enabled bleibt false, bis du es umlegst. Ein Assistent, der nach
+# "jarvis init" von selbst losliefe, waere genau das, was Abschnitt 3
+# verhindern will.
+#
+# In schedule steht, welche Faehigkeit in welchem Abstand (Minuten) laeuft.
+# Was nicht darin steht, laeuft nicht. Absichtlich fehlen mail_reply und
+# mail_send: was Entwuerfe schreibt oder sendet, laeuft erst dann von selbst,
+# wenn du ihm eine Weile zugesehen hast.
+#
+# briefing darf oft laufen, ohne etwas zu kosten: liegt das Briefing des
+# Tages schon vor, findet der Durchlauf nichts zu tun und fragt kein Modell.
+# --------------------------------------------------------------------------- #
+
+[daemon]
+enabled = false
+tick_seconds = 30
+
+[daemon.schedule]
+mail = 15
+calendar = 60
+briefing = 60
 
 
 # --------------------------------------------------------------------------- #

@@ -35,6 +35,7 @@ __all__ = [
     "TaskRoute",
     "WebConfig",
     "jarvis_home",
+    "url_host",
 ]
 
 
@@ -309,10 +310,23 @@ class Config:
         """
         return dict(self.skills.get(name, {}))
 
-    def permits(self, name: str, required_level: int) -> bool:
-        """Darf die Faehigkeit auf der gewaehrten Stufe selbstaendig handeln?"""
+    def permits(self, name: str, required_level: int, *, approved: bool = False) -> bool:
+        """Darf die Faehigkeit handeln?
+
+        Die eine Stelle, an der diese Frage beantwortet wird. Das Gatter fragt
+        hier, und die Fabrik fragt hier, wenn sie entscheidet welche Rechte ein
+        Client bekommt. Frueher hatten beide ihre eigene Rechnung -- dann
+        konnte das Gatter eine Freigabe durchlassen, waehrend der Client sie
+        mangels Recht gar nicht ausfuehren konnte.
+
+        `approved` ist eine ausdrueckliche Freigabe durch einen Menschen. Sie
+        ersetzt die Autonomiestufe, nicht den Ein-Aus-Schalter: eine
+        abgeschaltete Faehigkeit bleibt abgeschaltet.
+        """
         cap = self.capability(name)
-        return cap.enabled and int(cap.autonomy_level) >= int(required_level)
+        if not cap.enabled:
+            return False
+        return approved or int(cap.autonomy_level) >= int(required_level)
 
     @classmethod
     def load(cls, home: Path | None = None) -> Config:
@@ -552,11 +566,15 @@ def _parse_providers(raw: Any) -> dict[str, ProviderConfig]:
         timeout = body.get("timeout", 120.0)
         if isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0:
             raise ConfigError(f"{where}.timeout: erwartet eine positive Zahl")
+
+        local = _as_bool(body.get("local", kind in {"ollama", "static"}), f"{where}.local")
+        _check_local_claim(where, kind=kind, local=local, base_url=body.get("base_url"))
+
         out[name] = ProviderConfig(
             name=name,
             kind=kind,
             model=_as_str(body["model"], f"{where}.model"),
-            local=_as_bool(body.get("local", kind in {"ollama", "static"}), f"{where}.local"),
+            local=local,
             max_tokens=_as_int(body.get("max_tokens", 4096), f"{where}.max_tokens"),
             timeout=float(timeout),
             secret=body.get("secret"),
@@ -565,6 +583,44 @@ def _parse_providers(raw: Any) -> dict[str, ProviderConfig]:
             reply=body.get("reply"),
         )
     return out
+
+
+def _check_local_claim(where: str, *, kind: str, local: bool, base_url: Any) -> None:
+    """Prueft, ob "lokal" technisch haltbar ist.
+
+    Abschnitt 5.2 schickt sensible persoenliche Daten nur an lokale Modelle.
+    Bisher war `local = true` eine Behauptung in der Konfigurationsdatei: ein
+    Anbieter durfte sich lokal nennen und seine base_url auf einen fremden
+    Rechner zeigen lassen. Dann waere die Vertraulichkeitssperre im Router
+    eine Beschriftung ohne Wirkung.
+
+    Deshalb hier: wer lokal sein will, muss auf eine Loopback-Adresse zeigen.
+    Der Anbieter selbst prueft das vor jeder Anfrage noch einmal.
+    """
+    if not local:
+        return
+    if kind == "anthropic":
+        raise ConfigError(
+            f"{where}.local: ein Anthropic-Anbieter laeuft nicht auf diesem Rechner. "
+            f"local = true ist hier nicht haltbar."
+        )
+    if base_url is None:
+        return  # Vorgabe ist Loopback, siehe OllamaProvider
+    host = url_host(_as_str(base_url, f"{where}.base_url"))
+    if host not in LOOPBACK:
+        erlaubt = ", ".join(sorted(LOOPBACK))
+        raise ConfigError(
+            f"{where}: local = true, aber base_url zeigt auf {host!r}. Ein als lokal "
+            f"gefuehrter Anbieter muss auf diesen Rechner zeigen (erlaubt: {erlaubt})."
+        )
+
+
+def url_host(url: str) -> str:
+    """Der Wirt einer URL, ohne Klammern bei IPv6."""
+    from urllib.parse import urlsplit
+
+    zerlegt = urlsplit(url if "//" in url else f"//{url}")
+    return (zerlegt.hostname or "").lower()
 
 
 def _parse_tasks(raw: Any, providers: dict[str, ProviderConfig]) -> dict[str, TaskRoute]:

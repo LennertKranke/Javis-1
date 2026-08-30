@@ -299,7 +299,10 @@ def create_app(
 
             gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
             try:
-                skill = build_skill(eintrag.skill, config=config, conn=conn)
+                # Die Freigabe wirkt auf das Gatter und auf die Rechte des
+                # Clients gleichermassen. Sonst laesst das Gatter durch, was
+                # der Client anschliessend nicht darf.
+                skill = build_skill(eintrag.skill, config=config, conn=conn, approved=True)
             except ConfigError:
                 speicher.note(vorgangs_id, "Faehigkeit laesst sich nicht bauen")
                 return _zurueck("fehlgeschlagen")

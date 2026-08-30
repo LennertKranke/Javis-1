@@ -68,9 +68,29 @@ def test_poll_liefert_normalisierte_ereignisse(conn):
     assert client.queries == [("is:unread in:inbox", 25)]
 
 
-def test_poll_ueberspringt_bereits_beurteilte(conn):
+def test_poll_ueberspringt_gehandeltes(conn):
+    """Was wirklich eingeordnet wurde, kommt nicht wieder."""
+    from jarvis.skills.mail.store import STATE_ACTED
+
     skill, _ = skill_mit(conn, [message(mid="m1"), message(mid="m2")])
-    MailStore(conn).remember(message_id="m1", category="rechnung")
+    MailStore(conn).remember(message_id="m1", category="rechnung", labelled=True, state=STATE_ACTED)
+    assert [e.key for e in skill.poll()] == ["m2"]
+
+
+def test_poll_greift_nur_beurteiltes_wieder_auf(conn):
+    """Der Kern der Korrektur: ein Trockenlauf verbrennt keine Nachricht."""
+    from jarvis.skills.mail.store import STATE_ANALYSED
+
+    skill, _ = skill_mit(conn, [message(mid="m1"), message(mid="m2")])
+    MailStore(conn).remember(message_id="m1", category="rechnung", state=STATE_ANALYSED)
+    assert [e.key for e in skill.poll()] == ["m1", "m2"]
+
+
+def test_poll_ueberspringt_endgueltig_verworfenes(conn):
+    from jarvis.skills.mail.store import STATE_SKIPPED
+
+    skill, _ = skill_mit(conn, [message(mid="m1"), message(mid="m2")])
+    MailStore(conn).remember(message_id="m1", state=STATE_SKIPPED)
     assert [e.key for e in skill.poll()] == ["m2"]
 
 

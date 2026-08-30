@@ -155,3 +155,34 @@ def _gmail_form(raw: str, thread_id: str) -> dict:
             "body": {"data": b64(koerper), "size": len(koerper)},
         },
     }
+
+
+def entwurf_hinterlegen(
+    client: FakeGmailClient,
+    *,
+    draft_id: str,
+    to: str = "anna@example.com",
+    subject: str = "Re: x",
+    thread_id: str = "t",
+    body: str = "Guten Tag,\n\npasst.",
+) -> str:
+    """Legt einen echten Entwurf im Doppel ab und gibt seinen Fingerabdruck.
+
+    Ein Antwortvorgang ohne passenden Entwurf im Postfach wird seit der
+    Integritaetspruefung zurueckgehalten -- Tests brauchen deshalb einen
+    Entwurf, der wirklich zu ihrem Fingerabdruck passt.
+    """
+    from jarvis.skills.mail.compose import (
+        ReplyTarget,
+        build_message,
+        fingerprint,
+        raw_for_gmail,
+    )
+
+    ziel = ReplyTarget(to=to, thread_id=thread_id, subject=subject)
+    nachricht = build_message(ziel, body, from_address="ich@example.com")
+    client.drafts[draft_id] = {
+        "id": draft_id,
+        "message": _gmail_form(raw_for_gmail(nachricht), thread_id),
+    }
+    return fingerprint(ziel, body)

@@ -182,8 +182,9 @@ def test_mail_state_auf_leerer_datenbank(home, capsys):
     run(home, "init", capsys=capsys)
     code, out = run(home, "mail", "state", capsys=capsys)
     assert code == 0
-    assert "Beurteilt" in out
+    assert "Erfasst" in out
     assert "Beschriftet" in out
+    assert "Zustaende" in out
 
 
 def test_mail_state_zeigt_beurteiltes(home, capsys):
@@ -303,7 +304,7 @@ def test_mail_draft_ohne_anmeldung(home, capsys):
 
     run(home, "init", capsys=capsys)
     conn = open_database(home / "state.db")
-    MailStore(conn).remember(message_id="a", category="anfrage", needs_reply=True)
+    MailStore(conn).remember(message_id="a", category="anfrage", needs_reply=True, state="analysed")
     conn.close()
 
     code, out = run(home, "mail", "draft", capsys=capsys)

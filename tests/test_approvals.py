@@ -160,6 +160,10 @@ class Attrappe(Skill):
     def decide(self, event):
         raise NotImplementedError
 
+    def verify_targets(self, decision):
+        """Attrappe: die echte Pruefung steht in den Mail-Faehigkeiten."""
+        return decision
+
     def act(self, decision):
         self.ausgefuehrt.append(decision)
         return Result(

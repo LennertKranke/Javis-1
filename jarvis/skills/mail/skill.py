@@ -13,18 +13,31 @@ Nachricht. Genau so ist Prinzip 2.1 gemeint.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from jarvis.core.config import Config, ConfigError
 from jarvis.core.sanitize import sanitize
 from jarvis.llm.router import Router
-from jarvis.skills.base import Decision, Event, Result, Skill, register_skill
+from jarvis.skills.base import (
+    Decision,
+    Event,
+    Result,
+    Skill,
+    TargetMismatch,
+    register_skill,
+)
 from jarvis.skills.mail.classify import build_schema, classify
 from jarvis.skills.mail.gmail import GmailClient, GmailError
 from jarvis.skills.mail.labels import LabelMap
 from jarvis.skills.mail.message import MailMessage, parse_message
 from jarvis.skills.mail.prefilter import prefilter
-from jarvis.skills.mail.store import MailStore
+from jarvis.skills.mail.store import (
+    STATE_ACTED,
+    STATE_ANALYSED,
+    STATE_SKIPPED,
+    MailStore,
+)
 
 __all__ = ["MailOptions", "MailSkill"]
 
@@ -146,8 +159,11 @@ class MailSkill(Skill):
 
     def poll(self) -> list[Event]:
         ids = self._client.list_message_ids(self._options.query, self._options.max_per_run)
-        bekannt = self._store.seen(ids)
-        offen = [mid for mid in ids if mid not in bekannt]
+        # Nur endgueltig Erledigtes faellt heraus. Was ein Trockenlauf bloss
+        # angesehen hat, kommt wieder -- sonst waere es fuer den spaeteren
+        # echten Lauf verloren.
+        erledigt = self._store.handled(ids)
+        offen = [mid for mid in ids if mid not in erledigt]
 
         events: list[Event] = []
         for message_id in offen:
@@ -195,6 +211,14 @@ class MailSkill(Skill):
         if treffer is not None and treffer.category:
             fields: dict[str, Any] = {"kategorie": treffer.category}
             decided_by, reason, model = "prefilter", treffer.reason, None
+        elif (frueher := self._store.cached_analysis(message.message_id)) is not None:
+            # Schon beurteilt, nur noch nicht gehandelt. Die Beurteilung bleibt
+            # gueltig; ein zweiter Modellaufruf kostet Geld und aendert nichts.
+            fields = {
+                "kategorie": frueher.category,
+                "antwort_noetig": frueher.needs_reply,
+            }
+            decided_by, reason, model = "cached", "bereits beurteilt", None
         else:
             if event.content is None:
                 raise ValueError("Ereignis ohne normalisierten Inhalt")
@@ -226,6 +250,40 @@ class MailSkill(Skill):
             model=model,
         )
 
+    def verify_targets(self, decision: Decision) -> Decision:
+        """Rechnet das Label aus der Kategorie neu und prueft die Nachricht nach.
+
+        Die Kategorie stammt aus einer geschlossenen Aufzaehlung; welches Label
+        daraus wird, rechnet `LabelMap`. Beides wird hier neu gemacht, statt der
+        gespeicherten Zeile zu glauben.
+        """
+        if decision.is_noop:
+            return decision
+
+        message_id = str(decision.targets.get("message_id") or "")
+        kategorie = str(decision.targets.get("category") or "")
+
+        if kategorie not in self._options.categories:
+            raise TargetMismatch(f"Kategorie {kategorie!r} steht nicht in der Konfiguration")
+        # Nur Nachrichten, die JARVIS selbst geholt hat -- keine beliebige
+        # Kennung, die jemand in die Tabelle geschrieben haben koennte.
+        if self._store.get(message_id) is None:
+            raise TargetMismatch(f"Nachricht {message_id!r} ist nicht bekannt")
+        try:
+            self._client.get_message(message_id, fmt="metadata", headers=["From"])
+        except GmailError as exc:
+            raise TargetMismatch(f"Nachricht {message_id!r} nicht abrufbar: {exc}") from exc
+
+        return replace(
+            decision,
+            targets={
+                "message_id": message_id,
+                "category": kategorie,
+                "label_name": self._labels.label_name(kategorie),
+                "label_id": self._labels.lookup(kategorie),
+            },
+        )
+
     def act(self, decision: Decision) -> Result:
         if decision.action == "skip":
             return Result(
@@ -255,6 +313,20 @@ class MailSkill(Skill):
             detail={"label": decision.targets.get("label_name")},
         )
 
+    @staticmethod
+    def _state_of(decision: Decision, result: Result | None) -> str:
+        """Welcher Zustand aus einem Vorgang folgt.
+
+        Der Kern der Korrektur: nur eine tatsaechlich ausgefuehrte Aktion
+        setzt `acted`. Ein Trockenlauf oder ein geschlossenes Gatter setzt
+        `analysed` -- die Nachricht bleibt offen.
+        """
+        if decision.is_noop:
+            return STATE_SKIPPED
+        if result is not None and result.performed:
+            return STATE_ACTED
+        return STATE_ANALYSED
+
     def after(
         self, event: Event, decision: Decision, disposition: str, result: Result | None
     ) -> None:
@@ -265,6 +337,7 @@ class MailSkill(Skill):
             category=decision.targets.get("category"),
             decided_by=decision.decided_by,
             labelled=bool(result and result.performed),
+            state=self._state_of(decision, result),
             # Phase 3 liest das: nur was hier vermerkt ist, bekommt spaeter
             # ueberhaupt einen Antwortentwurf.
             needs_reply=bool(decision.fields.get("antwort_noetig")),

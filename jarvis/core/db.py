@@ -176,6 +176,49 @@ MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
             "CREATE INDEX ix_approvals_state ON approvals (state, created_at)",
         ),
     ),
+    (
+        5,
+        (
+            # Zustandsmodell statt "steht in der Tabelle, also erledigt".
+            #   seen      geholt, noch nicht beurteilt
+            #   analysed  beurteilt, aber nichts getan (Trockenlauf, Gatter zu)
+            #   acted     tatsaechlich gehandelt
+            #   skipped   endgueltig nichts zu tun (eigene Post, schon eingeordnet)
+            # Nur acted und skipped schliessen eine Nachricht aus; analysed wird
+            # wieder aufgegriffen, sobald wirklich gehandelt werden darf.
+            "ALTER TABLE mail_messages ADD COLUMN state TEXT NOT NULL DEFAULT 'seen'",
+            "UPDATE mail_messages SET state = 'acted' WHERE labelled = 1",
+            "UPDATE mail_messages SET state = 'analysed' "
+            "WHERE labelled = 0 AND category IS NOT NULL",
+            "CREATE INDEX ix_mail_state ON mail_messages (state)",
+            # Langzeitgedaechtnis: wenige, ausdruecklich abgelegte Tatsachen.
+            # Keine Gespraechsgeschichte, kein Protokoll.
+            """
+            CREATE TABLE memory_facts (
+                key        TEXT    PRIMARY KEY,
+                value      TEXT    NOT NULL,
+                category   TEXT    NOT NULL DEFAULT 'sonstiges',
+                source     TEXT    NOT NULL DEFAULT '',
+                weight     REAL    NOT NULL DEFAULT 1.0,
+                created_at TEXT    NOT NULL,
+                updated_at TEXT    NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_memory_category ON memory_facts (category, weight)",
+            # Kurzzeitkontext: ein knapper, beschnittener Verlauf je Bereich.
+            # Waechst nicht unbegrenzt -- aeltere Eintraege fallen heraus.
+            """
+            CREATE TABLE context_entries (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope      TEXT    NOT NULL,
+                kind       TEXT    NOT NULL,
+                text       TEXT    NOT NULL,
+                created_at TEXT    NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_context_scope ON context_entries (scope, id)",
+        ),
+    ),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

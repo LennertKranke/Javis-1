@@ -11,10 +11,10 @@ from jarvis.core.ratelimit import RateLimiter
 from jarvis.skills.mail.allowlist import Allowlist
 from jarvis.skills.mail.gmail import DRAFTING, SENDING
 from jarvis.skills.mail.reply import MailDraftSkill, MailSendSkill, ReplyOptions, SendOptions
-from jarvis.skills.mail.store import MailStore, ReplyStore
+from jarvis.skills.mail.store import STATE_ANALYSED, MailStore, ReplyStore
 from jarvis.skills.mail.style import extract_profile
 from jarvis.skills.runner import run_skill
-from tests.fixtures_gmail import FakeGmailClient, message
+from tests.fixtures_gmail import FakeGmailClient, entwurf_hinterlegen, message
 from tests.test_mail_reply import ANTWORT, router_mit
 
 
@@ -53,6 +53,7 @@ def entwurfs_lauf(conn, home, nachrichten, *, dry_run=True, level=0, capabilitie
             thread_id=roh["threadId"],
             category="anfrage",
             needs_reply=True,
+            state=STATE_ANALYSED,
         )
     skill = MailDraftSkill(
         options=ReplyOptions({}, known_tasks={"draft"}),
@@ -83,16 +84,21 @@ def sende_lauf(conn, home, *, send_level=0, manual=(), limits=None, dry_run=Fals
     return skill, client, gate, audit, config
 
 
-def entwurf_ablegen(conn, message_id="a", empfaenger="anna@example.com"):
+def entwurf_ablegen(conn, message_id="a", empfaenger="anna@example.com", *, client=None):
+    """Legt Vorgang und passenden Entwurf an -- beides muss zusammenpassen."""
+    draft_id = f"Draft_{message_id}"
+    abdruck = "f"
+    if client is not None:
+        abdruck = entwurf_hinterlegen(client, draft_id=draft_id, to=empfaenger)
     ReplyStore(conn).plan(
         message_id=message_id,
         thread_id="t",
         recipient=empfaenger,
         subject="Re: x",
-        fingerprint="f",
+        fingerprint=abdruck,
         disposition="drafted",
-        draft_id=f"Draft_{message_id}",
-        draft_fingerprint="f",
+        draft_id=draft_id,
+        draft_fingerprint=abdruck,
     )
 
 
@@ -134,10 +140,10 @@ def test_entwerfen_kommt_mit_stufe_null_aus(conn, home):
 
 
 def test_auf_stufe_null_wird_nicht_gesendet(conn, home):
-    entwurf_ablegen(conn)
     skill, client, gate, audit, _config = sende_lauf(
         conn, home, send_level=0, manual=["anna@example.com"]
     )
+    entwurf_ablegen(conn, client=client)
     bericht = run_skill(skill, gate=gate, audit=audit)
 
     assert bericht.dry_run == 1
@@ -149,10 +155,10 @@ def test_auf_stufe_null_wird_nicht_gesendet(conn, home):
 
 def test_stufe_eins_sendet(conn, home):
     """Die Umschaltung aus Abschnitt 6: ein Wert, sonst nichts."""
-    entwurf_ablegen(conn)
     skill, client, gate, audit, _ = sende_lauf(
         conn, home, send_level=1, manual=["anna@example.com"]
     )
+    entwurf_ablegen(conn, client=client)
     bericht = run_skill(skill, gate=gate, audit=audit)
 
     assert bericht.acted == 1
@@ -161,8 +167,8 @@ def test_stufe_eins_sendet(conn, home):
 
 
 def test_stufe_eins_ohne_allowlist_sendet_nicht(conn, home):
-    entwurf_ablegen(conn, empfaenger="fremd@example.com")
     skill, client, gate, audit, _ = sende_lauf(conn, home, send_level=1)
+    entwurf_ablegen(conn, empfaenger="fremd@example.com", client=client)
     bericht = run_skill(skill, gate=gate, audit=audit)
 
     assert bericht.skipped == 1
@@ -171,18 +177,18 @@ def test_stufe_eins_ohne_allowlist_sendet_nicht(conn, home):
 
 
 def test_zurueckgehaltenes_verbraucht_kein_kontingent(conn, home):
-    entwurf_ablegen(conn, empfaenger="fremd@example.com")
-    skill, _, gate, audit, config = sende_lauf(conn, home, send_level=1)
+    skill, client, gate, audit, config = sende_lauf(conn, home, send_level=1)
+    entwurf_ablegen(conn, empfaenger="fremd@example.com", client=client)
     run_skill(skill, gate=gate, audit=audit)
     limiter = RateLimiter(conn, config.capabilities)
     assert limiter.usage("mail_send")[0].used == 0
 
 
 def test_stoppschalter_haelt_das_senden_an(conn, home):
-    entwurf_ablegen(conn)
     skill, client, gate, audit, _ = sende_lauf(
         conn, home, send_level=1, manual=["anna@example.com"]
     )
+    entwurf_ablegen(conn, client=client)
     StopSwitch(home / "STOP").engage("Vorfall")
     bericht = run_skill(skill, gate=gate, audit=audit)
 
@@ -191,11 +197,11 @@ def test_stoppschalter_haelt_das_senden_an(conn, home):
 
 
 def test_obergrenze_bremst_das_senden(conn, home):
-    for i in range(4):
-        entwurf_ablegen(conn, message_id=f"m{i}")
     skill, client, gate, audit, _ = sende_lauf(
         conn, home, send_level=1, manual=["anna@example.com"], limits={"hour": 2}
     )
+    for i in range(4):
+        entwurf_ablegen(conn, message_id=f"m{i}", client=client)
     bericht = run_skill(skill, gate=gate, audit=audit)
 
     assert bericht.acted == 2
@@ -204,18 +210,20 @@ def test_obergrenze_bremst_das_senden(conn, home):
 
 
 def test_globaler_trockenlauf_schlaegt_auch_stufe_eins(conn, home):
-    entwurf_ablegen(conn)
     skill, client, gate, audit, _ = sende_lauf(
         conn, home, send_level=1, manual=["anna@example.com"], dry_run=True
     )
+    entwurf_ablegen(conn, client=client)
     bericht = run_skill(skill, gate=gate, audit=audit)
     assert bericht.dry_run == 1
     assert client.sent_drafts == []
 
 
 def test_protokoll_erzaehlt_das_senden_nach(conn, home):
-    entwurf_ablegen(conn)
-    skill, _, gate, audit, _ = sende_lauf(conn, home, send_level=1, manual=["anna@example.com"])
+    skill, client, gate, audit, _ = sende_lauf(
+        conn, home, send_level=1, manual=["anna@example.com"]
+    )
+    entwurf_ablegen(conn, client=client)
     run_skill(skill, gate=gate, audit=audit)
 
     eintraege = list(reversed(audit.recent(10)))
@@ -227,7 +235,9 @@ def test_protokoll_erzaehlt_das_senden_nach(conn, home):
 
 def test_das_protokoll_nennt_den_empfaenger(conn, home):
     """Nachvollziehbar muss sein, an wen etwas ging."""
-    entwurf_ablegen(conn)
-    skill, _, gate, audit, _ = sende_lauf(conn, home, send_level=1, manual=["anna@example.com"])
+    skill, client, gate, audit, _ = sende_lauf(
+        conn, home, send_level=1, manual=["anna@example.com"]
+    )
+    entwurf_ablegen(conn, client=client)
     run_skill(skill, gate=gate, audit=audit)
     assert "anna@example.com" in json.dumps([e.detail for e in audit.recent(10)])

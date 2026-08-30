@@ -146,6 +146,7 @@ Trockenlaeufe ohne Netz und ohne Schluessel moeglich macht.
 ## Entwickeln
 
 ```sh
+uv sync            # installiert auch pytest und ruff
 uv run pytest
 uv run ruff check .
 uv run ruff format .
@@ -364,6 +365,85 @@ Formular an localhost abschicken, und der Browser tut es.
 Das Protokoll zeigt Betreffzeilen aus fremden Mails. Jeder Wert, der auf die
 Seite geht, wird maskiert -- ungefiltertes Markup waere hier kein
 Schoenheits-, sondern ein Sicherheitsfehler.
+
+---
+
+## Zustaende, Gedaechtnis, Kontext
+
+### Eine Nachricht hat vier Zustaende
+
+| Zustand | Bedeutung | Kommt wieder |
+|---|---|---|
+| `seen` | geholt, noch nicht beurteilt | ja |
+| `analysed` | beurteilt, aber nichts getan | ja |
+| `acted` | tatsaechlich gehandelt | nein |
+| `skipped` | endgueltig nichts zu tun | nein |
+
+Nur `acted` und `skipped` schliessen aus. Ein Trockenlauf setzt `analysed` --
+die Nachricht bleibt damit fuer den spaeteren echten Lauf offen. Frueher galt
+sie nach dem Trockenlauf als verarbeitet, und die Beobachtungswoche hat den
+Posteingang still verbrannt.
+
+Der zweite Durchlauf fragt das Modell nicht erneut: eine bereits gefaellte
+Beurteilung wird wiederverwendet (`decided_by = cached`). Beobachten kostet
+damit einmal, nicht stuendlich.
+
+### Speicherung und Kontext sind getrennt
+
+Was JARVIS aufbewahrt, waechst mit der Nutzungsdauer. Was bei einer Anfrage
+ans Modell geht, darf das nicht.
+
+- **Langzeitgedaechtnis** (`memory_facts`) -- wenige, ausdruecklich abgelegte
+  Tatsachen. Keine Gespraechsgeschichte.
+- **Kurzzeitkontext** (`context_entries`) -- ein knapper Verlauf je Bereich,
+  der sich beim Schreiben selbst beschneidet.
+- **Kontextbauer** -- die einzige Stelle, die entscheidet was mitgeht, unter
+  einer harten Obergrenze.
+
+Protokoll und technische Logs sind **keine** Quelle des Kontextbauers. Ein
+Test prueft das strukturell.
+
+```sh
+uv run jarvis memory                      # was dauerhaft abgelegt ist
+uv run jarvis memory ton foermlich --kategorie praeferenz
+uv run jarvis memory --vergessen ton
+uv run jarvis context --suche "Termin"    # was bei einer Anfrage mitginge
+```
+
+`jarvis context` zeigt genau den Text, der in den Prompt ginge, samt
+Obergrenze und dem, was weggelassen wurde. Ohne diesen Befehl waere die
+Begrenzung eine Behauptung.
+
+### Integritaet vor dem Versand
+
+Vor jedem Versand wird der Entwurf aus dem Postfach geholt und sein
+Fingerabdruck neu gerechnet. Weichen Empfaenger, Betreff, Thread oder Text
+vom geprueften Stand ab, geht nichts hinaus -- geprueft in `decide` und noch
+einmal unmittelbar vor `send_draft`, weil zwischen Freigabe und Versand Tage
+liegen koennen.
+
+### Aufbewahrte Ziele werden neu berechnet
+
+Eine Entscheidung, die in der Warteschlange lag, ist keine vertrauenswuerdige
+Quelle. `Skill.verify_targets` baut die Ziele aus der Quelle neu -- Empfaenger
+aus den Originalkopffeldern, Label aus der Kategorie, Entwurf aus dem
+Antwortspeicher. Die Vorgabe der Basisklasse verweigert, sobald es Ziele gibt:
+eine Faehigkeit, die das vergisst, faellt auf.
+
+### "Lokal" ist pruefbar
+
+Ein Anbieter mit `local = true` muss auf eine Loopback-Adresse zeigen. Die
+Konfiguration weist alles andere ab, und der Anbieter prueft es beim Bauen ein
+zweites Mal. Damit stuetzt sich die Vertraulichkeitssperre aus Abschnitt 5.2
+auf eine gepruefte Zusage statt auf eine Behauptung.
+
+### Ein Berechtigungsmodell
+
+`Config.permits(faehigkeit, stufe, approved=...)` ist die einzige Stelle, die
+beantwortet ob gehandelt werden darf. Das Gatter fragt dort, und die Fabrik
+fragt dort, wenn sie entscheidet welche Rechte ein Gmail-Client bekommt. Eine
+Freigabe von Hand wirkt damit auf beide -- frueher liess das Gatter durch, was
+der Client danach nicht durfte.
 
 ---
 

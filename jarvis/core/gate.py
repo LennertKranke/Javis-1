@@ -102,7 +102,7 @@ class Gate:
         # Eine Freigabe von Hand ersetzt die Stufe, nicht den Trockenlauf:
         # dry_run heisst "nichts geht hinaus", und das soll es auch heissen,
         # wenn jemand klickt.
-        stufe_reicht = approved or self._config.permits(capability, required_level)
+        stufe_reicht = self._config.permits(capability, required_level, approved=approved)
         dry = self._config.dry_run or not stufe_reicht
 
         rate = self._limiter.acquire(capability, dry_run=dry)

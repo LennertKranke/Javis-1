@@ -34,6 +34,7 @@ __all__ = [
     "Event",
     "Result",
     "Skill",
+    "TargetMismatch",
     "available_skills",
     "register_skill",
 ]
@@ -41,6 +42,10 @@ __all__ = [
 # Entscheidungen, nach denen nichts geschieht. "hold" heisst: es gaebe etwas zu
 # tun, aber eine Regel haelt es zurueck -- das ist kein blockiertes Gatter.
 NOOP_ACTIONS = frozenset({"skip", "hold", "none"})
+
+
+class TargetMismatch(RuntimeError):
+    """Die Ziele einer aufbewahrten Entscheidung stimmen nicht mehr."""
 
 
 @dataclass(frozen=True)
@@ -125,6 +130,31 @@ class Skill(ABC):
     @abstractmethod
     def act(self, decision: Decision) -> Result:
         """Fuehrt aus. Deterministisch, ohne Modell, ohne fremden Text."""
+
+    def verify_targets(self, decision: Decision) -> Decision:
+        """Baut die Ziele aus der vertrauenswuerdigen Quelle neu und vergleicht.
+
+        Eine gespeicherte Entscheidung ist keine vertrauenswuerdige Quelle. Sie
+        hat in der Datenbank gelegen, moeglicherweise tagelang: das Postfach
+        kann sich geaendert haben, ein Entwurf geloescht, eine Zeile von Hand
+        angefasst worden sein. Wer eine aufbewahrte Entscheidung ausfuehrt,
+        muss ihre Ziele vorher gegen die Quelle pruefen, aus der sie stammen.
+
+        Der Rueckgabewert ist die gepruefte Entscheidung -- gegebenenfalls mit
+        frisch berechneten Zielen. Passt etwas nicht, wird `TargetMismatch`
+        geworfen und nichts ausgefuehrt.
+
+        Die Vorgabe verweigert, sobald es ueberhaupt Ziele gibt. Eine
+        Faehigkeit, die aufbewahrte Entscheidungen ausfuehren laesst, muss die
+        Pruefung also ausdruecklich schreiben -- Vergessen faellt auf, statt
+        stillschweigend durchzugehen.
+        """
+        if decision.targets:
+            raise NotImplementedError(
+                f"{type(self).__name__}.verify_targets fehlt. Eine aufbewahrte "
+                f"Entscheidung mit Zielen darf nicht ungeprueft ausgefuehrt werden."
+            )
+        return decision
 
     def after(  # noqa: B027 - absichtlich leer: ein freiwilliger Haken, nichts Abstraktes
         self, event: Event, decision: Decision, disposition: str, result: Result | None

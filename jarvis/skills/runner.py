@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from jarvis.core.approvals import EXECUTED, FAILED, REJECTED, Approval, ApprovalStore
 from jarvis.core.audit import KIND_ACTION, KIND_DECISION, KIND_SYSTEM, AuditLog
 from jarvis.core.gate import Disposition, Gate
-from jarvis.skills.base import Decision, Result, Skill
+from jarvis.skills.base import Decision, Result, Skill, TargetMismatch
 
 __all__ = ["RunReport", "execute_approval", "reject_approval", "run_skill"]
 
@@ -205,6 +205,27 @@ def execute_approval(
         return None
 
     decision = _decision_from(approval)
+
+    # Erst die Ziele gegen die Quelle pruefen, dann das Gatter fragen. Umgekehrt
+    # wuerde ein Kontingent fuer eine Entscheidung verbraucht, die gar nicht
+    # mehr ausfuehrbar ist.
+    try:
+        decision = skill.verify_targets(decision)
+    except (TargetMismatch, NotImplementedError) as exc:
+        audit.record(
+            capability=skill.name,
+            kind=KIND_ACTION,
+            outcome="refused",
+            subject=approval.event_key,
+            detail={"approval_id": approval.id, "reason": str(exc)[:400]},
+        )
+        approvals.settle(approval.id, FAILED, note=str(exc)[:400])
+        log.warning(
+            "Freigabe verweigert: Ziele stimmen nicht mehr",
+            extra={"skill": skill.name, "approval": approval.id, "error": str(exc)},
+        )
+        return None
+
     verdict = gate.evaluate(
         skill.name,
         required_level=skill.autonomy_level,

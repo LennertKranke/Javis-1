@@ -5,9 +5,16 @@ Dashboard benutzen dieselbe. Vorher stand das in der CLI, und das Dashboard
 haette es abschreiben muessen; zwei Fassungen derselben Verdrahtung waeren
 genau die Art Fehler, die man erst bemerkt, wenn eine davon zu viel darf.
 
-Wichtig ist die eine Zeile in `_send_capabilities`: welche Rechte der
-Gmail-Client bekommt, leitet sich aus der Autonomiestufe ab. Steht `mail_send`
-auf Stufe 0, wird der Client ohne Senderecht gebaut -- egal wer ihn baut.
+Wichtig ist `send_capabilities`: welche Rechte der Gmail-Client bekommt,
+leitet sich aus derselben Rechnung ab, die auch das Gatter anstellt --
+`Config.permits`. Steht `mail_send` auf Stufe 0, wird der Client ohne
+Senderecht gebaut, egal wer ihn baut.
+
+`approved` reicht eine ausdrueckliche Freigabe durch. Ohne das gab es einen
+widerspruechlichen Zustand: das Gatter liess eine freigegebene Aktion durch,
+der Client hatte aber mangels Stufe kein Senderecht und scheiterte danach.
+Beide fragen jetzt dieselbe Stelle -- die Freigabe wirkt auf das Gatter und
+auf die Rechte des Clients gleichermassen.
 """
 
 from __future__ import annotations
@@ -15,6 +22,8 @@ from __future__ import annotations
 import sqlite3
 
 from jarvis.core.config import Config, ConfigError
+from jarvis.core.context import ContextBuilder, ShortTermContext
+from jarvis.core.memory import LongTermMemory
 from jarvis.core.secrets import SecretStore, default_store
 from jarvis.llm.providers import build_providers
 from jarvis.llm.router import Router
@@ -31,9 +40,9 @@ __all__ = ["BUILDABLE", "build_skill", "gmail_auth", "gmail_client", "send_capab
 BUILDABLE = ("mail", "mail_reply", "mail_send")
 
 
-def send_capabilities(config: Config) -> frozenset[str]:
-    """Senderecht nur, wenn die Stufe es hergibt."""
-    return SENDING if config.permits("mail_send", 1) else DRAFTING
+def send_capabilities(config: Config, *, approved: bool = False) -> frozenset[str]:
+    """Senderecht nur, wenn Stufe oder Freigabe es hergeben -- dieselbe Rechnung."""
+    return SENDING if config.permits("mail_send", 1, approved=approved) else DRAFTING
 
 
 def gmail_auth(config: Config, *, secrets: SecretStore | None = None) -> GmailAuth:
@@ -57,7 +66,13 @@ def build_skill(
     config: Config,
     conn: sqlite3.Connection,
     secrets: SecretStore | None = None,
+    approved: bool = False,
 ) -> Skill:
+    """Baut eine Faehigkeit. `approved` steht fuer eine Freigabe von Hand.
+
+    Sie wirkt nur auf die Rechte des Clients -- ob tatsaechlich gehandelt
+    werden darf, entscheidet weiterhin das Gatter.
+    """
     speicher = secrets or default_store()
 
     if name == "mail":
@@ -76,13 +91,19 @@ def build_skill(
             mail_store=MailStore(conn),
             reply_store=ReplyStore(conn),
             style=StyleStore(conn).load(),
+            context=ContextBuilder(
+                memory=LongTermMemory(conn),
+                short_term=ShortTermContext(conn, scope="mail_reply"),
+            ),
         )
 
     if name == "mail_send":
         optionen = SendOptions(config.skill_options("mail_send"))
         return MailSendSkill(
             options=optionen,
-            client=gmail_client(config, send_capabilities(config), secrets=speicher),
+            client=gmail_client(
+                config, send_capabilities(config, approved=approved), secrets=speicher
+            ),
             reply_store=ReplyStore(conn),
             allowlist=Allowlist(
                 conn,

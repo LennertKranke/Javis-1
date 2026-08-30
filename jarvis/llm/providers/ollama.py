@@ -7,6 +7,12 @@ HTTP-Anfrage an localhost waere nicht zu rechtfertigen.
 Der Opener umgeht bewusst jeden konfigurierten Proxy. Ein System-Proxy fuer
 externe Anfragen wuerde eine Anfrage an 127.0.0.1 sonst ins Leere schicken --
 ein Fehler, der sich als "Ollama laeuft nicht" tarnt.
+
+Ein als lokal gefuehrter Anbieter prueft beim Bauen, dass seine base_url
+wirklich auf diesen Rechner zeigt. Die Konfiguration prueft das bereits; hier
+steht es ein zweites Mal, weil ein Anbieter auch im laufenden Betrieb
+zusammengesetzt werden kann und die Vertraulichkeitssperre im Router sich
+sonst auf eine Behauptung stuetzen wuerde.
 """
 
 from __future__ import annotations
@@ -16,7 +22,7 @@ import time
 import urllib.error
 import urllib.request
 
-from jarvis.core.config import ProviderConfig
+from jarvis.core.config import LOOPBACK, ProviderConfig, url_host
 from jarvis.llm.provider import (
     Provider,
     ProviderError,
@@ -35,6 +41,13 @@ class OllamaProvider(Provider):
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
         self._base_url = (config.base_url or DEFAULT_BASE_URL).rstrip("/")
+        if config.local:
+            wirt = url_host(self._base_url)
+            if wirt not in LOOPBACK:
+                raise ProviderUnavailable(
+                    f"{config.name}: als lokal gefuehrt, zeigt aber auf {wirt!r}. "
+                    f"Vertrauliche Aufgaben duerfen diesen Rechner nicht verlassen."
+                )
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def _request(self, path: str, payload: dict | None, timeout: float) -> dict:

@@ -24,9 +24,9 @@ from jarvis.skills.mail.reply import (
     ReplyOptions,
     SendOptions,
 )
-from jarvis.skills.mail.store import MailStore, ReplyStore
+from jarvis.skills.mail.store import STATE_ANALYSED, MailStore, ReplyStore
 from jarvis.skills.mail.style import extract_profile
-from tests.fixtures_gmail import FakeGmailClient, message, part
+from tests.fixtures_gmail import FakeGmailClient, entwurf_hinterlegen, message, part
 
 ANTWORT = json.dumps(
     {
@@ -61,6 +61,7 @@ def draft_skill(conn, nachrichten, *, antwort=ANTWORT, optionen=None, capabiliti
             thread_id=roh["threadId"],
             category="anfrage",
             needs_reply=True,
+            state=STATE_ANALYSED,
         )
     skill = MailDraftSkill(
         options=ReplyOptions(optionen or {}, known_tasks={"draft"}),
@@ -310,23 +311,31 @@ def send_skill(conn, *, threshold=3, manual=(), blocked=(), capabilities=SENDING
     )
 
 
-def entwurf_ablegen(conn, *, empfaenger="anna@example.com", needs_human=False):
+def entwurf_ablegen(conn, *, empfaenger="anna@example.com", needs_human=False, client=None):
+    """Vorgang und passender Entwurf. Beides muss zusammenpassen.
+
+    Seit der Integritaetspruefung wird ein Vorgang ohne den zugehoerigen
+    Entwurf im Postfach zurueckgehalten -- zu Recht.
+    """
+    abdruck = "f1"
+    if client is not None:
+        abdruck = entwurf_hinterlegen(client, draft_id="Draft_1", to=empfaenger)
     ReplyStore(conn).plan(
         message_id="a",
         thread_id="t",
         recipient=empfaenger,
         subject="Re: x",
-        fingerprint="f1",
+        fingerprint=abdruck,
         disposition="drafted",
         needs_human=needs_human,
         draft_id="Draft_1",
-        draft_fingerprint="f1",
+        draft_fingerprint=abdruck,
     )
 
 
 def test_senden_verlangt_die_allowlist(conn):
-    entwurf_ablegen(conn)
     skill, client = send_skill(conn)
+    entwurf_ablegen(conn, client=client)
     entscheidung = skill.decide(skill.poll()[0])
     assert entscheidung.action == "hold"
     assert "nicht auf der Allowlist" in entscheidung.reason
@@ -334,8 +343,8 @@ def test_senden_verlangt_die_allowlist(conn):
 
 
 def test_mit_allowlist_wird_gesendet(conn):
-    entwurf_ablegen(conn)
     skill, client = send_skill(conn, manual=["anna@example.com"])
+    entwurf_ablegen(conn, client=client)
     ereignis = skill.poll()[0]
     entscheidung = skill.decide(ereignis)
     assert entscheidung.action == "send"
@@ -345,23 +354,23 @@ def test_mit_allowlist_wird_gesendet(conn):
 
 
 def test_zur_durchsicht_zurueckgehaltenes_wird_nie_gesendet(conn):
-    entwurf_ablegen(conn, needs_human=True)
-    skill, _ = send_skill(conn, manual=["anna@example.com"])
+    skill, client = send_skill(conn, manual=["anna@example.com"])
+    entwurf_ablegen(conn, needs_human=True, client=client)
     assert skill.poll() == []
 
 
 def test_senden_ruft_kein_modell(conn):
     """Zum Zeitpunkt des Sendens steht der Entwurf laengst fest."""
-    entwurf_ablegen(conn)
-    skill, _ = send_skill(conn, manual=["anna@example.com"])
+    skill, client = send_skill(conn, manual=["anna@example.com"])
+    entwurf_ablegen(conn, client=client)
     assert not hasattr(skill, "_router")
     assert skill.decide(skill.poll()[0]).decided_by == "allowlist"
 
 
 def test_auf_stufe_null_kann_der_client_nicht_senden(conn):
     """Nicht weil der Code es unterlaesst, sondern weil der Pfad fehlt."""
-    entwurf_ablegen(conn)
     skill, client = send_skill(conn, manual=["anna@example.com"], capabilities=DRAFTING)
+    entwurf_ablegen(conn, client=client)
     entscheidung = skill.decide(skill.poll()[0])
     ergebnis = skill.act(entscheidung)
     assert ergebnis.performed is False
@@ -370,8 +379,8 @@ def test_auf_stufe_null_kann_der_client_nicht_senden(conn):
 
 
 def test_gesendetes_wird_vermerkt(conn):
-    entwurf_ablegen(conn)
-    skill, _ = send_skill(conn, manual=["anna@example.com"])
+    skill, client = send_skill(conn, manual=["anna@example.com"])
+    entwurf_ablegen(conn, client=client)
     ereignis = skill.poll()[0]
     entscheidung = skill.decide(ereignis)
     skill.after(ereignis, entscheidung, "act", skill.act(entscheidung))
@@ -381,8 +390,8 @@ def test_gesendetes_wird_vermerkt(conn):
 
 
 def test_zurueckgehaltenes_wird_vermerkt(conn):
-    entwurf_ablegen(conn)
-    skill, _ = send_skill(conn)
+    skill, client = send_skill(conn)
+    entwurf_ablegen(conn, client=client)
     ereignis = skill.poll()[0]
     entscheidung = skill.decide(ereignis)
     skill.after(ereignis, entscheidung, "hold", None)

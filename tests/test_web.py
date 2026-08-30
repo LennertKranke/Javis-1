@@ -235,6 +235,9 @@ class Attrappe(Skill):
     def decide(self, event):
         raise NotImplementedError
 
+    def verify_targets(self, decision):
+        return decision
+
     def act(self, decision):
         type(self).ausgefuehrt.append(decision)
         return Result(skill=self.name, event_key=decision.event_key, performed=True)

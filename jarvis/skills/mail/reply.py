@@ -19,20 +19,30 @@ also deterministischer Code. Der Entwurf steht zu diesem Zeitpunkt schon fest.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Any
 
 from jarvis.core.config import Config, ConfigError
+from jarvis.core.context import ContextBuilder
 from jarvis.core.sanitize import sanitize
 from jarvis.llm.provider import Request
 from jarvis.llm.router import Router
 from jarvis.llm.schema import OutputSchema
-from jarvis.skills.base import Decision, Event, Result, Skill, register_skill
+from jarvis.skills.base import (
+    Decision,
+    Event,
+    Result,
+    Skill,
+    TargetMismatch,
+    register_skill,
+)
 from jarvis.skills.mail.allowlist import Allowlist
 from jarvis.skills.mail.compose import (
     ComposeError,
     ReplyTarget,
     build_message,
     fingerprint,
+    fingerprint_of_draft,
     raw_for_gmail,
     reply_target,
 )
@@ -231,6 +241,7 @@ class MailDraftSkill(Skill):
         mail_store: MailStore,
         reply_store: ReplyStore,
         style: StyleProfile | None = None,
+        context: ContextBuilder | None = None,
         sanitize_max_chars: int = 20000,
     ) -> None:
         self._options = options
@@ -239,6 +250,11 @@ class MailDraftSkill(Skill):
         self._mail = mail_store
         self._replies = reply_store
         self._style = style or StyleProfile()
+        # Ohne Kontextbauer geht nur die Stilbeschreibung mit -- wie bisher.
+        # Mit ihm kommen dauerhaft abgelegte Tatsachen dazu, aber immer unter
+        # einer Obergrenze. Der Prompt kann so nicht mit der Nutzungsdauer
+        # wachsen.
+        self._context = context or ContextBuilder()
         self._max_chars = sanitize_max_chars
         self._schema = build_reply_schema(options.max_words)
         self._own_address: str | None = None
@@ -253,6 +269,7 @@ class MailDraftSkill(Skill):
         mail_store: MailStore,
         reply_store: ReplyStore,
         style: StyleProfile | None = None,
+        context: ContextBuilder | None = None,
     ) -> MailDraftSkill:
         return cls(
             options=ReplyOptions(
@@ -263,6 +280,7 @@ class MailDraftSkill(Skill):
             mail_store=mail_store,
             reply_store=reply_store,
             style=style,
+            context=context,
             sanitize_max_chars=config.sanitize_max_chars,
         )
 
@@ -339,7 +357,15 @@ class MailDraftSkill(Skill):
         if event.content is None:
             raise ValueError("Ereignis ohne normalisierten Inhalt")
 
-        anweisung = f"{SYSTEM_PROMPT}\n{self._style.describe()}\n\n{self._schema.instructions()}"
+        # Der Kontextbauer entscheidet, was neben der Stilbeschreibung mitgeht,
+        # und deckelt das Ganze. Betreff und Absender dienen als Suchbegriffe
+        # fuer passende Tatsachen -- sie sind Fremdtext, aber sie waehlen hier
+        # nur aus, was ohnehin im eigenen Gedaechtnis steht.
+        hintergrund = self._context.build(
+            preamble=self._style.describe(),
+            terms=f"{message.subject} {message.sender.address if message.sender else ''}",
+        )
+        anweisung = f"{SYSTEM_PROMPT}\n{hintergrund.text}\n\n{self._schema.instructions()}"
         routed = self._router.complete(
             self._options.task,
             Request.single(event.content.as_untrusted_block(source="gmail"), system=anweisung),
@@ -386,6 +412,57 @@ class MailDraftSkill(Skill):
             subject=str(decision.targets["subject"]),
             in_reply_to=decision.targets.get("in_reply_to"),
             references=decision.targets.get("references"),
+        )
+
+    def verify_targets(self, decision: Decision) -> Decision:
+        """Berechnet Empfaenger, Betreff und Verweise aus der Originalnachricht neu.
+
+        Nicht vergleichen, sondern neu rechnen: die Kopffelder in Gmail sind die
+        Quelle, die gespeicherte Zeile ist es nicht. Weicht das Ergebnis vom
+        Gespeicherten ab, hat sich etwas geaendert -- dann wird nichts getan.
+        """
+        if decision.is_noop:
+            return decision
+
+        message_id = str(decision.targets.get("message_id") or "")
+        koerper = str(decision.targets.get("body") or "")
+        if not koerper.strip():
+            raise TargetMismatch("Aufbewahrte Entscheidung ohne Antworttext")
+
+        try:
+            message = parse_message(self._client.get_message(message_id))
+        except GmailError as exc:
+            raise TargetMismatch(f"Nachricht {message_id!r} nicht abrufbar: {exc}") from exc
+        if message.message_id != message_id:
+            raise TargetMismatch("Gmail liefert eine andere Nachricht")
+
+        try:
+            frisch = reply_target(message)
+        except ComposeError as exc:
+            raise TargetMismatch(str(exc)) from exc
+
+        for feld, jetzt in (
+            ("to", frisch.to),
+            ("subject", frisch.subject),
+            ("thread_id", frisch.thread_id),
+        ):
+            damals = str(decision.targets.get(feld) or "")
+            if damals and damals != jetzt:
+                raise TargetMismatch(f"{feld} hat sich geaendert: {damals!r} -> {jetzt!r}")
+
+        return replace(
+            decision,
+            targets={
+                "message_id": message_id,
+                "to": frisch.to,
+                "subject": frisch.subject,
+                "thread_id": frisch.thread_id,
+                "in_reply_to": frisch.in_reply_to,
+                "references": frisch.references,
+                "body": koerper,
+                "fingerprint": fingerprint(frisch, koerper),
+                "needs_human": bool(decision.targets.get("needs_human")),
+            },
         )
 
     def act(self, decision: Decision) -> Result:
@@ -512,15 +589,81 @@ class MailSendSkill(Skill):
             for eintrag in self._replies.pending_for_send(limit=self._options.max_per_run)
         ]
 
+    def _pruefe_entwurf(self, eintrag: ReplyRecord) -> str | None:
+        """Stimmt der Entwurf im Postfach noch mit dem geprueften Stand ueberein?
+
+        Der Fingerabdruck deckt Empfaenger, Betreff, Thread, Verweise und Text
+        ab. Weicht etwas ab, wurde der Entwurf nach der Pruefung veraendert --
+        von Hand, von einem anderen Programm, oder weil eine falsche Kennung
+        gespeichert wurde. Dann geht nichts hinaus.
+
+        Gibt einen Grund zurueck, oder None wenn alles stimmt.
+        """
+        if not eintrag.draft_id:
+            return "Kein Entwurf vorhanden"
+        try:
+            roh = self._client.get_draft(eintrag.draft_id)
+        except GmailError as exc:
+            return f"Entwurf nicht abrufbar: {exc}"
+        try:
+            tatsaechlich = fingerprint_of_draft(roh)
+        except Exception as exc:
+            return f"Entwurf unlesbar: {exc}"
+        if tatsaechlich != eintrag.fingerprint:
+            return "Entwurf weicht vom geprueften Stand ab"
+        return None
+
+    def verify_targets(self, decision: Decision) -> Decision:
+        """Baut die Ziele aus dem eigenen Antwortspeicher neu.
+
+        Der Empfaenger kommt aus dem Datensatz, der beim Entwerfen aus den
+        Originalkopffeldern berechnet wurde -- nicht aus der aufbewahrten
+        Entscheidung. Und der Entwurf muss noch derselbe sein.
+        """
+        if decision.is_noop:
+            return decision
+
+        eintrag = self._replies.get(decision.event_key)
+        if eintrag is None:
+            raise TargetMismatch(f"Kein Antwortvorgang zu {decision.event_key!r}")
+        if eintrag.sent_at:
+            raise TargetMismatch("Wurde bereits gesendet")
+        if eintrag.needs_human:
+            raise TargetMismatch("Steht zur Durchsicht zurueck")
+        if (einwand := self._pruefe_entwurf(eintrag)) is not None:
+            raise TargetMismatch(einwand)
+
+        return replace(
+            decision,
+            targets={
+                "message_id": eintrag.message_id,
+                "draft_id": eintrag.draft_id,
+                "to": eintrag.recipient,
+                "fingerprint": eintrag.fingerprint,
+            },
+        )
+
     def decide(self, event: Event) -> Decision:
-        """Kein Modell. Die Allowlist entscheidet, und die ist Code."""
+        """Kein Modell. Allowlist und Fingerabdruck entscheiden, beides ist Code."""
         eintrag: ReplyRecord = event.payload
-        urteil = self._allowlist.permits(eintrag.recipient)
         ziele = {
             "message_id": eintrag.message_id,
             "draft_id": eintrag.draft_id,
             "to": eintrag.recipient,
+            "fingerprint": eintrag.fingerprint,
         }
+
+        if (einwand := self._pruefe_entwurf(eintrag)) is not None:
+            return Decision(
+                skill=self.name,
+                event_key=event.key,
+                action="hold",
+                reason=einwand,
+                decided_by="integritaet",
+                targets=ziele,
+            )
+
+        urteil = self._allowlist.permits(eintrag.recipient)
         if not urteil.allowed:
             return Decision(
                 skill=self.name,
@@ -550,6 +693,34 @@ class MailSendSkill(Skill):
                 performed=False,
                 error="Kein Entwurf vorhanden",
             )
+        # Die harte Sperre, unmittelbar vor dem Senden. Zwischen Beurteilung und
+        # hier kann Zeit vergangen sein -- eine Freigabe kann Tage alt sein. Was
+        # hinausgeht, muss in diesem Moment noch der gepruefte Entwurf sein.
+        eintrag = self._replies.get(decision.event_key)
+        if eintrag is None:
+            return Result(
+                skill=self.name,
+                event_key=decision.event_key,
+                performed=False,
+                error="Kein Antwortvorgang vorhanden",
+            )
+        if str(eintrag.draft_id) != str(entwurf):
+            return Result(
+                skill=self.name,
+                event_key=decision.event_key,
+                performed=False,
+                detail={"integritaet": "entwurf_vertauscht"},
+                error="Entwurfskennung stimmt nicht mit dem Vorgang ueberein",
+            )
+        if (einwand := self._pruefe_entwurf(eintrag)) is not None:
+            return Result(
+                skill=self.name,
+                event_key=decision.event_key,
+                performed=False,
+                detail={"integritaet": "abweichung", "to": eintrag.recipient},
+                error=einwand,
+            )
+
         try:
             self._client.send_draft(str(entwurf))
         except GmailError as exc:

@@ -5,6 +5,20 @@ Modellaufrufen und unbrauchbar im Protokoll, weil dieselbe Nachricht dort
 dutzendfach auftaucht. Der Speicher ist bewusst schmal -- Kennung, Kategorie,
 Zeitpunkt. Kein Betreff, kein Text: das Postfach ist die Quelle, nicht diese
 Tabelle.
+
+Entscheidend ist der Zustand. Frueher galt eine Nachricht als erledigt, sobald
+eine Zeile existierte -- auch wenn nur ein Trockenlauf sie angesehen hatte.
+Der naechste echte Durchlauf hat sie dann uebersprungen, und die Beobachtungs-
+woche hat still den Posteingang verbrannt. Vier Zustaende trennen das:
+
+  seen      geholt, noch nicht beurteilt
+  analysed  beurteilt, aber nichts getan -- Trockenlauf, Stufe zu niedrig,
+            Gatter zu. Wird wieder aufgegriffen.
+  acted     tatsaechlich gehandelt. Schliesst aus, und darauf beruht die
+            Wiederholbarkeit eines echten Laufs.
+  skipped   endgueltig nichts zu tun (eigene Post, schon eingeordnet).
+
+`handled()` liefert nur acted und skipped. Alles andere kommt wieder.
 """
 
 from __future__ import annotations
@@ -16,7 +30,25 @@ from datetime import UTC, datetime
 
 from jarvis.core.db import transaction
 
-__all__ = ["MailRecord", "MailStore", "ReplyRecord", "ReplyStore"]
+__all__ = [
+    "STATE_ACTED",
+    "STATE_ANALYSED",
+    "STATE_SEEN",
+    "STATE_SKIPPED",
+    "MailRecord",
+    "MailStore",
+    "ReplyRecord",
+    "ReplyStore",
+]
+
+STATE_SEEN = "seen"
+STATE_ANALYSED = "analysed"
+STATE_ACTED = "acted"
+STATE_SKIPPED = "skipped"
+MAIL_STATES = frozenset({STATE_SEEN, STATE_ANALYSED, STATE_ACTED, STATE_SKIPPED})
+
+# Nur diese beiden schliessen eine Nachricht von weiteren Durchlaeufen aus.
+FINAL_STATES = (STATE_ACTED, STATE_SKIPPED)
 
 
 @dataclass(frozen=True)
@@ -30,6 +62,7 @@ class MailRecord:
     labelled: bool
     audit_id: int | None
     needs_reply: bool = False
+    state: str = STATE_SEEN
 
 
 class MailStore:
@@ -37,6 +70,7 @@ class MailStore:
         self._conn = conn
 
     def seen(self, message_ids: Collection[str]) -> set[str]:
+        """Wovon ueberhaupt eine Zeile existiert -- ohne Aussage ueber den Zustand."""
         if not message_ids:
             return set()
         ids = list(message_ids)
@@ -45,6 +79,38 @@ class MailStore:
             f"SELECT message_id FROM mail_messages WHERE message_id IN ({platzhalter})", ids
         ).fetchall()
         return {row["message_id"] for row in rows}
+
+    def handled(self, message_ids: Collection[str]) -> set[str]:
+        """Was endgueltig erledigt ist: gehandelt oder bewusst uebersprungen.
+
+        Das und nur das schliesst eine Nachricht aus. Ein Trockenlauf setzt
+        `analysed` und faellt damit nicht hierunter -- sonst waere sie fuer den
+        spaeteren echten Lauf verloren.
+        """
+        if not message_ids:
+            return set()
+        ids = list(message_ids)
+        platzhalter = ",".join("?" * len(ids))
+        rows = self._conn.execute(
+            f"SELECT message_id FROM mail_messages "
+            f"WHERE message_id IN ({platzhalter}) AND state IN (?, ?)",
+            [*ids, *FINAL_STATES],
+        ).fetchall()
+        return {row["message_id"] for row in rows}
+
+    def cached_analysis(self, message_id: str) -> MailRecord | None:
+        """Eine bereits gefaellte Beurteilung, die noch auf ihre Aktion wartet.
+
+        Damit die Beobachtungswoche nicht bei jedem Durchlauf dieselben
+        Nachrichten erneut ans Modell gibt. Der Zustand bleibt `analysed`, die
+        Nachricht also weiterhin offen -- gespart wird nur der Modellaufruf.
+        """
+        zeile = self._conn.execute(
+            "SELECT * FROM mail_messages WHERE message_id = ? AND state = ? "
+            "AND category IS NOT NULL",
+            (message_id, STATE_ANALYSED),
+        ).fetchone()
+        return self._record(zeile) if zeile else None
 
     def remember(
         self,
@@ -55,23 +121,33 @@ class MailStore:
         decided_by: str | None = None,
         labelled: bool = False,
         needs_reply: bool = False,
+        state: str = STATE_SEEN,
         audit_id: int | None = None,
     ) -> None:
+        if state not in MAIL_STATES:
+            raise ValueError(f"Unbekannter Zustand: {state!r}")
         jetzt = datetime.now(UTC).isoformat(timespec="seconds")
         with transaction(self._conn):
             self._conn.execute(
                 """
                 INSERT INTO mail_messages
                     (message_id, thread_id, first_seen, last_seen, category,
-                     decided_by, labelled, needs_reply, audit_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     decided_by, labelled, needs_reply, state, audit_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (message_id) DO UPDATE SET
                     last_seen   = excluded.last_seen,
                     category    = excluded.category,
                     decided_by  = excluded.decided_by,
-                    labelled    = excluded.labelled,
                     needs_reply = excluded.needs_reply,
-                    audit_id    = excluded.audit_id
+                    audit_id    = excluded.audit_id,
+                    -- Einmal gehandelt bleibt gehandelt. Ein spaeterer
+                    -- Trockenlauf darf einen echten Lauf nicht zuruecknehmen.
+                    labelled    = MAX(mail_messages.labelled, excluded.labelled),
+                    state       = CASE
+                        WHEN mail_messages.state IN ('acted', 'skipped')
+                            THEN mail_messages.state
+                        ELSE excluded.state
+                    END
                 """,
                 (
                     message_id,
@@ -82,6 +158,7 @@ class MailStore:
                     decided_by,
                     int(bool(labelled)),
                     int(bool(needs_reply)),
+                    state,
                     audit_id,
                 ),
             )
@@ -103,24 +180,38 @@ class MailStore:
             ]
         )
 
+    @staticmethod
+    def _record(row: sqlite3.Row) -> MailRecord:
+        return MailRecord(
+            message_id=row["message_id"],
+            thread_id=row["thread_id"] or "",
+            first_seen=row["first_seen"],
+            last_seen=row["last_seen"],
+            category=row["category"],
+            decided_by=row["decided_by"],
+            labelled=bool(row["labelled"]),
+            audit_id=row["audit_id"],
+            needs_reply=bool(row["needs_reply"]),
+            state=row["state"],
+        )
+
+    def get(self, message_id: str) -> MailRecord | None:
+        zeile = self._conn.execute(
+            "SELECT * FROM mail_messages WHERE message_id = ?", (message_id,)
+        ).fetchone()
+        return self._record(zeile) if zeile else None
+
+    def counts_by_state(self) -> dict[str, int]:
+        zeilen = self._conn.execute(
+            "SELECT state, COUNT(*) AS anzahl FROM mail_messages GROUP BY state"
+        ).fetchall()
+        return {z["state"]: z["anzahl"] for z in zeilen}
+
     def recent(self, limit: int = 20) -> list[MailRecord]:
         rows = self._conn.execute(
             "SELECT * FROM mail_messages ORDER BY last_seen DESC LIMIT ?", (limit,)
         ).fetchall()
-        return [
-            MailRecord(
-                message_id=row["message_id"],
-                thread_id=row["thread_id"] or "",
-                first_seen=row["first_seen"],
-                last_seen=row["last_seen"],
-                category=row["category"],
-                decided_by=row["decided_by"],
-                labelled=bool(row["labelled"]),
-                audit_id=row["audit_id"],
-                needs_reply=bool(row["needs_reply"]),
-            )
-            for row in rows
-        ]
+        return [self._record(row) for row in rows]
 
     def awaiting_reply(self, categories: Collection[str], *, limit: int = 25) -> list[str]:
         """Nachrichten, die eine Antwort brauchen und noch keine geplant haben."""
@@ -133,6 +224,7 @@ class MailStore:
             LEFT JOIN mail_replies AS r ON r.message_id = m.message_id
             WHERE m.needs_reply = 1
               AND m.category IN ({platzhalter})
+              AND m.state IN ('analysed', 'acted')
               AND r.message_id IS NULL
             ORDER BY m.last_seen ASC
             LIMIT ?

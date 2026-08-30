@@ -20,8 +20,11 @@ dependencies = [
     "uvicorn>=0.30",
 ]
 
-[project.optional-dependencies]
-# httpx nur fuer Starlettes TestClient. Zur Laufzeit braucht JARVIS es nicht.
+# Als Gruppe, nicht als Extra: `uv sync` installiert Gruppen von selbst, Extras
+# nicht. Als Extra lief `uv run pytest` im frischen Klon auf ein pytest aus dem
+# Suchpfad, das den Code nicht findet -- und `uv run ruff` meldete Erfolg, ohne
+# das Projekt geprueft zu haben.
+[dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6", "httpx>=0.27"]
 
 [project.scripts]

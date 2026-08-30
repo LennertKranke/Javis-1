@@ -20,9 +20,11 @@ from jarvis import __version__
 from jarvis.core.approvals import ApprovalStore
 from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import DEFAULT_CONFIG_TOML, Config, ConfigError, Paths
+from jarvis.core.context import ContextBuilder, ShortTermContext
 from jarvis.core.db import open_database
 from jarvis.core.gate import Gate
 from jarvis.core.log import configure as configure_logging
+from jarvis.core.memory import CATEGORIES, LongTermMemory
 from jarvis.core.ratelimit import RateLimiter
 from jarvis.core.secrets import default_store
 from jarvis.llm.providers import build_providers
@@ -474,9 +476,14 @@ def cmd_mail_state(args: argparse.Namespace, out: Out) -> int:
         return 1
     try:
         store = MailStore(conn)
+        zustaende = store.counts_by_state()
         out.line()
-        out.field("Beurteilt", str(store.total()))
+        out.field("Erfasst", str(store.total()))
         out.field("Beschriftet", str(store.labelled_count()))
+        out.field(
+            "Zustaende",
+            "  ".join(f"{name} {anzahl}" for name, anzahl in sorted(zustaende.items())) or "--",
+        )
         counts = store.counts_by_category()
         if counts:
             out.line()
@@ -799,6 +806,96 @@ def cmd_web(args: argparse.Namespace, out: Out) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Gedaechtnis und Kontext
+# --------------------------------------------------------------------------- #
+
+
+def cmd_memory(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        gedaechtnis = LongTermMemory(conn)
+
+        if args.vergessen:
+            entfernt = gedaechtnis.forget(args.vergessen)
+            out.line("Vergessen." if entfernt else "War nicht gespeichert.")
+            return 0
+
+        if args.schluessel:
+            if not args.wert:
+                out.line("Zum Ablegen wird ein Wert gebraucht.")
+                return 1
+            fakt = gedaechtnis.remember(
+                args.schluessel,
+                " ".join(args.wert),
+                category=args.kategorie,
+                source="cli",
+                weight=args.gewicht,
+            )
+            out.line(f"Gemerkt: {fakt.key} = {fakt.value}")
+            return 0
+
+        fakten = gedaechtnis.all(limit=args.anzahl, category=args.kategorie_filter)
+        out.line()
+        out.field("Tatsachen", str(gedaechtnis.count()))
+        if fakten:
+            out.line()
+            out.table(
+                ["SCHLUESSEL", "WERT", "KATEGORIE", "GEWICHT"],
+                [[f.key, f.value[:60], f.category, f"{f.weight:g}"] for f in fakten],
+                mono=(0, 3),
+            )
+        else:
+            out.line(f"  {out.dim('Nichts abgelegt.')}")
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+def cmd_context(args: argparse.Namespace, out: Out) -> int:
+    """Zeigt, was bei einer Anfrage tatsaechlich ans Modell ginge.
+
+    Der Sinn der Trennung von Speicherung und Kontext ist, dass man sie
+    nachsehen kann. Ohne diesen Befehl waere die Obergrenze eine Behauptung.
+    """
+    paths = _paths(args)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        bauer = ContextBuilder(
+            memory=LongTermMemory(conn),
+            short_term=ShortTermContext(conn, scope=args.bereich),
+        )
+        gebaut = bauer.build(preamble=args.praeambel or "", terms=args.suche or "")
+
+        out.line()
+        out.field("Bereich", args.bereich)
+        out.field("Obergrenze", f"{bauer.budget.max_chars} Zeichen")
+        out.field("Belegt", f"{gebaut.chars} Zeichen")
+        out.field("Tatsachen", f"{len(gebaut.facts)} von hoechstens {bauer.budget.max_facts}")
+        out.field("Verlauf", f"{len(gebaut.entries)} von hoechstens {bauer.budget.max_entries}")
+        if gebaut.truncated:
+            out.field(
+                "Weggelassen",
+                f"{gebaut.dropped_facts} Tatsachen, {gebaut.dropped_entries} Eintraege",
+            )
+        out.line()
+        out.line(f"  {out.dim('--- was ans Modell ginge ---')}")
+        for zeile in (gebaut.text or "(nichts)").splitlines():
+            out.line(f"  {zeile}")
+        out.line()
+        out.line(f"  {out.dim('Protokoll und Logs sind hier keine Quelle und gehen nie mit.')}")
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------------- #
 # Einstieg
 # --------------------------------------------------------------------------- #
 
@@ -840,6 +937,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("verify", help="Hash-Kette des Protokolls pruefen")
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser("memory", help="Dauerhaft abgelegte Tatsachen")
+    p.add_argument("schluessel", nargs="?", help="Schluessel zum Ablegen")
+    p.add_argument("wert", nargs="*", help="Wert zum Ablegen")
+    p.add_argument("--vergessen", metavar="SCHLUESSEL", help="Eintrag entfernen")
+    p.add_argument(
+        "--kategorie", default="sonstiges", choices=sorted(CATEGORIES), help="beim Ablegen"
+    )
+    p.add_argument("--kategorie-filter", dest="kategorie_filter", help="beim Auflisten")
+    p.add_argument("--gewicht", type=float, default=1.0, help="Wichtigkeit")
+    p.add_argument("-n", "--anzahl", type=int, default=30, help="Anzahl Zeilen")
+    p.set_defaults(func=cmd_memory)
+
+    p = sub.add_parser("context", help="Was bei einer Anfrage ans Modell ginge")
+    p.add_argument("--bereich", default="mail_reply", help="Bereich des Kurzzeitkontexts")
+    p.add_argument("--suche", help="Suchbegriffe fuer passende Tatsachen")
+    p.add_argument("--praeambel", help="Anweisungstext, der vorangestellt wird")
+    p.set_defaults(func=cmd_context)
 
     p = sub.add_parser("web", help="Dashboard auf localhost starten")
     p.add_argument("--host", default=None, help="statt [web].host")

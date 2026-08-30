@@ -509,6 +509,7 @@ class Config:
         web = _parse_web(raw.get("web", {}))
         voice = _parse_voice(raw.get("voice", {}), known_tasks=set(llm.tasks))
         daemon = _parse_daemon(raw.get("daemon", {}), known_capabilities=set(capabilities))
+        _pruefe_zeitplan(daemon)
         services = _parse_services(raw.get("services", {}))
         return cls(
             paths=paths,
@@ -665,6 +666,30 @@ def _parse_web(raw: Any) -> WebConfig:
     )
 
 
+def _pruefe_zeitplan(daemon: DaemonConfig) -> None:
+    """Ein Zeitplan darf nur Faehigkeiten nennen, die sich auch bauen lassen.
+
+    Vorher genuegte ein Eintrag in [capabilities]. Damit liess sich `voice`
+    einplanen -- Sprache ist aber eine Bedienweise und keine Faehigkeit, sie
+    hat kein poll/decide/act. Der Daemon haette den Job stumm bei jedem Tick
+    scheitern lassen, statt dass die Konfiguration es sofort sagt.
+
+    Der Import steht absichtlich in der Funktion: `config.py` ist der Kern und
+    kennt die Schichten ueber sich sonst nicht.
+    """
+    if not daemon.schedule:
+        return
+    from jarvis.skills.factory import BUILDABLE
+
+    for name in sorted(daemon.schedule):
+        if name not in BUILDABLE:
+            bekannt = ", ".join(BUILDABLE)
+            raise ConfigError(
+                f"daemon.schedule.{name}: laesst sich nicht als Faehigkeit bauen "
+                f"(moeglich: {bekannt})"
+            )
+
+
 def _parse_services(raw: Any) -> ServiceConfig:
     if not isinstance(raw, dict):
         raise ConfigError("services: erwartet eine Tabelle")
@@ -742,13 +767,23 @@ def _parse_voice(raw: Any, *, known_tasks: set[str]) -> VoiceConfig:
     if not isinstance(befehl, list) or not all(isinstance(t, str) for t in befehl):
         raise ConfigError("voice.record_command: erwartet eine Liste von Zeichenketten")
 
+    modell = _as_str(raw.get("whisper_model", ""), "voice.whisper_model").strip()
+    if modell and not Path(modell).expanduser().is_absolute():
+        # Ein relativer Pfad haengt am Arbeitsverzeichnis. Unter `launchd` ist
+        # das ein anderes als in der Shell -- die Umwandlung schluege dort
+        # fehl, und zwar erst im Betrieb, nicht beim Laden.
+        raise ConfigError(
+            f"voice.whisper_model: {modell!r} ist relativ. Ein Daemon startet in "
+            f"einem anderen Verzeichnis; bitte den vollen Pfad angeben."
+        )
+
     return VoiceConfig(
         wake_word=_as_str(raw.get("wake_word", "jarvis"), "voice.wake_word").strip(),
         speak=_as_bool(raw.get("speak", True), "voice.speak"),
         voice_name=_as_str(raw.get("voice_name", ""), "voice.voice_name").strip(),
         rate=rate,
         whisper_bin=_as_str(raw.get("whisper_bin", "whisper-cli"), "voice.whisper_bin").strip(),
-        whisper_model=_as_str(raw.get("whisper_model", ""), "voice.whisper_model").strip(),
+        whisper_model=str(Path(modell).expanduser()) if modell else "",
         language=_as_str(raw.get("language", "de"), "voice.language").strip() or "de",
         task=task,
         record_command=tuple(befehl),
@@ -984,6 +1019,9 @@ autonomy_level = 0
 requires_outbound = false
 rate_limits = { hour = 60, day = 300 }
 
+# Recherche. Sie greift spaeter ins Netz und unterliegt deshalb von Anfang an
+# Ratenbegrenzung und Stoppschalter -- auch solange die einzige Quelle ein
+# fester Bestand ohne Netz ist.
 [capabilities.research]
 autonomy_level = 0
 requires_outbound = true
@@ -1176,6 +1214,26 @@ allowlist_manual = []
 
 # Immer verboten, schlaegt alles andere. Ganze Domains als "@example.com".
 allowlist_blocked = []
+
+
+[skills.research]
+# Aufgabe aus [llm.tasks], die aus einer Frage Suchbegriffe macht.
+task = "classify"
+
+# Die Freigabeliste der Quellen. Was hier nicht steht, wird nicht gefragt --
+# auch wenn es vorhanden waere. Das Modell kann diese Liste nicht aendern und
+# nennt niemals selbst eine Adresse (Abschnitt 2.1).
+#
+# "beispiel" ist ein fester Bestand ohne Netz. Eine echte Quelle mit Websuche
+# kommt spaeter dazu; bis dahin geht von hier nichts hinaus.
+sources = ["beispiel"]
+
+# Fragen je Durchlauf, Funde je Frage.
+max_per_run = 5
+max_findings = 5
+
+# Die Kategorien sind zugleich das Ausgabeschema des Modells.
+categories = ["allgemein", "recht", "technik", "finanzen", "gesundheit"]
 
 
 [skills.calendar]

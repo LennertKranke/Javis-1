@@ -13,7 +13,7 @@ import threading
 import pytest
 
 from jarvis.core.audit import AuditLog
-from jarvis.core.config import Config, Paths
+from jarvis.core.config import Config, ConfigError, Paths
 from jarvis.daemon import Daemon, DaemonLock, LockBusy, letzter_lauf, merke_lauf
 from jarvis.skills.base import Decision, Event, Result, Skill
 
@@ -594,3 +594,57 @@ def test_nebenlaeufige_sperrversuche_lassen_nur_einen_durch(home):
 
     assert ergebnisse.count("bekommen") == 0
     assert ergebnisse.count("abgewiesen") == 3
+
+
+# --------------------------------------------------------------------------- #
+# Der Zeitplan nennt nur baubare Faehigkeiten
+#
+# Vorher genuegte ein Eintrag in [capabilities]. Damit liess sich `voice`
+# einplanen -- Sprache ist aber eine Bedienweise ohne poll/decide/act, und der
+# Job waere bei jedem Tick stumm gescheitert.
+# --------------------------------------------------------------------------- #
+
+
+def test_eine_bedienweise_laesst_sich_nicht_einplanen(home):
+    with pytest.raises(ConfigError, match="voice"):
+        Config.from_mapping(
+            {
+                "capabilities": {"voice": {"requires_outbound": False}},
+                "llm": {"providers": {}, "tasks": {}},
+                "daemon": {"enabled": True, "schedule": {"voice": 15}},
+            },
+            paths=Paths(home=home),
+        )
+
+
+def test_eine_unbekannte_faehigkeit_faellt_schon_vorher_auf(home):
+    with pytest.raises(ConfigError, match="gibtsnicht"):
+        Config.from_mapping(
+            {
+                "capabilities": {"mail": {"requires_outbound": False}},
+                "llm": {"providers": {}, "tasks": {}},
+                "daemon": {"enabled": True, "schedule": {"gibtsnicht": 15}},
+            },
+            paths=Paths(home=home),
+        )
+
+
+def test_baubare_faehigkeiten_gehen_durch(home):
+    from jarvis.skills.factory import BUILDABLE
+
+    config = Config.from_mapping(
+        {
+            "capabilities": {name: {"requires_outbound": False} for name in BUILDABLE},
+            "llm": {"providers": {}, "tasks": {}},
+            "daemon": {"enabled": True, "schedule": dict.fromkeys(BUILDABLE, 60)},
+        },
+        paths=Paths(home=home),
+    )
+    assert set(config.daemon.schedule) == set(BUILDABLE)
+
+
+def test_die_vorgabe_plant_nur_baubares_ein(home):
+    from jarvis.skills.factory import BUILDABLE
+
+    config = Config.load(home=home)
+    assert set(config.daemon.schedule) <= set(BUILDABLE)

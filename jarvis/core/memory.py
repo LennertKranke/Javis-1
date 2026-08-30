@@ -30,6 +30,17 @@ __all__ = ["CATEGORIES", "LongTermMemory", "MemoryFact"]
 MAX_KEY = 80
 MAX_VALUE = 500
 
+#: Obergrenze fuer dauerhaft abgelegte Tatsachen.
+#:
+#: Ohne sie waechst der Speicher unbegrenzt. Das faellt lange nicht auf, weil
+#: der Kontextbauer ohnehin nur wenige Tatsachen mitgibt -- aber `relevant()`
+#: bewertet bis zu 500 Eintraege bei jeder Anfrage, und die Datenbank waechst
+#: mit jeder je gemerkten Kleinigkeit weiter.
+#:
+#: Verdraengt wird die unwichtigste, bei gleichem Gewicht die aelteste. Wer
+#: etwas dauerhaft behalten will, gibt ihm ein hoeheres Gewicht.
+MAX_FAKTEN = 500
+
 CATEGORIES = frozenset({"praeferenz", "person", "termin", "entscheidung", "zugang", "sonstiges"})
 
 _KEY_RE = re.compile(r"[^a-z0-9_.:-]+")
@@ -95,6 +106,7 @@ class LongTermMemory:
                 """,
                 (schluessel, inhalt, category, source, float(weight), jetzt, jetzt),
             )
+        self._verdraenge()
         gemerkt = self.get(schluessel)
         assert gemerkt is not None
         return gemerkt
@@ -111,6 +123,31 @@ class LongTermMemory:
             "SELECT * FROM memory_facts WHERE key = ?", (normalise_key(key),)
         ).fetchone()
         return self._fact(zeile) if zeile else None
+
+    def _verdraenge(self, *, obergrenze: int = MAX_FAKTEN) -> int:
+        """Haelt den Bestand unter der Obergrenze.
+
+        Nicht die aeltesten fliegen, sondern die unwichtigsten: `weight` ist
+        die Angabe, wie sehr etwas behalten werden soll. Bei gleichem Gewicht
+        entscheidet das Alter. Was gerade geschrieben wurde, ueberlebt damit
+        nicht automatisch -- sonst verdraengte ein Schwall Belangloses alles
+        Wichtige.
+        """
+        anzahl = self.count()
+        if anzahl <= obergrenze:
+            return 0
+        with transaction(self._conn):
+            cur = self._conn.execute(
+                """
+                DELETE FROM memory_facts WHERE key IN (
+                    SELECT key FROM memory_facts
+                    ORDER BY weight ASC, updated_at ASC, key ASC
+                    LIMIT ?
+                )
+                """,
+                (anzahl - obergrenze,),
+            )
+            return int(cur.rowcount)
 
     def all(self, *, limit: int = 100, category: str | None = None) -> list[MemoryFact]:
         if category:

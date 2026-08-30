@@ -719,3 +719,227 @@ def test_ein_fehler_der_stimme_kippt_die_antwort_nicht(home, conn):
     assert antwort.gesprochen is False
     assert antwort.fehler == "Lautsprecher weg"
     assert "Betrieb" in antwort.text
+
+
+# --------------------------------------------------------------------------- #
+# Von der Aufnahme bis zur Antwort, in einem Stueck
+#
+# Bisher war jeder Abschnitt fuer sich geprueft. Diese Tests laufen die ganze
+# Kette: Audiodatei -> Whisper-Ersatz -> sanitize -> Weckwort -> Absicht ->
+# Antwort aus dem tatsaechlichen Zustand -> Protokoll.
+# --------------------------------------------------------------------------- #
+
+
+class EchoUmwandler:
+    """Ein Whisper-Ersatz, der den Dateinamen als Transkript liefert.
+
+    Damit laesst sich die ganze Kette pruefen, ohne Audio und ohne Whisper --
+    und ohne den Umwandler zu umgehen, den der echte Weg benutzt.
+    """
+
+    name = "echo"
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self.aufrufe: list[str] = []
+
+    def available(self) -> bool:
+        return True
+
+    def describe(self) -> str:
+        return "Dateiname als Transkript"
+
+    def transcribe(self, audio):
+        self.aufrufe.append(str(audio))
+        from jarvis.interfaces.voice.transcribe import clean_transcript
+
+        return clean_transcript(self._text)
+
+
+def kette(home, conn, gesprochen: str, **kw):
+    config = stimm_config(home, **kw)
+    sprecher = TextSpeaker()
+    umwandler = EchoUmwandler(gesprochen)
+    sitzung = VoiceSession(config, conn, transcriber=umwandler, speaker=sprecher)
+    return sitzung, config, sprecher, umwandler
+
+
+def test_e2e_aufnahme_bis_antwort(home, conn, tmp_path):
+    audio = tmp_path / "aufnahme.wav"
+    audio.write_bytes(b"RIFF")
+    sitzung, _, sprecher, umwandler = kette(home, conn, "Jarvis, wie ist der Stand?")
+
+    antwort = sitzung.hear(audio)
+
+    assert umwandler.aufrufe == [str(audio)], "der Umwandler wurde umgangen"
+    assert antwort.absicht == STATUS
+    assert antwort.quelle == "rule"
+    assert "Betrieb" in antwort.text
+    assert sprecher.gesagt == [antwort.text]
+    letzter = AuditLog(conn).recent(1)[0]
+    assert letzter.capability == "voice"
+    assert letzter.outcome == STATUS
+
+
+def test_e2e_zeitmarken_aus_whisper_stoeren_die_absicht_nicht(home, conn, tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    sitzung, _, _, _ = kette(home, conn, "[00:00:00.000 --> 00:00:02.400]  Jarvis, halt an")
+    antwort = sitzung.hear(audio)
+    assert antwort.absicht == ANHALTEN
+
+
+def test_e2e_anhalten_wirkt_wirklich(home, conn, tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    sitzung, config, _, _ = kette(home, conn, "Jarvis, halt an")
+    assert config.stop_switch.engaged() is False
+
+    sitzung.hear(audio)
+
+    assert config.stop_switch.engaged() is True
+    assert any(e.outcome == "stop_engaged" for e in AuditLog(conn).recent(3))
+
+
+def test_e2e_ein_fremder_satz_aus_dem_raum_loest_nichts_aus(home, conn, tmp_path):
+    """Der Fernseher sagt etwas -- ohne Anrede passiert nichts."""
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    sitzung, config, sprecher, _ = kette(home, conn, "und dann schickte er die Rechnung ab")
+    antwort = sitzung.hear(audio)
+    assert antwort.angesprochen is False
+    assert sprecher.gesagt == []
+    assert config.stop_switch.engaged() is False
+
+
+def test_e2e_ein_gesprochener_handlungsauftrag_wird_verweigert(home, conn, tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    sitzung, _, _, _ = kette(home, conn, "Jarvis, schick die Entwuerfe ab")
+    antwort = sitzung.hear(audio)
+    assert antwort.absicht == HANDELN
+    assert "Dashboard" in antwort.text
+    assert any(e.outcome == "refused" for e in AuditLog(conn).recent(3))
+
+
+def test_e2e_das_briefing_kommt_aus_dem_speicher(home, conn, tmp_path):
+    from datetime import datetime
+
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    sitzung, config, sprecher, _ = kette(home, conn, "Jarvis, was steht heute an?")
+    heute = datetime.now(config.timezone).date().isoformat()
+    BriefingStore(conn).save(day=heute, text="Zwei Termine, ein Konflikt.")
+
+    antwort = sitzung.hear(audio)
+
+    assert antwort.absicht == BRIEFING
+    assert "Zwei Termine, ein Konflikt." in antwort.text
+    assert sprecher.gesagt == ["Zwei Termine, ein Konflikt."]
+
+
+def test_e2e_das_transkript_wird_normalisiert(home, conn, tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    sitzung, _, _, _ = kette(home, conn, "Jarvis, <b>wie</b> ist​ der Stand")
+    antwort = sitzung.hear(audio)
+    assert antwort.absicht == STATUS
+    assert "<b>" not in antwort.gehoert
+
+
+def test_e2e_die_ganze_kette_hinterlaesst_eine_lueckenlose_protokollkette(home, conn, tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    for satz in ("Jarvis, status", "Jarvis, was liegt an", "Jarvis, schick das ab"):
+        sitzung, _, _, _ = kette(home, conn, satz)
+        sitzung.hear(audio)
+    assert AuditLog(conn).verify().ok
+
+
+# --------------------------------------------------------------------------- #
+# Whisper: der Modellpfad
+# --------------------------------------------------------------------------- #
+
+
+def test_ein_relativer_modellpfad_wird_beim_laden_abgewiesen(home):
+    """Unter launchd ist das Arbeitsverzeichnis ein anderes als in der Shell."""
+    from jarvis.core.config import Config, ConfigError, Paths
+
+    with pytest.raises(ConfigError, match="relativ"):
+        Config.from_mapping(
+            {"voice": {"whisper_model": "modelle/ggml-base.bin"}}, paths=Paths(home=home)
+        )
+
+
+def test_eine_tilde_im_modellpfad_wird_aufgeloest(home):
+    from jarvis.core.config import Config, Paths
+
+    config = Config.from_mapping(
+        {"voice": {"whisper_model": "~/modelle/ggml-base.bin"}}, paths=Paths(home=home)
+    )
+    assert Path(config.voice.whisper_model).is_absolute()
+    assert "~" not in config.voice.whisper_model
+
+
+def test_ein_leerer_modellpfad_bleibt_leer(home):
+    from jarvis.core.config import Config, Paths
+
+    assert Config.from_mapping({"voice": {}}, paths=Paths(home=home)).voice.whisper_model == ""
+
+
+def test_whisper_ist_ohne_datei_nicht_bereit_auch_bei_absolutem_pfad(tmp_path):
+    umwandler = WhisperCppTranscriber(binary="whisper-cli", model=str(tmp_path / "fehlt.bin"))
+    assert umwandler.available() is False
+    assert "fehlt.bin" in umwandler.describe() or "nicht gefunden" in umwandler.describe()
+
+
+def test_ein_verzeichnis_ist_kein_modell(tmp_path):
+    umwandler = WhisperCppTranscriber(binary="whisper-cli", model=str(tmp_path))
+    assert umwandler.available() is False
+
+
+# --------------------------------------------------------------------------- #
+# Weckwort: die Grenzfaelle
+# --------------------------------------------------------------------------- #
+
+
+def test_das_weckwort_greift_nicht_mitten_im_wort():
+    for satz in ("Jarvisonics ist eine Firma", "jarvisjarvis", "unjarvis"):
+        angesprochen, _ = loese_weckwort(satz, "jarvis")
+        assert angesprochen is False, f"{satz!r} hat faelschlich angesprochen"
+
+
+def test_das_weckwort_greift_an_einem_bindestrich():
+    angesprochen, rest = loese_weckwort("Der Jarvis-Bericht sagt nichts", "jarvis")
+    assert angesprochen is True
+    assert rest.startswith("bericht")
+
+
+def test_ein_nachgestelltes_weckwort_zaehlt_auch():
+    """ "Status, Jarvis" -- danach steht nichts mehr, der Rest ist der Satz."""
+    angesprochen, rest = loese_weckwort("Wie ist der Stand, Jarvis", "jarvis")
+    assert angesprochen is True
+    assert erkenne_mit_regeln(rest).absicht == STATUS
+
+
+def test_nur_das_weckwort_allein_ergibt_keine_absicht():
+    angesprochen, rest = loese_weckwort("Jarvis", "jarvis")
+    assert angesprochen is True
+    assert erkenne_mit_regeln(rest).absicht == UNBEKANNT
+
+
+def test_ein_sehr_langer_satz_bleibt_beherrschbar(home, conn):
+    sitzung, _, _ = baue_sitzung(home, conn)
+    antwort = sitzung.ask("x" * 50000 + " Jarvis, wie ist der Stand")
+    # sanitize kuerzt; die Absicht bleibt erkennbar oder eben unbekannt --
+    # aber es faellt nichts um.
+    assert antwort.absicht in {STATUS, UNBEKANNT}
+    assert len(antwort.gehoert) <= 300
+
+
+def test_ein_leeres_transkript_faellt_nicht_um(home, conn, tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    sitzung, _, _, _ = kette(home, conn, "")
+    antwort = sitzung.hear(audio)
+    assert antwort.angesprochen is False

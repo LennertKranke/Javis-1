@@ -69,6 +69,9 @@ autonomy_level = 0
 requires_outbound = false
 rate_limits = { hour = 60, day = 300 }
 
+# Recherche. Sie greift spaeter ins Netz und unterliegt deshalb von Anfang an
+# Ratenbegrenzung und Stoppschalter -- auch solange die einzige Quelle ein
+# fester Bestand ohne Netz ist.
 [capabilities.research]
 autonomy_level = 0
 requires_outbound = true
@@ -261,6 +264,26 @@ allowlist_manual = []
 
 # Immer verboten, schlaegt alles andere. Ganze Domains als "@example.com".
 allowlist_blocked = []
+
+
+[skills.research]
+# Aufgabe aus [llm.tasks], die aus einer Frage Suchbegriffe macht.
+task = "classify"
+
+# Die Freigabeliste der Quellen. Was hier nicht steht, wird nicht gefragt --
+# auch wenn es vorhanden waere. Das Modell kann diese Liste nicht aendern und
+# nennt niemals selbst eine Adresse (Abschnitt 2.1).
+#
+# "beispiel" ist ein fester Bestand ohne Netz. Eine echte Quelle mit Websuche
+# kommt spaeter dazu; bis dahin geht von hier nichts hinaus.
+sources = ["beispiel"]
+
+# Fragen je Durchlauf, Funde je Frage.
+max_per_run = 5
+max_findings = 5
+
+# Die Kategorien sind zugleich das Ausgabeschema des Modells.
+categories = ["allgemein", "recht", "technik", "finanzen", "gesundheit"]
 
 
 [skills.calendar]

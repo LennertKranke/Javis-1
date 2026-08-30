@@ -228,3 +228,55 @@ def test_speicherung_waechst_kontext_nicht(conn):
     assert m.count() == 301  # gespeichert ist alles
     assert st.count() == 8  # der Verlauf hat sich selbst beschnitten
     assert len(gebaut.facts) <= bauer.budget.max_facts
+
+
+# --------------------------------------------------------------------------- #
+# Der Speicher waechst nicht unbegrenzt
+# --------------------------------------------------------------------------- #
+
+
+def test_der_bestand_bleibt_unter_der_obergrenze(conn):
+    from jarvis.core.memory import MAX_FAKTEN
+
+    gedaechtnis = LongTermMemory(conn)
+    for i in range(MAX_FAKTEN + 150):
+        gedaechtnis.remember(f"fakt-{i}", f"wert {i}", category="sonstiges")
+    assert gedaechtnis.count() == MAX_FAKTEN
+
+
+def test_verdraengt_wird_das_unwichtigste_nicht_das_aelteste(conn):
+    """`weight` ist die Angabe, wie sehr etwas behalten werden soll."""
+    from jarvis.core.memory import MAX_FAKTEN
+
+    gedaechtnis = LongTermMemory(conn)
+    gedaechtnis.remember("sehr wichtig", "das soll bleiben", category="person", weight=9.0)
+    for i in range(MAX_FAKTEN + 50):
+        gedaechtnis.remember(f"belanglos-{i}", f"wert {i}", category="sonstiges", weight=1.0)
+
+    assert gedaechtnis.get("sehr wichtig") is not None, "das Wichtige wurde verdraengt"
+    assert gedaechtnis.count() == MAX_FAKTEN
+
+
+def test_unter_der_obergrenze_wird_nichts_verdraengt(conn):
+    gedaechtnis = LongTermMemory(conn)
+    for i in range(20):
+        gedaechtnis.remember(f"fakt-{i}", f"wert {i}", category="sonstiges")
+    assert gedaechtnis.count() == 20
+    assert gedaechtnis.get("fakt-0") is not None
+
+
+def test_bei_gleichem_gewicht_entscheidet_das_alter(conn):
+    from jarvis.core.memory import MAX_FAKTEN
+
+    gedaechtnis = LongTermMemory(conn)
+    gedaechtnis.remember("der aelteste", "zuerst abgelegt", category="sonstiges", weight=1.0)
+    for i in range(MAX_FAKTEN + 5):
+        gedaechtnis.remember(f"spaeter-{i}", f"wert {i}", category="sonstiges", weight=1.0)
+    assert gedaechtnis.get("der aelteste") is None
+
+
+def test_ein_ersetzter_eintrag_zaehlt_nicht_doppelt(conn):
+    gedaechtnis = LongTermMemory(conn)
+    for _ in range(50):
+        gedaechtnis.remember("derselbe", "immer wieder", category="sonstiges")
+    assert gedaechtnis.count() == 1

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from jarvis.core.config import ConfigError
+from jarvis.core.config import Capability, ConfigError, RateLimit
 from jarvis.core.ratelimit import RateLimiter
 from tests.conftest import build_config
 
@@ -135,3 +135,83 @@ def test_prune_raeumt_nur_abgelaufene_eintraege(conn, home):
     entfernt = lim.prune()
     assert entfernt == 1
     assert lim.usage("mail")[0].used == 1
+
+
+# --------------------------------------------------------------------------- #
+# Nebenlaeufigkeit
+#
+# `BEGIN IMMEDIATE` nimmt die Schreibsperre schon beim Start. Ohne das koennten
+# zwei Prozesse gleichzeitig den Zaehler lesen und beide unter der Obergrenze
+# landen. Das war bisher nur behauptet -- hier wird es nachgemessen.
+# --------------------------------------------------------------------------- #
+
+
+def test_die_obergrenze_haelt_unter_nebenlaeufigkeit(home):
+    import threading
+
+    from jarvis.core.db import open_database
+
+    open_database(home / "state.db").close()
+    caps = {
+        "mail": Capability(
+            name="mail", rate_limits=(RateLimit(seconds=3600, window="hour", limit=10),)
+        )
+    }
+    durchgelassen: list[int] = []
+    sperre = threading.Lock()
+
+    def arbeiter() -> None:
+        # Eigene Verbindung je Faden -- so wie zwei Prozesse es taeten.
+        conn = open_database(home / "state.db")
+        try:
+            for _ in range(20):
+                if RateLimiter(conn, caps).acquire("mail").allowed:
+                    with sperre:
+                        durchgelassen.append(1)
+        finally:
+            conn.close()
+
+    faeden = [threading.Thread(target=arbeiter) for _ in range(8)]
+    for f in faeden:
+        f.start()
+    for f in faeden:
+        f.join(timeout=60)
+
+    assert len(durchgelassen) == 10, (
+        f"Obergrenze 10, durchgelassen {len(durchgelassen)} -- der Zaehler wurde "
+        f"gleichzeitig gelesen"
+    )
+
+
+def test_der_zaehler_stimmt_nach_nebenlaeufigem_verbrauch(home):
+    import threading
+
+    from jarvis.core.db import open_database
+
+    open_database(home / "state.db").close()
+    caps = {
+        "mail": Capability(
+            name="mail", rate_limits=(RateLimit(seconds=3600, window="hour", limit=25),)
+        )
+    }
+
+    def arbeiter() -> None:
+        conn = open_database(home / "state.db")
+        try:
+            for _ in range(15):
+                RateLimiter(conn, caps).acquire("mail")
+        finally:
+            conn.close()
+
+    faeden = [threading.Thread(target=arbeiter) for _ in range(6)]
+    for f in faeden:
+        f.start()
+    for f in faeden:
+        f.join(timeout=60)
+
+    conn = open_database(home / "state.db")
+    try:
+        gezaehlt = conn.execute("SELECT COUNT(*) FROM rate_events").fetchone()[0]
+    finally:
+        conn.close()
+    assert gezaehlt == 25, f"erwartet 25 verbrauchte Ereignisse, gezaehlt {gezaehlt}"

@@ -3,8 +3,8 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 1-6 abgeschlossen. Phase 7 begonnen mit den Grundlagen der
-externen Anbindungen.**
+**Stand: Phase 1-6 abgeschlossen. Phase 7 begonnen: Grundlagen der externen
+Anbindungen und die Recherchefaehigkeit aus Abschnitt 5.**
 Der Kern steht, JARVIS liest und ordnet den Posteingang ein, schreibt
 Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf der Allowlist senden,
 liest den Kalender und meldet Terminkonflikte, fasst den Tag in einem
@@ -92,6 +92,9 @@ Keychain ab. Angefordert werden `gmail.modify`, `gmail.send` und seit Phase 5
 | `jarvis daemon` | Dauerbetrieb nach `[daemon.schedule]` |
 | `jarvis llm check` | nachmessen, was der auswertende Prozess noch kann |
 | `jarvis services check [--live]` | Stand der externen Dienste, echter Kontakt auf Verlangen |
+| `jarvis research ask "..."` | eine Frage in die Warteschlange stellen |
+| `jarvis research poll` | offene Fragen nachschlagen |
+| `jarvis research list [NR]` | Fragen, Quellen und Funde |
 
 Der Stoppschalter ist eine Datei. Er wirkt auch ohne laufendes JARVIS:
 
@@ -407,6 +410,18 @@ Der zweite Durchlauf fragt das Modell nicht erneut: eine bereits gefaellte
 Beurteilung wird wiederverwendet (`decided_by = cached`). Beobachten kostet
 damit einmal, nicht stuendlich.
 
+### Der Speicher waechst nicht unbegrenzt
+
+Das Langzeitgedaechtnis fasst hoechstens `MAX_FAKTEN` (500) Tatsachen.
+Verdraengt wird die unwichtigste, bei gleichem Gewicht die aelteste -- nicht
+die neueste, sonst schoebe ein Schwall Belangloses alles Wichtige heraus. Wer
+etwas dauerhaft behalten will, gibt ihm ein hoeheres Gewicht.
+
+Ohne die Grenze waere das lange nicht aufgefallen: der Kontextbauer gibt
+ohnehin nur wenige Tatsachen mit. Aber `relevant()` bewertet bei jeder Anfrage
+bis zu 500 Eintraege, und die Datenbank waechst mit jeder je gemerkten
+Kleinigkeit weiter.
+
 ### Speicherung und Kontext sind getrennt
 
 Was JARVIS aufbewahrt, waechst mit der Nutzungsdauer. Was bei einer Anfrage
@@ -707,8 +722,35 @@ record_command = ["rec", "-q", "-r", "16000", "-c", "1", "{datei}", "trim", "0",
 weist der Recorder den Befehl ab, statt ins Leere aufzunehmen. `jarvis voice
 check` sagt, was noch fehlt.
 
+`whisper_model` muss ein **vollstaendiger** Pfad sein. Ein relativer haengt am
+Arbeitsverzeichnis, und unter `launchd` ist das ein anderes als in der Shell --
+die Umwandlung schluege dort fehl, und zwar erst im Betrieb. Die Konfiguration
+weist ihn deshalb beim Laden ab; `~` wird aufgeloest.
+
 Das Weckwort ist ein Filter gegen Zufall, **keine Sicherung** -- ein Podcast
 kann "Jarvis" sagen. Die Sicherung ist die Absichtsliste oben.
+
+### Sprache ist keine Faehigkeit, und `build_skill("voice")` gibt es nicht
+
+Das sieht wie eine Luecke aus und ist eine Entscheidung. Abschnitt 5 der
+Spezifikation fuehrt `voice/` unter `interfaces/`, neben `cli.py` und `web/` --
+nicht unter `skills/`. Eine Faehigkeit hat `poll`, `decide`, `act` und einen
+Weg durchs Gatter; Sprache hat davon nichts, weil sie nichts tut, was ein
+Gatter zu bewachen haette. Sie zur Faehigkeit zu machen hiesse, ihr einen
+`act`-Pfad zu geben -- genau den, der ihr fehlen soll.
+
+Gebaut wird sie deshalb ueber `build_session` in `interfaces/voice/session.py`,
+nicht ueber `build_skill`. Das ist dieselbe Bauweise wie beim Dashboard.
+
+Was daran wirklich falsch war: `[capabilities.voice]` liess sich in
+`[daemon.schedule]` eintragen. Der Daemon haette bei jedem Tick versucht,
+Sprache als Faehigkeit zu bauen, und waere stumm gescheitert. Der Zeitplan
+prueft jetzt gegen die baubaren Faehigkeiten:
+
+```
+daemon.schedule.voice: laesst sich nicht als Faehigkeit bauen
+(moeglich: mail, mail_reply, mail_send, calendar, briefing, research)
+```
 
 ### Was hier noch nicht ist
 
@@ -908,6 +950,69 @@ touch ~/.jarvis/STOP
 
 ---
 
+## Recherche
+
+Abschnitt 5 der Spezifikation listet `skills/research/`; die Faehigkeit fehlte
+bis jetzt. Sie ist da, aber **sie geht in diesem Stand nicht ins Netz**.
+
+```sh
+jarvis research ask "Wie lange muss ich eine Rechnung aufbewahren?"
+jarvis research poll
+jarvis research list 1
+```
+
+### Die Rollen sind getrennt, sonst ginge es nicht
+
+Abschnitt 5.2 sieht fuer Recherche einen "Anbieter mit Suchwerkzeug" vor.
+Abschnitt 2.2 verbietet dem auswertenden Teil jedes Werkzeug. Beides zugleich
+geht nur ueber die Rollen:
+
+```
+Das Modell formuliert Suchbegriffe.        Es waehlt keine Quelle.
+Deterministischer Code waehlt die Quelle.  Aus einer Freigabeliste.
+Die Quelle liefert Text.                   Der ist wieder Fremdtext.
+```
+
+Damit bleibt Prinzip 2.1 unangetastet: **eine URL ist ein Ziel, und Ziele
+bestimmt niemals das Modell.** Das Ausgabeschema hat genau zwei Felder --
+`begriffe` und `kategorie`. Ein Feld, in das eine Adresse passte, liesse sich
+gar nicht anlegen; die Zielfeldsperre aus `llm/schema.py` weist es ab. Ein
+Test prueft beides.
+
+```toml
+[skills.research]
+sources = ["beispiel"]   # Freigabeliste. Was hier nicht steht, wird nicht gefragt.
+```
+
+`verify_targets` holt die Quellen vor dem Handeln neu aus der Freigabeliste --
+eine aufbewahrte Entscheidung ist keine vertrauenswuerdige Quelle.
+
+### Stufe 1, nicht weniger
+
+Recherche greift spaeter hinaus, also verlangt sie Stufe 1 -- wie der Versand.
+Auf der Vorgabestufe 0 beurteilt sie und legt nichts ab.
+
+Das war zuerst falsch: die Faehigkeit stand auf `autonomy_level = 0`, und weil
+das Gatter gewaehrte gegen verlangte Stufe vergleicht, waren beide 0 und die
+Recherche lief durch. Der Schattenbetrieb waere fuer sie keiner gewesen.
+Aufgefallen ist es durch den eigenen Test, nicht durch Nachdenken.
+
+### Heute geht von hier nichts hinaus
+
+Es gibt das Quellenprotokoll, die Freigabeliste und eine Quelle mit festem
+Bestand. **In `skills/research/` kommt kein HTTP-Client vor**, und ein Test
+prueft das -- so laesst sich spaeter eine echte Quelle danebenstellen, ohne
+dass heute versehentlich etwas hinausgeht.
+
+Fehlt eine freigegebene Quelle, sagt die Faehigkeit das und legt nichts ab.
+Sie tut nicht so, als haette sie recherchiert.
+
+Der Beispielbestand enthaelt absichtlich einen Eintrag mit einem
+Einschleusversuch. Er wird als Fundstueck abgelegt und nicht befolgt -- wer
+die Recherche benutzt, soll das einmal sehen.
+
+---
+
 ## Externe Dienste: Betrieb ohne Konten
 
 JARVIS spricht mit vier externen Diensten: Anthropic, Ollama, Gmail und Google
@@ -1007,6 +1112,7 @@ heisst: tatsaechlich ausgefuehrt und beobachtet, nicht nur getestet.
 | launchd-Plist | als Property List geparst. **Nicht auf macOS geladen** |
 | Sprachadapter (Whisper, `say`) | Tests gegen Ersatzprogramme. Nie mit echter Hardware |
 | Laufzeit-Mock fuer Gmail und Kalender | Tests **und** im Betrieb (`mail poll`, `calendar poll`, `briefing --neu` liefen vollstaendig ohne Konten) |
+| Recherche | Tests **und** im Betrieb (`research ask/poll/list` gegen den Beispielbestand). Keine Netzquelle vorhanden |
 | **Anthropic, Ollama, Gmail, Calendar -- echt** | **Nie.** Kein Adapter hat je mit dem echten Dienst gesprochen. `jarvis services check` sagt es dir jederzeit. |
 
 ---
@@ -1105,7 +1211,10 @@ ausdruecklich drin -- nicht weil es noetig waere, sondern damit man es sieht.
 
 ## Was noch nicht existiert
 
-Die Faehigkeiten aus Phase 7 -- Aufgabenverwaltung, Dokumentenanalyse,
+Eine Recherchequelle, die tatsaechlich ins Netz geht. Die Faehigkeit steht,
+die Freigabeliste steht, die Rollentrennung steht -- es fehlt die Quelle.
+
+Die uebrigen Faehigkeiten aus Phase 7: Aufgabenverwaltung, Dokumentenanalyse,
 Dateiablage, Hausautomation. Die Grundlage dafuer steht: jeder externe Dienst
 hat einen Adapter, ein Laufzeit-Doppel und einen messbaren Nachweisstand.
 

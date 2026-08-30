@@ -254,6 +254,40 @@ MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
             """,
         ),
     ),
+    (
+        7,
+        (
+            # Rechercheauftraege. Die Frage steht normalisiert darin -- sie kann
+            # aus einer Mail stammen und ist damit Fremdtext.
+            """
+            CREATE TABLE research_questions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                question   TEXT    NOT NULL,
+                asked_at   TEXT    NOT NULL,
+                state      TEXT    NOT NULL DEFAULT 'seen',
+                category   TEXT,
+                keywords   TEXT    NOT NULL DEFAULT '',
+                origin     TEXT    NOT NULL DEFAULT 'cli',
+                audit_id   INTEGER REFERENCES audit_log (id)
+            )
+            """,
+            "CREATE INDEX ix_research_state ON research_questions (state)",
+            # Was gefunden wurde. `source` ist der Name einer freigegebenen
+            # Quelle, nie eine vom Modell genannte Adresse.
+            """
+            CREATE TABLE research_findings (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_id INTEGER NOT NULL REFERENCES research_questions (id),
+                source      TEXT    NOT NULL,
+                title       TEXT    NOT NULL DEFAULT '',
+                snippet     TEXT    NOT NULL DEFAULT '',
+                reference   TEXT    NOT NULL DEFAULT '',
+                found_at    TEXT    NOT NULL
+            )
+            """,
+            "CREATE INDEX ix_findings_question ON research_findings (question_id)",
+        ),
+    ),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

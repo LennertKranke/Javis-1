@@ -818,3 +818,101 @@ def test_fehlerhafte_dienstkonfiguration_wird_gemeldet(home, capsys):
     code = main(["--home", str(home), "services", "check"])
     assert code == 2
     assert "services.mode" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# Recherche
+# --------------------------------------------------------------------------- #
+
+
+def research_bereit(home):
+    """Statischer Anbieter fuer classify, damit kein Netz noetig ist."""
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8")
+        .replace(
+            'providers = ["ollama", "anthropic"]\neffort = "low"',
+            'providers = ["trocken", "ollama"]\neffort = "low"',
+        )
+        .replace(
+            'reply = "{}"',
+            'reply = \'{"begriffe": ["rechnung", "aufbewahrung"], "kategorie": "recht"}\'',
+        )
+        .replace("dry_run = true", "dry_run = false")
+        .replace(
+            "[capabilities.research]\nautonomy_level = 0",
+            "[capabilities.research]\nautonomy_level = 1",
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_research_ask_ohne_datenbank(home, capsys):
+    code, out = run(home, "research", "ask", "Testfrage", capsys=capsys)
+    assert code == 1
+    assert "jarvis init" in out
+
+
+def test_research_ask_stellt_eine_frage_ein(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "research", "ask", "Wie", "lange", "aufbewahren", capsys=capsys)
+    assert code == 0
+    assert "Wie lange aufbewahren" in out
+    assert "jarvis research poll" in out
+
+
+def test_research_list_zeigt_offene_fragen_und_quellen(home, capsys):
+    run(home, "init", capsys=capsys)
+    run(home, "research", "ask", "Erste", "Frage", capsys=capsys)
+    code, out = run(home, "research", "list", capsys=capsys)
+    assert code == 0
+    assert "Erste Frage" in out
+    assert "beispiel" in out
+    assert "kein Netz" in out
+
+
+def test_research_poll_findet_etwas(home, capsys):
+    run(home, "init", capsys=capsys)
+    research_bereit(home)
+    run(home, "research", "ask", "Wie", "lange", "Rechnungen", "aufbewahren", capsys=capsys)
+    code, out = run(home, "research", "poll", capsys=capsys)
+    assert code == 0
+    assert "Gefunden" in out
+
+    code, out = run(home, "research", "list", "1", capsys=capsys)
+    assert code == 0
+    assert "Aufbewahrungsfristen" in out
+    assert "beispiel://" in out
+
+
+def test_research_poll_bleibt_im_trockenlauf_wirkungslos(home, capsys):
+    run(home, "init", capsys=capsys)
+    research_bereit(home)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace("dry_run = false", "dry_run = true"),
+        encoding="utf-8",
+    )
+    run(home, "research", "ask", "Wie", "lange", "aufbewahren", capsys=capsys)
+    run(home, "research", "poll", capsys=capsys)
+    _, out = run(home, "research", "list", "1", capsys=capsys)
+    assert "Noch nichts gefunden" in out
+
+
+def test_research_list_meldet_eine_unbekannte_nummer(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "research", "list", "999", capsys=capsys)
+    assert code == 1
+    assert "Keine Frage" in out
+
+
+def test_fehlerhafte_recherche_einstellungen_werden_gemeldet(home, capsys):
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace('sources = ["beispiel"]', "sources = 5"),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(home), "research", "poll"])
+    assert code == 2
+    assert "skills.research.sources" in capsys.readouterr().err

@@ -42,6 +42,9 @@ from jarvis.skills.mail.reply import MailDraftSkill, MailSendSkill, SendOptions
 from jarvis.skills.mail.skill import MailOptions, MailSkill
 from jarvis.skills.mail.store import MailStore, ReplyStore
 from jarvis.skills.mail.style import StyleStore
+from jarvis.skills.research.skill import ResearchSkill
+from jarvis.skills.research.source import MockSource, Source
+from jarvis.skills.research.store import ResearchStore
 
 __all__ = [
     "BUILDABLE",
@@ -49,10 +52,11 @@ __all__ = [
     "calendar_client",
     "gmail_auth",
     "gmail_client",
+    "research_sources",
     "send_capabilities",
 ]
 
-BUILDABLE = ("mail", "mail_reply", "mail_send", "calendar", "briefing")
+BUILDABLE = ("mail", "mail_reply", "mail_send", "calendar", "briefing", "research")
 
 
 def send_capabilities(config: Config, *, approved: bool = False) -> frozenset[str]:
@@ -94,6 +98,16 @@ def calendar_client(
     if config.services.is_mock:
         return MockCalendarClient(capabilities=CALENDAR_READ, fixtures=_fixtures(config))
     return CalendarClient(gmail_auth(config, secrets=secrets), capabilities=CALENDAR_READ)
+
+
+def research_sources(config: Config) -> dict[str, Source]:
+    """Die vorhandenen Quellen. Welche davon benutzt werden, sagt die Freigabeliste.
+
+    In diesem Stand gibt es genau eine, und sie geht nicht ins Netz. Eine
+    echte Quelle kommt spaeter hier dazu -- die Faehigkeit selbst muss sich
+    dafuer nicht aendern.
+    """
+    return {"beispiel": MockSource()}
 
 
 def build_skill(
@@ -168,6 +182,14 @@ def build_skill(
                 memory=LongTermMemory(conn),
                 short_term=ShortTermContext(conn, scope="briefing"),
             ),
+        )
+
+    if name == "research":
+        return ResearchSkill.from_config(
+            config,
+            router=Router(config.llm, build_providers(config.llm, speicher)),
+            store=ResearchStore(conn),
+            sources=research_sources(config),
         )
 
     bekannt = ", ".join(BUILDABLE)

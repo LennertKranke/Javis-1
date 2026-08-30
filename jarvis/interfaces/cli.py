@@ -1004,6 +1004,118 @@ def cmd_briefing(args: argparse.Namespace, out: Out) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Recherche
+# --------------------------------------------------------------------------- #
+
+
+def cmd_research_ask(args: argparse.Namespace, out: Out) -> int:
+    """Stellt eine Frage in die Warteschlange. Recherchiert wird beim Durchlauf."""
+    paths = _paths(args)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        from jarvis.skills.research.store import ResearchStore
+
+        try:
+            frage = ResearchStore(conn).ask(" ".join(args.frage), origin="cli")
+        except ValueError as exc:
+            out.line(f"{exc}")
+            return 1
+        out.line()
+        out.field("Frage", f"{frage.id}  {frage.question}")
+        out.line(f"  {out.dim('Recherchieren mit: jarvis research poll')}")
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+def cmd_research_poll(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        skill = build_skill("research", config=config, conn=conn)
+        if args.anzahl:
+            skill.options.max_per_run = args.anzahl
+        return _durchlauf(skill, config, conn, out)
+    finally:
+        conn.close()
+
+
+def cmd_research_list(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        from jarvis.skills.factory import research_sources
+        from jarvis.skills.research.skill import ResearchOptions
+        from jarvis.skills.research.store import ResearchStore
+
+        store = ResearchStore(conn)
+        optionen = ResearchOptions(
+            config.skill_options("research"), known_tasks=set(config.llm.tasks)
+        )
+        vorhanden = research_sources(config)
+
+        out.line()
+        zustaende = store.counts_by_state()
+        out.field(
+            "Fragen",
+            "  ".join(f"{k} {v}" for k, v in sorted(zustaende.items())) or "keine",
+        )
+        out.field("Freigegebene Quellen", ", ".join(optionen.sources) or "keine")
+        for name in optionen.sources:
+            quelle = vorhanden.get(name)
+            beschreibung = quelle.describe() if quelle else "nicht vorhanden"
+            out.line(f"  {out.dim(name + ': ' + beschreibung)}")
+
+        if args.frage:
+            frage = store.get(args.frage)
+            if frage is None:
+                out.line(f"Keine Frage mit der Nummer {args.frage}.")
+                return 1
+            out.line()
+            out.field("Frage", frage.question)
+            out.field("Zustand", frage.state)
+            out.field("Begriffe", frage.keywords or "--")
+            funde = store.findings(frage.id)
+            out.line()
+            for fund in funde:
+                out.line(f"  {out.accent(fund.title)}  {out.dim(fund.source)}")
+                for zeile in fund.snippet.splitlines():
+                    out.line(f"    {zeile}")
+                if fund.reference:
+                    out.line(f"    {out.dim(fund.reference)}")
+                out.line()
+            if not funde:
+                out.line(f"  {out.dim('Noch nichts gefunden.')}")
+        else:
+            offen = store.open_questions(limit=args.anzahl)
+            if offen:
+                out.line()
+                out.table(
+                    ["NR", "ZUSTAND", "FUNDE", "FRAGE"],
+                    [
+                        [str(f.id), f.state, str(store.count_findings(f.id)), f.question[:52]]
+                        for f in offen
+                    ],
+                )
+            else:
+                out.line()
+                out.line(f"  {out.dim('Keine offenen Fragen.')}")
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------------- #
 # Externe Dienste
 # --------------------------------------------------------------------------- #
 
@@ -1546,6 +1658,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default=None, help="statt [web].host")
     p.add_argument("--port", type=int, default=None, help="statt [web].port")
     p.set_defaults(func=cmd_web)
+
+    recherche = sub.add_parser("research", help="Fragen stellen und nachschlagen")
+    recherche_sub = recherche.add_subparsers(dest="unterbefehl", required=True)
+
+    r = recherche_sub.add_parser("ask", help="Eine Frage in die Warteschlange stellen")
+    r.add_argument("frage", nargs="+", help="die Frage")
+    r.set_defaults(func=cmd_research_ask)
+
+    r = recherche_sub.add_parser("poll", help="Offene Fragen nachschlagen")
+    r.add_argument("-n", "--anzahl", type=int, default=None, help="Obergrenze")
+    r.set_defaults(func=cmd_research_poll)
+
+    r = recherche_sub.add_parser("list", help="Fragen, Quellen und Funde")
+    r.add_argument("frage", nargs="?", type=int, help="Nummer einer Frage")
+    r.add_argument("-n", "--anzahl", type=int, default=20, help="Anzahl Zeilen")
+    r.set_defaults(func=cmd_research_list)
 
     dienste = sub.add_parser("services", help="Externe Dienste und ihr Nachweis")
     dienste_sub = dienste.add_subparsers(dest="unterbefehl", required=True)

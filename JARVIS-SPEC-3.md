@@ -466,8 +466,8 @@ nicht.
 ```python
 class Skill:
     name: str
-    autonomy_level: int       # ab welcher gewaehrten Stufe sie handeln darf
-    requires_outbound: bool   # erreicht sie Dritte? (Anzeige + Pflicht zur Obergrenze)
+    autonomy_level: int  # ab welcher gewaehrten Stufe sie handeln darf
+    requires_outbound: bool  # erreicht sie Dritte? (Anzeige + Pflicht zur Obergrenze)
 
     def poll(self) -> list[Event]: ...
     def decide(self, event: Event) -> Decision: ...

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
+from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,7 @@ from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import Config, ConfigError, Paths, StopSwitch
 from jarvis.core.db import open_database
 from jarvis.core.ratelimit import RateLimiter
-from jarvis.interfaces.web.render import fakten, hinweis, leer, seite, tabelle, vorgang
+from jarvis.interfaces.web.render import esc, fakten, hinweis, leer, seite, tabelle, vorgang
 from jarvis.interfaces.web.security import (
     COOKIE_NAME,
     SECURITY_HEADERS,
@@ -43,6 +44,7 @@ from jarvis.interfaces.web.security import (
     token_matches,
 )
 from jarvis.interfaces.web.style import CSS
+from jarvis.skills.briefing.store import BriefingStore
 from jarvis.skills.factory import build_skill
 from jarvis.skills.runner import execute_approval, reject_approval
 
@@ -229,6 +231,49 @@ def create_app(
         return rahmen(request, "Zustand", inhalt, "/")
 
     @geschuetzt
+    def briefing(request: Request) -> Response:
+        """Zeigt, was abgelegt ist. Erzeugt wird hier nichts.
+
+        Ein Durchlauf gehoert an die Kommandozeile: die Oberflaeche liest den
+        Zustand und gibt einzelne Entscheidungen frei, sie startet keine.
+        """
+        conn = verbindung()
+        try:
+            store = BriefingStore(conn)
+            eintraege = store.recent(limit=7)
+            heute = datetime.now(UTC).date().isoformat()
+
+            if not eintraege:
+                inhalt = "<h2>Briefing</h2>" + leer(
+                    "Noch kein Briefing abgelegt. Erzeugen: jarvis briefing --neu"
+                )
+            else:
+                neuestes = eintraege[0]
+                kopf = fakten(
+                    [
+                        ("Tag", neuestes.day),
+                        ("Stand", "heute" if neuestes.day == heute else "aelter"),
+                        ("Quelle", neuestes.model or "ohne Modell"),
+                        ("Erstellt", neuestes.created_at[:19].replace("T", " ")),
+                    ]
+                )
+                inhalt = (
+                    "<h2>Briefing</h2>" + kopf + f'<pre class="briefing">{esc(neuestes.text)}</pre>'
+                )
+                if len(eintraege) > 1:
+                    inhalt += "<h2>Frueher</h2>" + tabelle(
+                        ["Tag", "Quelle", "Anfang"],
+                        [
+                            [b.day, b.model or "ohne Modell", b.text.split(chr(10))[0][:60]]
+                            for b in eintraege[1:]
+                        ],
+                        mono=(0,),
+                    )
+        finally:
+            conn.close()
+        return rahmen(request, "Briefing", inhalt, "/briefing")
+
+    @geschuetzt
     def entscheidungen(request: Request) -> Response:
         config = konfiguration()
         conn = verbindung()
@@ -368,6 +413,7 @@ def create_app(
 
     routen = [
         Route("/", zustand),
+        Route("/briefing", briefing),
         Route("/entscheidungen", entscheidungen),
         Route("/entscheidungen/{vorgang_id:int}/freigeben", freigeben, methods=["POST"]),
         Route("/entscheidungen/{vorgang_id:int}/verwerfen", verwerfen, methods=["POST"]),

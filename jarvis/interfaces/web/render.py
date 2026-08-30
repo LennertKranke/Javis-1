@@ -56,6 +56,7 @@ def seite(
     punkte = []
     ansichten = (
         ("/", "Zustand"),
+        ("/briefing", "Briefing"),
         ("/entscheidungen", "Entscheidungen"),
         ("/protokoll", "Protokoll"),
     )

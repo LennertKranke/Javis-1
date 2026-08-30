@@ -722,19 +722,25 @@ requires_outbound = true
 collect_approvals = true
 rate_limits = { hour = 5, day = 20 }
 
+# Termine lesen und auf Ueberschneidungen pruefen. Liest den eigenen Kalender
+# und erreicht niemanden -- wie das Mail-Lesen also nicht ausgehend. Der
+# Kalender-Client wird ohne Schreibrecht gebaut.
 [capabilities.calendar]
 autonomy_level = 0
-requires_outbound = true
-rate_limits = { hour = 5, day = 20 }
+requires_outbound = false
+rate_limits = { hour = 60, day = 300 }
 
 [capabilities.research]
 autonomy_level = 0
 requires_outbound = true
 rate_limits = { hour = 20, day = 100 }
 
+# Das Morgenbriefing. Fasst nur zusammen, was ohnehin schon bekannt ist, und
+# schreibt es in die eigene Datenbank.
 [capabilities.briefing]
 autonomy_level = 0
 requires_outbound = false
+rate_limits = { hour = 5, day = 20 }
 
 
 # --------------------------------------------------------------------------- #
@@ -791,6 +797,12 @@ effort = "high"
 [llm.tasks.personal]
 providers = ["ollama"]
 confidential = true
+
+# Das Briefing formuliert nur, es entscheidet nichts. Der billige Anbieter
+# zuerst; faellt die ganze Kette aus, entsteht die Fassung ohne Modell.
+[llm.tasks.briefing]
+providers = ["ollama", "anthropic"]
+effort = "low"
 
 
 # --------------------------------------------------------------------------- #
@@ -876,6 +888,34 @@ allowlist_manual = []
 
 # Immer verboten, schlaegt alles andere. Ganze Domains als "@example.com".
 allowlist_blocked = []
+
+
+[skills.calendar]
+# Welche Kalender angesehen werden. "primary" ist der eigene Hauptkalender.
+calendar_ids = ["primary"]
+
+# Wie weit nach vorne geschaut wird, in Tagen.
+window_days = 7
+
+# Weniger Zeit als das zwischen zwei Terminen gilt als "kein Puffer".
+# 0 schaltet diese Pruefung ab; Ueberschneidungen werden weiter gemeldet.
+min_gap_minutes = 15
+
+# Obergrenze je Durchlauf und Kalender.
+max_per_run = 100
+
+
+[skills.briefing]
+# Aufgabe aus [llm.tasks], die den Text formuliert. Faellt sie aus, entsteht
+# das Briefing trotzdem -- dann ohne Modell.
+task = "briefing"
+
+# Ungefaehre Obergrenze fuer die Laenge des Textes, in Woertern.
+max_words = 200
+
+# Ab wie vielen Tagen eine unbeantwortete Anfrage als Frist gilt. Gerechnet
+# wird ab dem ersten Sehen, nicht ab dem letzten Durchlauf.
+overdue_days = 3
 
 
 # --------------------------------------------------------------------------- #

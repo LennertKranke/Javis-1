@@ -3,11 +3,12 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 4 abgeschlossen.** Der Kern steht, JARVIS liest und ordnet den
+**Stand: Phase 5 abgeschlossen.** Der Kern steht, JARVIS liest und ordnet den
 Posteingang ein, schreibt Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf
-der Allowlist senden, und zeigt Zustand, Protokoll und anstehende Entscheidungen
-in einer Weboberflaeche auf localhost. Es gibt noch keinen Daemon und keine
-Sprache.
+der Allowlist senden, liest den Kalender und meldet Terminkonflikte, fasst den
+Tag in einem Morgenbriefing zusammen, und zeigt Zustand, Protokoll, Briefing
+und anstehende Entscheidungen in einer Weboberflaeche auf localhost. Es gibt
+noch keinen Daemon und keine Sprache.
 
 ---
 
@@ -40,8 +41,8 @@ schliesst Abschnitt 4 aus.
 
 ### Gmail einrichten
 
-In der Google Cloud Console ein Projekt anlegen, die Gmail-API aktivieren und
-Zugangsdaten vom Typ **Desktop-App** erzeugen. Die heruntergeladene
+In der Google Cloud Console ein Projekt anlegen, die Gmail-API und die
+Calendar-API aktivieren und Zugangsdaten vom Typ **Desktop-App** erzeugen. Die heruntergeladene
 `client_secret.json` kommt in die Keychain, nicht ins Repo:
 
 ```sh
@@ -50,7 +51,9 @@ uv run jarvis mail login
 ```
 
 `login` oeffnet ein Browserfenster und legt den Token danach ebenfalls in der
-Keychain ab. Angefordert werden `gmail.modify` und `gmail.send`.
+Keychain ab. Angefordert werden `gmail.modify`, `gmail.send` und seit Phase 5
+`calendar.readonly`. Ein aelterer Token traegt das Kalenderrecht nicht -- dann
+`jarvis mail login` einmal wiederholen.
 
 ---
 
@@ -73,6 +76,9 @@ Keychain ab. Angefordert werden `gmail.modify` und `gmail.send`.
 | `jarvis mail send [-n N]` | fertige Entwuerfe senden (verlangt Stufe 1) |
 | `jarvis mail allowlist [--refresh]` | wer eine Antwort bekommen darf |
 | `jarvis mail compare` | Entwuerfe gegen das Protokoll abgleichen |
+| `jarvis calendar poll [--tage N]` | Termine lesen und auf Konflikte pruefen |
+| `jarvis calendar state` | was im Fenster steht und was gefunden wurde |
+| `jarvis briefing [--neu]` | das Briefing des Tages zeigen oder erzeugen |
 | `jarvis web [--port N]` | Dashboard auf localhost starten |
 
 Der Stoppschalter ist eine Datei. Er wirkt auch ohne laufendes JARVIS:
@@ -447,8 +453,82 @@ der Client danach nicht durfte.
 
 ---
 
+## Phase 5: Kalender und Briefing
+
+Zwei neue Faehigkeiten, beide auf Stufe 0 und beide nicht ausgehend: `calendar`
+liest den Kalender und findet Konflikte, `briefing` fasst den Tag zusammen.
+Keine von beiden erreicht einen Menschen -- sie aendern nur, was JARVIS weiss
+und morgens sagt.
+
+```sh
+jarvis mail login          # einmal neu: der Token traegt jetzt auch das
+                           # Kalenderrecht (calendar.readonly)
+jarvis calendar poll       # Termine der naechsten Tage ansehen
+jarvis calendar state      # was gefunden wurde
+jarvis briefing --neu      # Briefing fuer heute erzeugen
+jarvis briefing            # es spaeter noch einmal lesen
+```
+
+Im Dashboard steht es unter *Briefing*. Erzeugt wird dort nichts: die
+Oberflaeche liest den Zustand und gibt einzelne Entscheidungen frei, sie
+startet keine Durchlaeufe.
+
+### Konflikte sind eine Rechnung, keine Frage ans Modell
+
+`find_conflicts` bekommt Zeiten, Status und Antwortzustaende -- keinen Text.
+Ob sich zwei Termine ueberschneiden, ist Arithmetik. Ein Modell dafuer zu
+fragen waere teurer, langsamer und von aussen beeinflussbar: Titel, Ort und
+Beschreibung bestimmt der Einladende, nicht du. `CalendarSkill` ruft deshalb
+gar keinen Anbieter; `decided_by` ist immer `rule`.
+
+Ganztaegige, abgesagte und von dir abgelehnte Termine belegen keine Zeit --
+sonst meldete JARVIS jeden Feiertag als Konflikt mit jeder Besprechung.
+
+Titel gehen durch `sanitize`, bevor sie irgendwo landen. Ein Kalendereintrag
+ist ein sehr bequemer Weg, fremden Text in ein System zu bekommen.
+
+### Ein Befund verschwindet wieder
+
+Konflikte sind kein Dauerzustand: wer einen Termin verschiebt, loest ihn auf.
+Beim naechsten Durchlauf raeumt `clear_findings` die Befunde weg, die nicht
+mehr gelten -- und mit dem Befund faellt auch `acted` weg. Was nicht gemeldet
+ist, gilt nicht als gemeldet; kehrt der Konflikt zurueck, wird er wieder
+aufgegriffen.
+
+Ein konfliktfreier Termin bleibt aus demselben Grund auf `analysed` statt auf
+`skipped`: morgen kann ein neuer Termin daneben liegen. Nur ein festgehaltener
+Befund ist endgueltig.
+
+### Das Briefing haengt nicht am Anbieter
+
+Die Tatsachen rechnet Code aus: welche Termine heute anstehen, welche
+Konflikte gefunden wurden, wie viele Mails auf eine Antwort warten, welche
+davon schon laenger liegen als `overdue_days`. Das Modell formuliert daraus
+einen Text -- mehr nicht. Es waehlt nicht aus, was wichtig ist, und es holt
+sich nichts dazu.
+
+Faellt die ganze Anbieterkette aus, entsteht das Briefing trotzdem: dann in
+der deterministischen Fassung (`decided_by = "fallback"`, `Quelle: ohne
+Modell`). Ein Morgenbriefing, das an einem Ausfall haengt, ist keins.
+
+`verify_targets` rechnet die Tatsachen aus dem Speicher neu, bevor gehandelt
+wird; nur der formulierte Text bleibt stehen. Der Tag muss der heutige sein,
+und ein leeres Briefing wird abgewiesen.
+
+### Der Kalender-Client kann nicht schreiben
+
+Wie bei Gmail: eine Endpunkt-Allowlist, die aus den mitgegebenen Faehigkeiten
+folgt. `CALENDAR_READ` laesst drei GET-Aufrufe zu, sonst nichts. Es gibt
+keinen Schreibpfad im Code, und der Client wuerde ihn ohnehin abweisen.
+
+`calendar.readonly` ist neu im Token. Ein bestehender Token traegt sie nicht;
+`jarvis calendar poll` sagt das dann und nennt den Weg, statt in einen Fehler
+zu laufen, den niemand zuordnen kann.
+
+---
+
 ## Was noch nicht existiert
 
-Kalender und Briefing (Phase 5), Sprache (Phase 6). Es gibt noch keinen
-`daemon.py` und keine launchd-plist: Durchlaeufe startet man vorerst von Hand
-oder ueber einen eigenen Eintrag in der Aufgabenplanung.
+Sprache (Phase 6). Es gibt noch keinen `daemon.py` und keine launchd-plist:
+Durchlaeufe startet man vorerst von Hand oder ueber einen eigenen Eintrag in
+der Aufgabenplanung.

@@ -34,9 +34,14 @@ from jarvis.core.secrets import SecretsError, SecretStore
 
 __all__ = ["GMAIL_SCOPES", "GmailAuth", "GmailAuthError", "GmailClient", "GmailError"]
 
+# Ein Token fuer alle Google-Dienste, die JARVIS nutzt. calendar.readonly kam
+# mit Phase 5 dazu: ein aelterer Token traegt sie nicht, dann ist eine erneute
+# Anmeldung noetig. Der Kalender meldet das ausdruecklich, statt in einen
+# Fehler zu laufen, den niemand zuordnen kann.
 GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/calendar.readonly",
 ]
 
 API_ROOT = "https://gmail.googleapis.com/gmail/v1/users/me"

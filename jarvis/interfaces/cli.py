@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from jarvis import __version__
@@ -29,6 +30,9 @@ from jarvis.core.ratelimit import RateLimiter
 from jarvis.core.secrets import default_store
 from jarvis.llm.providers import build_providers
 from jarvis.llm.router import Router, RouterError
+from jarvis.skills.briefing.store import BriefingStore
+from jarvis.skills.calendar.google import has_calendar_scope
+from jarvis.skills.calendar.store import CalendarStore
 from jarvis.skills.factory import (
     build_skill,
     gmail_auth,
@@ -806,6 +810,148 @@ def cmd_web(args: argparse.Namespace, out: Out) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Kalender und Briefing
+# --------------------------------------------------------------------------- #
+
+
+def _durchlauf(skill, config, conn, out: Out) -> int:
+    """Ein Durchlauf durch dasselbe Gatter wie bei Mail, gleiche Ausgabe."""
+    audit = AuditLog(conn)
+    gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
+    try:
+        report = run_skill(
+            skill,
+            gate=gate,
+            audit=audit,
+            approvals=ApprovalStore(conn),
+            collect_approvals=config.capability(skill.name).collect_approvals,
+        )
+    except GmailAuthError as exc:
+        out.line(f"{exc}")
+        return 1
+    except GmailError as exc:
+        out.line(f"Google: {exc}")
+        return 1
+
+    out.line()
+    out.line(f"{out.accent('Durchlauf')} {skill.name}")
+    out.line()
+    out.field("Gefunden", str(report.polled))
+    nachsatz = "  (Trockenlauf)" if config.dry_run and report.dry_run else ""
+    out.field("Erledigt", f"{report.acted}{nachsatz}")
+    if report.dry_run:
+        out.field("Nur beurteilt", str(report.dry_run))
+    out.field("Uebersprungen", str(report.skipped))
+    if report.blocked:
+        out.field("Blockiert", str(report.blocked))
+    if report.failed:
+        out.field("Fehler", str(report.failed))
+    if report.queued:
+        out.field("Zur Freigabe", str(report.queued))
+    for fehler in report.errors[:5]:
+        out.line(f"  {out.dim(fehler)}")
+    out.line()
+    return 1 if report.failed else 0
+
+
+def cmd_calendar_poll(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        skill = build_skill("calendar", config=config, conn=conn)
+        if args.tage:
+            skill.options.window_days = args.tage
+        if not has_calendar_scope(gmail_auth(config)):
+            out.line("Der vorhandene Token traegt kein Kalenderrecht.")
+            out.line(f"  {out.dim('Einmal neu zustimmen: jarvis mail login')}")
+            return 1
+        return _durchlauf(skill, config, conn, out)
+    finally:
+        conn.close()
+
+
+def cmd_calendar_state(args: argparse.Namespace, out: Out) -> int:
+    paths = _paths(args)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        store = CalendarStore(conn)
+        zustaende = store.counts_by_state()
+        out.line()
+        out.field("Erfasst", str(store.total()))
+        out.field(
+            "Zustaende",
+            "  ".join(f"{name} {anzahl}" for name, anzahl in sorted(zustaende.items())) or "--",
+        )
+        jetzt = datetime.now(UTC)
+        termine = store.between(
+            von=jetzt.isoformat(),
+            bis=(jetzt + timedelta(days=args.tage)).isoformat(),
+            limit=args.anzahl,
+        )
+        if termine:
+            out.line()
+            out.table(
+                ["BEGINN", "TERMIN", "ZUSTAND", "BEFUND"],
+                [
+                    [
+                        (e.starts_at or "")[:16].replace("T", " ") or "ganztags",
+                        e.summary[:40],
+                        e.state,
+                        (e.finding or "--")[:44],
+                    ]
+                    for e in termine
+                ],
+            )
+        else:
+            out.line(f"  {out.dim('Nichts im Fenster. Erst: jarvis calendar poll')}")
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+def cmd_briefing(args: argparse.Namespace, out: Out) -> int:
+    """Zeigt das Briefing des Tages, oder erzeugt es."""
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        store = BriefingStore(conn)
+        heute = datetime.now(UTC).date().isoformat()
+
+        if args.neu:
+            code = _durchlauf(build_skill("briefing", config=config, conn=conn), config, conn, out)
+            if code:
+                return code
+
+        briefing = store.get(heute)
+        if briefing is None:
+            out.line()
+            hinweis = "Fuer heute liegt kein Briefing vor. Erzeugen: jarvis briefing --neu"
+            out.line(f"  {out.dim(hinweis)}")
+            out.line()
+            return 1
+
+        out.line()
+        out.line(f"{out.accent('Briefing')} {out.dim(briefing.day)}")
+        out.field("Quelle", briefing.model or "ohne Modell")
+        out.line()
+        for zeile in briefing.text.splitlines():
+            out.line(f"  {zeile}")
+        out.line()
+        return 0
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------------- #
 # Gedaechtnis und Kontext
 # --------------------------------------------------------------------------- #
 
@@ -960,6 +1106,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default=None, help="statt [web].host")
     p.add_argument("--port", type=int, default=None, help="statt [web].port")
     p.set_defaults(func=cmd_web)
+
+    kalender = sub.add_parser("calendar", help="Termine lesen und auf Konflikte pruefen")
+    kalender_sub = kalender.add_subparsers(dest="unterbefehl", required=True)
+
+    k = kalender_sub.add_parser("poll", help="Einen Durchlauf ausfuehren")
+    k.add_argument("--tage", type=int, default=None, help="statt [skills.calendar].window_days")
+    k.set_defaults(func=cmd_calendar_poll)
+
+    k = kalender_sub.add_parser("state", help="Was bisher gesehen wurde")
+    k.add_argument("--tage", type=int, default=7, help="Fenster in Tagen")
+    k.add_argument("-n", "--anzahl", type=int, default=20, help="Anzahl Zeilen")
+    k.set_defaults(func=cmd_calendar_state)
+
+    p = sub.add_parser("briefing", help="Das Briefing des Tages")
+    p.add_argument("--neu", action="store_true", help="jetzt erzeugen statt nur zeigen")
+    p.set_defaults(func=cmd_briefing)
 
     mail = sub.add_parser("mail", help="Postfach lesen und einordnen")
     mail_sub = mail.add_subparsers(dest="unterbefehl", required=True)

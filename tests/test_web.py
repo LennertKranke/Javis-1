@@ -405,3 +405,63 @@ def test_json_bleibt_json(dashboard):
         assert json.loads(roh) == ziele
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# Briefing
+# --------------------------------------------------------------------------- #
+
+
+def test_briefing_ohne_eintrag_sagt_wie_es_geht(dashboard):
+    antwort = klient(dashboard).get("/briefing")
+    assert antwort.status_code == 200
+    assert "jarvis briefing --neu" in antwort.text
+
+
+def test_briefing_zeigt_den_neuesten_eintrag(dashboard):
+    from datetime import UTC, datetime
+
+    from jarvis.skills.briefing.store import BriefingStore
+
+    heute = datetime.now(UTC).date().isoformat()
+    conn = open_database(dashboard / "state.db")
+    try:
+        BriefingStore(conn).save(day="2026-03-01", text="Gestern war ruhig.")
+        BriefingStore(conn).save(day=heute, text="Heute nur der Zahnarzt.", model="static")
+    finally:
+        conn.close()
+
+    antwort = klient(dashboard).get("/briefing")
+    assert antwort.status_code == 200
+    assert "Heute nur der Zahnarzt." in antwort.text
+    assert "static" in antwort.text
+    # Aeltere stehen darunter, aber nicht im Vordergrund.
+    assert "Gestern war ruhig." in antwort.text
+    assert antwort.text.index("Heute nur der Zahnarzt.") < antwort.text.index("Gestern war ruhig.")
+
+
+def test_briefingtext_wird_maskiert(dashboard):
+    from datetime import UTC, datetime
+
+    from jarvis.skills.briefing.store import BriefingStore
+
+    conn = open_database(dashboard / "state.db")
+    try:
+        BriefingStore(conn).save(day=datetime.now(UTC).date().isoformat(), text=BOESE)
+    finally:
+        conn.close()
+
+    antwort = klient(dashboard).get("/briefing")
+    assert BOESE not in antwort.text
+    assert "&lt;script&gt;" in antwort.text
+
+
+def test_briefing_verlangt_den_token(dashboard):
+    antwort = klient(dashboard, angemeldet=False).get("/briefing")
+    assert antwort.status_code == 403
+    assert "web-token" in antwort.text
+
+
+def test_briefing_steht_in_der_navigation(dashboard):
+    antwort = klient(dashboard).get("/")
+    assert 'href="/briefing"' in antwort.text

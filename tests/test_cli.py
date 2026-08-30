@@ -410,3 +410,96 @@ def test_web_erlaubt_die_anderen_loopback_schreibweisen(home, capsys, monkeypatc
     assert code == 0
     assert "http://localhost:8765/?token=" in out
     assert gestartet["host"] == "localhost"
+
+
+# --------------------------------------------------------------------------- #
+# Kalender und Briefing
+# --------------------------------------------------------------------------- #
+
+
+def test_calendar_state_auf_leerer_datenbank(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "calendar", "state", capsys=capsys)
+    assert code == 0
+    assert "Erfasst" in out
+    assert "jarvis calendar poll" in out
+
+
+def test_calendar_state_zeigt_termine_und_befunde(home, capsys):
+    from datetime import UTC, datetime, timedelta
+
+    from jarvis.skills.calendar.store import CalendarStore
+
+    run(home, "init", capsys=capsys)
+    conn = open_database(home / "state.db")
+    beginn = datetime.now(UTC) + timedelta(hours=2)
+    CalendarStore(conn).remember(
+        event_id="e1",
+        calendar_id="primary",
+        starts_at=beginn.isoformat(),
+        ends_at=(beginn + timedelta(hours=1)).isoformat(),
+        summary="Zahnarzt",
+        finding="Zahnarzt ueberschneidet sich mit Standup",
+    )
+    conn.close()
+
+    code, out = run(home, "calendar", "state", capsys=capsys)
+    assert code == 0
+    assert "Zahnarzt" in out
+    assert "ueberschneidet sich" in out
+
+
+def test_calendar_poll_ohne_datenbank(home, capsys):
+    code, out = run(home, "calendar", "poll", capsys=capsys)
+    assert code == 1
+    assert "jarvis init" in out
+
+
+def test_calendar_poll_ohne_kalenderrecht(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "calendar", "poll", capsys=capsys)
+    assert code == 1
+    assert "jarvis mail login" in out
+
+
+def test_briefing_ohne_datenbank(home, capsys):
+    code, out = run(home, "briefing", capsys=capsys)
+    assert code == 1
+    assert "jarvis init" in out
+
+
+def test_briefing_ohne_eintrag_sagt_wie_es_geht(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "briefing", capsys=capsys)
+    assert code == 1
+    assert "jarvis briefing --neu" in out
+
+
+def test_briefing_zeigt_den_abgelegten_text(home, capsys):
+    from datetime import UTC, datetime
+
+    from jarvis.skills.briefing.store import BriefingStore
+
+    run(home, "init", capsys=capsys)
+    conn = open_database(home / "state.db")
+    BriefingStore(conn).save(
+        day=datetime.now(UTC).date().isoformat(), text="Heute nur der Zahnarzt."
+    )
+    conn.close()
+
+    code, out = run(home, "briefing", capsys=capsys)
+    assert code == 0
+    assert "Heute nur der Zahnarzt." in out
+    assert "ohne Modell" in out
+
+
+def test_fehlerhafte_kalendereinstellungen_werden_gemeldet(home, capsys):
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace("window_days = 7", "window_days = 900"),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(home), "calendar", "poll"])
+    assert code == 2
+    assert "skills.calendar.window_days" in capsys.readouterr().err

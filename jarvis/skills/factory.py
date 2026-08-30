@@ -28,6 +28,11 @@ from jarvis.core.secrets import SecretStore, default_store
 from jarvis.llm.providers import build_providers
 from jarvis.llm.router import Router
 from jarvis.skills.base import Skill
+from jarvis.skills.briefing.skill import BriefingSkill
+from jarvis.skills.briefing.store import BriefingStore
+from jarvis.skills.calendar.google import CALENDAR_READ, CalendarClient
+from jarvis.skills.calendar.skill import CalendarSkill
+from jarvis.skills.calendar.store import CalendarStore
 from jarvis.skills.mail.allowlist import Allowlist
 from jarvis.skills.mail.gmail import DRAFTING, LABELLING, SENDING, GmailAuth, GmailClient
 from jarvis.skills.mail.reply import MailDraftSkill, MailSendSkill, SendOptions
@@ -35,9 +40,16 @@ from jarvis.skills.mail.skill import MailOptions, MailSkill
 from jarvis.skills.mail.store import MailStore, ReplyStore
 from jarvis.skills.mail.style import StyleStore
 
-__all__ = ["BUILDABLE", "build_skill", "gmail_auth", "gmail_client", "send_capabilities"]
+__all__ = [
+    "BUILDABLE",
+    "build_skill",
+    "calendar_client",
+    "gmail_auth",
+    "gmail_client",
+    "send_capabilities",
+]
 
-BUILDABLE = ("mail", "mail_reply", "mail_send")
+BUILDABLE = ("mail", "mail_reply", "mail_send", "calendar", "briefing")
 
 
 def send_capabilities(config: Config, *, approved: bool = False) -> frozenset[str]:
@@ -58,6 +70,11 @@ def gmail_client(
     config: Config, capabilities: frozenset[str], *, secrets: SecretStore | None = None
 ) -> GmailClient:
     return GmailClient(gmail_auth(config, secrets=secrets), capabilities=capabilities)
+
+
+def calendar_client(config: Config, *, secrets: SecretStore | None = None) -> CalendarClient:
+    """Immer nur lesend. Einen Schreibpfad gibt es im Client nicht."""
+    return CalendarClient(gmail_auth(config, secrets=secrets), capabilities=CALENDAR_READ)
 
 
 def build_skill(
@@ -110,6 +127,27 @@ def build_skill(
                 manual=optionen.allowlist_manual,
                 blocked=optionen.allowlist_blocked,
                 threshold=optionen.allowlist_threshold,
+            ),
+        )
+
+    if name == "calendar":
+        return CalendarSkill.from_config(
+            config,
+            client=calendar_client(config, secrets=speicher),
+            store=CalendarStore(conn),
+        )
+
+    if name == "briefing":
+        return BriefingSkill.from_config(
+            config,
+            router=Router(config.llm, build_providers(config.llm, speicher)),
+            briefings=BriefingStore(conn),
+            calendar=CalendarStore(conn),
+            mail=MailStore(conn),
+            replies=ReplyStore(conn),
+            context=ContextBuilder(
+                memory=LongTermMemory(conn),
+                short_term=ShortTermContext(conn, scope="briefing"),
             ),
         )
 

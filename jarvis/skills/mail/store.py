@@ -26,7 +26,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from jarvis.core.db import transaction
 
@@ -232,6 +232,32 @@ class MailStore:
             (*categories, limit),
         ).fetchall()
         return [z["message_id"] for z in zeilen]
+
+    def overdue(self, categories: Collection[str], *, days: int = 3) -> int:
+        """Wie viele davon schon laenger liegen als `days`.
+
+        Eine Frist, die sich ohne Textdeutung feststellen laesst: eine Anfrage,
+        die seit Tagen unbeantwortet im Postfach steht. Gerechnet wird auf
+        `first_seen`, nicht auf `last_seen` -- sonst setzte jeder Durchlauf die
+        Uhr zurueck.
+        """
+        if not categories:
+            return 0
+        platzhalter = ",".join("?" * len(categories))
+        grenze = (datetime.now(UTC) - timedelta(days=max(0, days))).isoformat(timespec="seconds")
+        zeile = self._conn.execute(
+            f"""
+            SELECT COUNT(*) AS anzahl FROM mail_messages AS m
+            LEFT JOIN mail_replies AS r ON r.message_id = m.message_id
+            WHERE m.needs_reply = 1
+              AND m.category IN ({platzhalter})
+              AND m.state IN ('analysed', 'acted')
+              AND m.first_seen < ?
+              AND (r.message_id IS NULL OR r.sent_at IS NULL)
+            """,
+            (*categories, grenze),
+        ).fetchone()
+        return int(zeile["anzahl"])
 
 
 @dataclass(frozen=True)

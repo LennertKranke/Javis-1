@@ -219,6 +219,41 @@ MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
             "CREATE INDEX ix_context_scope ON context_entries (scope, id)",
         ),
     ),
+    (
+        6,
+        (
+            # Termine. Dasselbe Zustandsmodell wie bei Mail -- ein Trockenlauf
+            # darf auch hier nichts verbrennen.
+            """
+            CREATE TABLE calendar_events (
+                event_id    TEXT    PRIMARY KEY,
+                calendar_id TEXT    NOT NULL,
+                starts_at   TEXT,
+                ends_at     TEXT,
+                all_day     INTEGER NOT NULL DEFAULT 0,
+                summary     TEXT    NOT NULL DEFAULT '',
+                state       TEXT    NOT NULL DEFAULT 'seen',
+                finding     TEXT,
+                first_seen  TEXT    NOT NULL,
+                last_seen   TEXT    NOT NULL,
+                audit_id    INTEGER REFERENCES audit_log (id)
+            )
+            """,
+            "CREATE INDEX ix_events_start ON calendar_events (starts_at)",
+            "CREATE INDEX ix_events_state ON calendar_events (state)",
+            # Ein Briefing je Tag. Der Text ist das Ergebnis, die Kennzahlen
+            # daneben machen nachvollziehbar, woraus er entstand.
+            """
+            CREATE TABLE briefings (
+                day        TEXT    PRIMARY KEY,
+                created_at TEXT    NOT NULL,
+                text       TEXT    NOT NULL,
+                facts      TEXT    NOT NULL DEFAULT '{}',
+                model      TEXT
+            )
+            """,
+        ),
+    ),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

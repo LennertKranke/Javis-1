@@ -169,6 +169,14 @@ button.primary:hover { background: var(--accent); color: var(--bg); }
   font-size: 0.88rem;
   margin: 1rem 0;
 }
+.briefing {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  border-left: 1px solid var(--accent);
+  padding: 0.2rem 0 0.2rem 1rem;
+  margin: 1.2rem 0;
+}
 .empty { color: var(--dim); font-size: 0.9rem; padding: 1.5rem 0; }
 footer { color: var(--dim); font-size: 0.78rem; padding-top: 2.5rem; }
 """

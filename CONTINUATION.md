@@ -1,0 +1,302 @@
+# JARVIS — Projektstand und Uebergabe
+
+Stand: Commit `d0a010a`, Branch `claude/jarvis-spec-phase-1-e3hopg`.
+980 Tests gruen, `ruff check` und `ruff format --check` sauber.
+
+Dieses Dokument beschreibt den **tatsaechlichen** Stand, nicht die Absicht.
+Verbindliche Vorgabe bleibt `JARVIS-SPEC.md`. Ausfuehrliche Begruendungen
+stehen in `README.md`; hier steht, was eine neue Sitzung wissen muss, um ohne
+den bisherigen Verlauf weiterzuarbeiten.
+
+---
+
+## 0. Die vier Zustaende
+
+Ueberall in diesem Dokument gilt:
+
+| Zustand | Bedeutung |
+|---|---|
+| **implementiert** | Code da, Tests da, im Betrieb ausgefuehrt |
+| **nicht produktiv verbunden** | Code da, Tests da, **nie mit dem echten Dienst gesprochen** |
+| **geplant** | Entwurf steht, Code fehlt |
+| **fehlt** | nichts davon |
+
+Der wichtigste Satz des ganzen Dokuments:
+
+> **Kein externer Dienst hat je mit JARVIS gesprochen.**
+> `jarvis services check` zeigt fuenfmal `nie`. Das ist gemessen, nicht
+> geschaetzt: die Spalte fuellt nur ein echter Adapter nach einer Antwort.
+
+---
+
+## 1. Was vollstaendig implementiert und getestet ist
+
+### Kern (`jarvis/core/`)
+
+| Modul | Was es tut |
+|---|---|
+| `config.py` | TOML, Autonomiestufen, Stoppschalter, alle Abschnitte. 1371 Zeilen -- die groesste Datei, weil jede Einstellung dort geprueft wird |
+| `db.py` | SQLite, 7 Migrationen, `BEGIN IMMEDIATE`, WAL |
+| `audit.py` | Hash-Kette (SHA-256 ueber kanonisches JSON + Vorgaenger), Trigger gegen UPDATE/DELETE |
+| `ratelimit.py` | Rollende Fenster, in der Datenbank. Haelt unter Nebenlaeufigkeit (gemessen) |
+| `sanitize.py` | NFKC, HTML weg, unsichtbare Zeichen weg, `<<<UNTRUSTED-CONTENT>>>`-Rahmen |
+| `gate.py` | Die einzige Stelle, die "darf gehandelt werden" beantwortet |
+| `approvals.py` | Warteschlange fuer Freigaben von Hand |
+| `memory.py` | Langzeitgedaechtnis, hoechstens 500 Tatsachen |
+| `context.py` | Kurzzeitkontext + Kontextbauer mit Obergrenze |
+| `secrets.py` | macOS-Keychain. Auf macOS **ohne** stillen Rueckfall |
+| `integrations.py` | Der Nachweisstand je externem Dienst |
+| `log.py` | JSON Lines nach `~/.jarvis/logs/` |
+
+### Modelle (`jarvis/llm/`)
+
+Provider-Schnittstelle ohne Werkzeugparameter (Prinzip 2.2 als Bauform),
+Router mit Rueckfallkette und Vertraulichkeitssperre, erzwungenes JSON-Schema
+mit **Zielfeldsperre** (ein Schema mit `to`/`url`/`path`/`iban` laesst sich
+nicht anlegen).
+
+Prozesstrennung: `[llm] isolation = "subprocess"` (Standard) fuehrt jeden
+Modellaufruf in einem eigenen Interpreter aus, mit gefilterter Umgebung.
+
+### Faehigkeiten (`jarvis/skills/`)
+
+| Skill | Verlangte Stufe | Ausgehend | Stand |
+|---|---|---|---|
+| `mail` | 0 | nein | implementiert, nicht produktiv verbunden |
+| `mail_reply` | 0 | nein | implementiert, nicht produktiv verbunden |
+| `mail_send` | **1** | ja | implementiert, nicht produktiv verbunden |
+| `calendar` | 0 | nein | implementiert, nicht produktiv verbunden |
+| `briefing` | 0 | nein | **implementiert** (braucht keinen externen Dienst) |
+| `research` | **1** | ja | implementiert, **ohne Netzquelle** |
+
+### Bedienweisen (`jarvis/interfaces/`)
+
+- `cli.py` -- 17 Befehle, siehe unten
+- `web/` -- Dashboard auf localhost, Token, Origin-Pruefung, CSP, kein JS
+- `voice/` -- Sprache. **Bedienweise, keine Faehigkeit** (siehe §4)
+
+### Dauerbetrieb
+
+`daemon.py` mit `flock`-Einzelinstanz, unterbrechbarem Schlaf, letztem Lauf in
+der Datenbank. `deploy/com.jarvis.daemon.plist` vorbereitet.
+
+---
+
+## 2. Was seit dem letzten Review geaendert wurde (`fb36f1c` bis `d0a010a`)
+
+1. **Research-Skill gebaut.** SPEC Abschnitt 5 nennt `skills/research/`; es
+   fehlte. Rollentrennung: Modell formuliert Begriffe, Code waehlt die Quelle
+   aus einer Freigabeliste.
+2. **Eigener Fehler gefunden und behoben:** Research stand auf
+   `autonomy_level = 0`. Das Gatter vergleicht gewaehrte gegen verlangte
+   Stufe -- beide 0, also lief sie auf Stufe 0 durch. Jetzt Stufe 1.
+3. **Daemon-Zeitplan** prueft gegen baubare Faehigkeiten. Vorher liess sich
+   `voice` einplanen; der Daemon waere bei jedem Tick stumm gescheitert.
+4. **Whisper-Modellpfad** muss absolut sein. Ein relativer haengt am
+   Arbeitsverzeichnis, und unter `launchd` ist das ein anderes.
+5. **Gedaechtnis begrenzt** auf 500 Tatsachen. Verdraengt wird die
+   unwichtigste, bei gleichem Gewicht die aelteste.
+6. **Nebenlaeufigkeitstest** fuer die Ratenbegrenzung. Der behauptete
+   Race-Condition-Befund war **keiner** -- 8 Faeden, 20 Versuche, Obergrenze
+   10, es kamen genau 10 durch. Gefehlt hat nur der Test.
+7. **Voice end-to-end** und **Dry-Run von aussen** getestet (zaehlender
+   Client statt "nichts gespeichert", mit Gegenprobe).
+
+Davor, in `fb36f1c`: Laufzeit-Mock fuer Gmail und Kalender, `integrations.py`,
+`jarvis services check`.
+
+---
+
+## 3. Tests
+
+**980, alle gruen.** `uv run pytest` — Laufzeit rund 17 s.
+
+Groesste Gruppen: `test_cli.py` (81), `test_voice.py` (79), `test_calendar.py`
+(55), `test_isolation.py` (41), `test_daemon.py` (38), `test_web.py` (40),
+`test_services.py` (36), `test_briefing.py` (33), `test_hardening.py` (32),
+`test_research.py` (30).
+
+Keine Typechecks im Projekt konfiguriert (kein mypy, kein pyright).
+
+**Struktur-Tests** -- sie pruefen Architektur, nicht Verhalten, und schlagen
+Alarm, wenn jemand etwas verdrahtet, das nicht verdrahtet sein darf:
+- `interfaces/voice/session.py` enthaelt kein `build_skill`, kein `GmailClient`
+- `llm/isolated.py` importiert keine Faehigkeit, kein Gatter, keine Datenbank
+- `llm/transcribe.py` enthaelt keinen HTTP-Client
+- `skills/research/` enthaelt keinen HTTP-Client
+- die beiden Mock-Module rufen nie `merke_kontakt`
+
+---
+
+## 4. Bekannte Fehler, Schulden und offene Punkte
+
+### Echte Fehler
+- **`jarvis calendar state`** zeigt ganztaegige Termine als `00:00` statt
+  `ganztags`. Kosmetisch, in `cli.py`, `_ortszeit()` kennt `all_day` nicht.
+
+### Nie auf echter Hardware ausgefuehrt
+- **macOS-Sandbox** (`isolation = "sandbox"`): Profil und Aufruf getestet,
+  `sandbox-exec` **nie ausgefuehrt** -- Entwicklungsumgebung ist Linux.
+  Nachmessen auf dem Mac: `jarvis llm check`, erwartet eine dritte Spalte.
+- **Keychain-only**: nur mit simulierter Plattform getestet.
+- **launchd-Plist**: als Property List geparst, nie geladen.
+- **Whisper und `say`**: nur gegen Ersatzprogramme.
+
+### Bewusste Grenzen
+- `isolation = "subprocess"` nimmt dem Kindprozess die Umgebungsvariablen und
+  die Code-Pfade, **nicht** den Dateizugriff. `~/.jarvis` bleibt ueber einen
+  absoluten Pfad lesbar. Das ist gemessen und steht so im README.
+- Das Netz bleibt auch in der Sandbox offen -- `sandbox-exec` filtert nicht
+  nach Zielhost.
+- Sprache hat keine Dauerschleife; `voice listen` macht eine Runde.
+
+### Fallen fuer die naechste Sitzung
+- **`voice` ist kein Skill.** SPEC Abschnitt 5 fuehrt `voice/` unter
+  `interfaces/`. `build_skill("voice")` soll scheitern. Sie zur Faehigkeit zu
+  machen hiesse, ihr einen `act`-Pfad zu geben -- genau den, der ihr fehlen
+  soll. Gebaut wird sie ueber `build_session`.
+- **`autonomy_level` am Skill ist die *verlangte* Stufe**, in
+  `[capabilities]` steht die *gewaehrte*. `0 >= 0` ist wahr -- eine Faehigkeit
+  mit `autonomy_level = 0` handelt also auch auf Stufe 0. Fuer alles, was
+  hinausgreift, gehoert dort **1**.
+- **Mock ist nicht Trockenlauf.** Beide gelten unabhaengig.
+- **`ruff check --fix` auf einer halb geschriebenen Testdatei** entfernt
+  Importe, die erst weiter unten gebraucht werden. Erst fertig schreiben.
+- **`StaticProvider` wird nie ausgelagert** (Kosten). Wer den
+  Subprozess-Weg testen will, baut `SubprocessProvider` direkt.
+
+---
+
+## 5. Was Mock/Stub ist und was wirklich funktioniert
+
+### Funktioniert wirklich, ohne jeden externen Dienst
+`init`, `status`, `stop`/`resume`, `log`, `verify`, `memory`, `context`,
+`web` (Dashboard), `daemon`, `llm check`, `services check`, `voice ask`,
+`research ask/poll/list`, `briefing` (Fassung ohne Modell).
+
+### Laufzeit-Mock vorhanden (`[services] mode = "mock"`)
+- **Gmail** (`skills/mail/mock.py`) -- 5 Beispielnachrichten, darunter ein
+  Einschleusversuch. Dieselbe Faehigkeitspruefung wie der echte Client.
+- **Kalender** (`skills/calendar/mock.py`) -- 5 Termine, beide Befundarten,
+  verankert an *jetzt + 2 h*.
+- Damit laufen `mail poll`, `calendar poll`, `briefing --neu` vollstaendig.
+
+### Stub mit klarer Naht, aber ohne Inhalt
+- **Research-Quelle**: `MockSource` mit vier festen Dokumenten. Das
+  Quellenprotokoll und die Freigabeliste stehen; **eine Netzquelle fehlt.**
+
+### Nur Adapter, nie erreicht
+Anthropic, Ollama, Gmail, Google Calendar, Keychain.
+
+---
+
+## 6. Was aus der Zielarchitektur fehlt
+
+| Baustein | Zustand |
+|---|---|
+| Mail lesen/beantworten | implementiert, nicht produktiv verbunden |
+| Kalender | implementiert, nicht produktiv verbunden |
+| Lagebild / Briefing | **implementiert** |
+| Internet / Research | Faehigkeit implementiert, **Netzquelle fehlt** |
+| Voice (Eingabe/Ausgabe) | implementiert, nur gegen Ersatzprogramme |
+| Memory | **implementiert** (Langzeit + Kurzzeit + Kontextbauer) |
+| Kontrollierte Aktionen mit Freigabe | **implementiert** (Warteschlange + Dashboard) |
+| Autonomer Dauerbetrieb | **implementiert** (Daemon + Plist, Plist nie geladen) |
+| Smartphone-Steuerung | **fehlt** |
+| Telefonzugriff | **fehlt** |
+| Social Media | **fehlt** |
+| Haus-/Geraetesteuerung | **fehlt** |
+| Dateiablage | **fehlt** |
+| Dokumentenanalyse | **fehlt** |
+| Aufgabenverwaltung | **fehlt** |
+| Autonomes Trading | ausdruecklich Zukunftsmusik, blockiert nichts |
+
+---
+
+## 7. Was spaeter echte Zugangsdaten braucht
+
+Alles davon **nur nach ausdruecklicher Freigabe des Nutzers**. Keine
+Zugangsdaten im Repo, in Argumenten, in der Prozessumgebung oder in Logs.
+
+| Integration | Was noetig ist |
+|---|---|
+| Gmail | Google-Cloud-Projekt, Desktop-OAuth, `gmail.modify` + `gmail.send` |
+| Google Calendar | dasselbe Token, zusaetzlich `calendar.readonly` |
+| Anthropic | API-Key in der Keychain |
+| Ollama | kein Schluessel, aber ein laufender lokaler Dienst |
+| Websuche (Research) | Anbieter-Key oder eine eigene Quelle |
+| Smartphone / Telefon | geraeteseitige Freigabe, vermutlich Shortcuts/Push |
+| Social Media | je Plattform ein eigener OAuth-Weg |
+| HomeKit / MQTT | HomeKit braucht macOS + Zentrale; MQTT einen Broker |
+
+---
+
+## 8. Was sich ohne Zugangsdaten vollstaendig vorbereiten laesst
+
+- **Adapter + Laufzeit-Mock + Freigabeliste** fuer jede neue Integration,
+  nach dem Muster von `skills/mail/mock.py` und `research/source.py`.
+- **Skills** nach dem Vertrag aus 5.1 -- Aufgabenverwaltung, Dokumentenanalyse
+  und Dateiablage brauchen ueberhaupt keinen externen Dienst.
+- **Der Nachweisstand**: jede neue Integration bekommt einen Eintrag in
+  `core/integrations.py` und faengt bei `nie` an.
+- **Zeitplan, Gatter, Ratenbegrenzung, Protokoll** -- alles vorhanden, eine
+  neue Faehigkeit erbt es durch `run_skill`.
+
+---
+
+## 9. Vorhandene Sicherheitsmechanismen
+
+| Mechanismus | Wo |
+|---|---|
+| Modell waehlt nie ein Ziel | `llm/schema.py` Zielfeldsperre + `verify_targets` je Skill |
+| Fremdtext ist Daten | `core/sanitize.py` + `<<<UNTRUSTED-CONTENT>>>`-Rahmen |
+| Lesen/Handeln getrennt | `llm/isolation.py`, eigener Prozess ohne `JARVIS_*` |
+| Protokoll unveraenderlich | Hash-Kette + SQLite-Trigger, `jarvis verify` |
+| Ratenbegrenzung | `core/ratelimit.py`, `BEGIN IMMEDIATE`, nebenlaeufig geprueft |
+| Stoppschalter | Datei; wirkt ohne Datenbank, faellt geschlossen aus |
+| Autonomiestufen je Faehigkeit | `Config.permits()` -- eine Stelle fuer Gatter und Fabrik |
+| Trockenlauf | global; eine Freigabe von Hand hebt ihn nicht auf |
+| Freigabe von Hand | `core/approvals.py` + Dashboard, Ziele werden neu berechnet |
+| Entwurfsintegritaet | Pruefung unmittelbar vor dem Versand |
+| Sprache handelt nie | sechs feste Absichten, kein `act`-Pfad im Sprachmodul |
+| Anhalten per Sprache, Fortsetzen nie | Asymmetrie in `voice/intents.py` |
+| Keychain-only auf macOS | `core/secrets.py`, `status` meldet Abweichung |
+| Endpunkt-Allowlists | Gmail und Kalender, abgeleitet aus den Faehigkeiten |
+
+**Diese Mechanismen duerfen nicht abgeschwaecht werden.** SPEC Abschnitt 8.5:
+Wer unsicher ist, ob etwas gegen Abschnitt 2 verstoesst -- es verstoesst
+dagegen. Anhalten und fragen.
+
+---
+
+## 10. Vorschlag fuer die Reihenfolge
+
+1. **Erste echte Verbindung** (Gmail + Kalender lesend, Stufe 0, Trockenlauf
+   an). Der groesste offene Punkt ueberhaupt: alles ist gebaut, nichts ist je
+   gelaufen. Braucht Zugangsdaten vom Nutzer.
+2. **macOS-Verifikation** (`jarvis llm check`, `services check --live`,
+   Plist laden). Braucht nur den Mac, keine neue Zeile Code.
+3. **Aufgabenverwaltung** -- der naechste Skill, der ohne externen Dienst
+   auskommt und Mail, Kalender und Briefing zusammenbindet.
+4. **Research-Netzquelle** hinter der bestehenden Freigabeliste.
+5. **Dokumentenanalyse**, dann **Dateiablage**.
+6. Danach erst Geraete-, Telefon- und Social-Media-Anbindungen.
+
+---
+
+## Schnellstart fuer eine neue Sitzung
+
+```sh
+uv sync
+uv run pytest -q                 # 980 Tests
+uv run ruff check . && uv run ruff format --check .
+
+export JARVIS_HOME=/tmp/jarvis-probe
+uv run python -m jarvis init
+# In der Konfiguration: [services] mode = "mock"
+uv run python -m jarvis mail poll
+uv run python -m jarvis services check     # zeigt den Nachweisstand
+```
+
+Arbeitsweise: **eine Phase pro Sitzung**, danach Tests, Zusammenfassung,
+anhalten und auf Freigabe warten (SPEC Abschnitt 6).

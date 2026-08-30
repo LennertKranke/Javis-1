@@ -3,12 +3,13 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 5 abgeschlossen.** Der Kern steht, JARVIS liest und ordnet den
+**Stand: Phase 6 abgeschlossen.** Der Kern steht, JARVIS liest und ordnet den
 Posteingang ein, schreibt Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf
 der Allowlist senden, liest den Kalender und meldet Terminkonflikte, fasst den
 Tag in einem Morgenbriefing zusammen, und zeigt Zustand, Protokoll, Briefing
-und anstehende Entscheidungen in einer Weboberflaeche auf localhost. Es gibt
-noch keinen Daemon und keine Sprache.
+und anstehende Entscheidungen in einer Weboberflaeche auf localhost. Sprache
+kommt als dritte Bedienweise dazu: JARVIS liest auf Zuruf vor und laesst sich
+anhalten -- handeln kann er auf Zuruf nicht. Es gibt noch keinen Daemon.
 
 ---
 
@@ -80,6 +81,10 @@ Keychain ab. Angefordert werden `gmail.modify`, `gmail.send` und seit Phase 5
 | `jarvis calendar state` | was im Fenster steht und was gefunden wurde |
 | `jarvis briefing [--neu]` | das Briefing des Tages zeigen oder erzeugen |
 | `jarvis web [--port N]` | Dashboard auf localhost starten |
+| `jarvis voice check` | was fuer Sprache bereitsteht |
+| `jarvis voice ask "..."` | einen getippten Satz durch dieselbe Kette |
+| `jarvis voice hear <datei>` | eine fertige Aufnahme auswerten |
+| `jarvis voice listen` | aufnehmen und antworten (eine Runde) |
 
 Der Stoppschalter ist eine Datei. Er wirkt auch ohne laufendes JARVIS:
 
@@ -573,6 +578,139 @@ zu laufen, den niemand zuordnen kann.
 
 ---
 
+## Phase 6: Sprache
+
+Eine dritte Bedienweise neben Kommandozeile und Dashboard, kein Ersatz fuer
+sie. Sie liegt unter `interfaces/voice/`, nicht unter `skills/` -- Sprache ist
+eine Art zu bedienen, keine Faehigkeit.
+
+```sh
+jarvis voice check                       # was bereitsteht
+jarvis voice ask "Jarvis, wie ist der Stand"   # ohne Mikrofon pruefen
+jarvis voice hear aufnahme.wav           # eine fertige Aufnahme
+jarvis voice listen                      # aufnehmen und antworten
+```
+
+### Der Satz, an dem alles haengt
+
+> **Sprache liest vor. Sprache handelt nicht.**
+
+Ein Mikrofon ist kein angemeldeter Eingabekanal. Was an der Tastatur getippt
+wird, kommt von jemandem, der davorsitzt. Was das Mikrofon hoert, kommt aus
+dem Raum: vom Fernseher, aus einer Videokonferenz, von Besuch, aus einem
+Podcast. Ein Transkript ist damit genau das, was Abschnitt 2.3 meint --
+fremder Text.
+
+Deshalb gibt es sechs Absichten und sonst keine:
+
+| Absicht | Wirkung |
+|---|---|
+| `status` | Zustand vorlesen |
+| `briefing` | Briefing des Tages vorlesen |
+| `offen` | wie viele Vorgaenge zur Freigabe stehen |
+| `anhalten` | Stoppschalter setzen |
+| `handeln` | erkannt und **verweigert** |
+| `unbekannt` | nachfragen |
+
+`handeln` ist die wichtigste davon. "Schick die Entwuerfe ab" wird verstanden,
+im Protokoll festgehalten und abgelehnt -- mit dem Hinweis aufs Dashboard. Es
+gibt im Sprachpfad keinen Code, der senden koennte; ein Test prueft
+strukturell, dass die dafuer noetigen Bausteine dort gar nicht vorkommen.
+
+### Anhalten geht, fortsetzen nicht
+
+Die Richtung entscheidet. Ein Podcast, der JARVIS anhaelt, ist ein Aergernis:
+man merkt es und gibt von Hand frei. Ein Podcast, der ihn wieder freigibt,
+waere eine Luecke. `jarvis resume` bleibt deshalb Tastatur und Dashboard
+vorbehalten, und "mach weiter" faellt unter `handeln`.
+
+### Kein Gatter, mit Absicht
+
+Sprache laeuft nicht durchs Gatter. Das Gatter blockiert bei gesetztem
+Stoppschalter jede Aktion -- richtig fuer alles, was hinausgeht, falsch fuer
+eine Frage nach dem Zustand: wer angehalten hat, will hoeren koennen, warum.
+
+Der Schutz liegt nicht im Gatter, sondern darin, dass es keine ausgehende
+Aktion gibt, die zu bewachen waere. Die Ratenbegrenzung wird trotzdem gefragt,
+aber nur fuer den Modellrueckfall -- damit ein Dauerlauf am Mikrofon keine
+Kosten treibt. Die Regeln unterliegen ihr nicht: "anhalten" muss auch dann
+noch gehen, wenn die Obergrenze erreicht ist.
+
+### Regeln zuerst, Modell nur als Rueckfall
+
+Erkannt wird mit Wendungen, deterministisch und ohne Netz. Erst was keine
+Regel trifft, geht ans Modell -- und auch dann nur als geschlossene
+Aufzaehlung:
+
+```json
+{"absicht": {"enum": ["status", "briefing", "offen", "anhalten", "handeln", "unbekannt"]}}
+```
+
+Kein freier Text, keine Kennung, kein Ziel. Die Zielfeldsperre aus
+`llm/schema.py` haette ein solches Feld ohnehin abgewiesen. Das Modell darf
+eine von sechs Absichten benennen; die Antwort baut danach Code aus dem
+tatsaechlichen Zustand.
+
+`[llm.tasks.voice]` ist `confidential = true` und damit auf lokale Anbieter
+festgelegt: was im Raum gesagt wird, verlaesst diesen Rechner nicht. Die
+Konfiguration prueft das beim Laden, der Router noch einmal.
+
+### Was vorgelesen wird, hoert jeder im Raum
+
+Das begrenzt die Ausgabe. Vorgelesen werden der eigene Zustand und das eigene
+Briefing. Bei `offen` nennt JARVIS **wie viele** Vorgaenge warten und von
+welcher Faehigkeit -- nicht ihre Betreffzeilen:
+
+```
+Ein Vorgang zur Freigabe: 1 mail_reply. Ansehen im Dashboard.
+```
+
+Das Briefing ist die Ausnahme, und zwar die gewollte: es vorzulesen ist sein
+Zweck. Mailinhalte werden nicht vorgelesen.
+
+### Whisper laeuft lokal, und nur lokal
+
+Es gibt keinen Umwandler, der Audio irgendwohin schickt -- nicht weil einer
+schwer zu bauen waere, sondern weil ein Arbeitszimmermikrofon alles aufnimmt,
+was im Raum gesprochen wird. Was es nicht gibt, kann nicht versehentlich
+benutzt werden; dasselbe Argument wie bei den Werkzeugen in Abschnitt 2.2. Ein
+Test prueft, dass in `transcribe.py` kein `urlopen` und kein HTTP-Client
+vorkommt.
+
+`whisper.cpp` wird als Programm aufgerufen, nicht als Python-Paket: schnell
+auf Apple Silicon und ohne PyTorch im Projekt. Aufnahme, Umwandlung und
+Ausgabe laufen ueber Argumentlisten, nie ueber eine Shell.
+
+### Einrichten auf dem Mac
+
+```sh
+brew install whisper-cpp sox          # sox liefert "rec"
+# ein Modell holen, etwa ggml-base.bin
+```
+
+```toml
+[voice]
+wake_word = "jarvis"
+whisper_model = "/Users/du/.jarvis/ggml-base.bin"
+record_command = ["rec", "-q", "-r", "16000", "-c", "1", "{datei}", "trim", "0", "6"]
+```
+
+`{datei}` wird durch den Pfad der Aufnahme ersetzt; fehlt der Platzhalter,
+weist der Recorder den Befehl ab, statt ins Leere aufzunehmen. `jarvis voice
+check` sagt, was noch fehlt.
+
+Das Weckwort ist ein Filter gegen Zufall, **keine Sicherung** -- ein Podcast
+kann "Jarvis" sagen. Die Sicherung ist die Absichtsliste oben.
+
+### Was hier noch nicht ist
+
+Eine Dauerschleife am Mikrofon. `jarvis voice listen` macht genau eine Runde:
+aufnehmen, umwandeln, antworten. Dauerhaftes Zuhoeren gehoert in den Daemon,
+den es noch nicht gibt -- und es ist die Art Funktion, die man nicht nebenbei
+einschaltet.
+
+---
+
 ## Bewusst zurueckgestellt
 
 Zwei Stellen weichen wissentlich von der Spezifikation ab. Sie stehen hier,
@@ -621,12 +759,18 @@ gesetzt; dann faellt der Rueckfall weg und der Hinweis verschwindet.
   Termine je Kalender und Fenster; ein `nextPageToken` wird nicht verfolgt.
   Fuer wenige Tage in einem persoenlichen Kalender reicht das. Wer laengere
   Fenster liest, braucht dort eine Schleife.
-- **Kein Daemon.** Durchlaeufe startet die Kommandozeile.
+- **Kein Daemon.** Durchlaeufe startet die Kommandozeile; `jarvis voice
+  listen` macht eine Runde, nicht mehr.
+- **Sprache nur auf diesem Rechner geprueft, nicht auf Hardware.** Die
+  Adapter fuer `whisper.cpp`, `say` und die Aufnahme sind gegen Ersatz-
+  programme getestet, nicht gegen ein echtes Mikrofon -- die gibt es in der
+  Entwicklungsumgebung nicht. `jarvis voice check` sagt auf dem Mac, was
+  tatsaechlich bereitsteht.
 
 ---
 
 ## Was noch nicht existiert
 
-Sprache (Phase 6). Es gibt noch keinen `daemon.py` und keine launchd-plist:
-Durchlaeufe startet man vorerst von Hand oder ueber einen eigenen Eintrag in
-der Aufgabenplanung.
+Es gibt noch keinen `daemon.py` und keine launchd-plist: Durchlaeufe startet
+man vorerst von Hand oder ueber einen eigenen Eintrag in der Aufgabenplanung.
+Damit fehlt auch das dauerhafte Zuhoeren.

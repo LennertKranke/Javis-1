@@ -562,3 +562,82 @@ def test_fehlerhafte_zeitzone_wird_gemeldet(home, capsys):
     code = main(["--home", str(home), "status", "--ohne-anbieter"])
     assert code == 2
     assert "timezone" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# Sprache
+# --------------------------------------------------------------------------- #
+
+
+def test_voice_check_sagt_was_fehlt(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "voice", "check", capsys=capsys)
+    assert code == 0
+    assert "Weckwort" in out
+    assert "Whisper" in out
+    # Auf diesem System gibt es weder whisper-cli noch say.
+    assert "nein" in out
+    assert "Dashboard" in out
+
+
+def test_voice_ask_ohne_datenbank(home, capsys):
+    code, out = run(home, "voice", "ask", "Jarvis, status", capsys=capsys)
+    assert code == 1
+    assert "jarvis init" in out
+
+
+def test_voice_ask_antwortet_auf_den_status(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "voice", "ask", "Jarvis,", "wie", "ist", "der", "Stand", capsys=capsys)
+    assert code == 0
+    assert "status" in out
+    assert "Betrieb" in out
+
+
+def test_voice_ask_verweigert_das_senden(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "voice", "ask", "Jarvis,", "schick", "das", "ab", capsys=capsys)
+    assert code == 0
+    assert "handeln" in out
+    assert "Dashboard" in out
+
+
+def test_voice_ask_ohne_weckwort_antwortet_nicht(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "voice", "ask", "wie", "ist", "der", "Stand", capsys=capsys)
+    assert code == 0
+    assert "Ohne Weckwort" in out
+
+
+def test_voice_haelt_ueber_die_kommandozeile_an(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "voice", "ask", "Jarvis,", "halt", "an", capsys=capsys)
+    assert code == 0
+    assert (home / "STOP").exists()
+    assert "jarvis resume" in out
+
+
+def test_voice_hear_ohne_datei(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "voice", "hear", str(home / "gibtsnicht.wav"), capsys=capsys)
+    assert code == 1
+    assert "Keine Aufnahme" in out
+
+
+def test_voice_listen_ohne_aufnahmebefehl(home, capsys):
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "voice", "listen", capsys=capsys)
+    assert code == 1
+    assert "record_command" in out
+
+
+def test_fehlerhafte_spracheinstellungen_werden_gemeldet(home, capsys):
+    run(home, "init", capsys=capsys)
+    pfad = home / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace('wake_word = "jarvis"', "wake_word = 7"),
+        encoding="utf-8",
+    )
+    code = main(["--home", str(home), "voice", "check"])
+    assert code == 2
+    assert "voice.wake_word" in capsys.readouterr().err

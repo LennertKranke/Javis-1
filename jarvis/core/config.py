@@ -34,6 +34,7 @@ __all__ = [
     "RateLimit",
     "StopSwitch",
     "TaskRoute",
+    "VoiceConfig",
     "WebConfig",
     "jarvis_home",
     "local_timezone",
@@ -225,6 +226,34 @@ LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 @dataclass(frozen=True)
+class VoiceConfig:
+    """Sprache als zusaetzliche Bedienweise.
+
+    `task` leer heisst: nur Regeln, kein Modell. Das ist eine brauchbare
+    Betriebsart -- die Regeln decken alles ab, was Sprache darf, und ohne
+    Modell entsteht weder Kosten noch ein Weg fuer Fremdtext ins Modell.
+
+    Einen Anbieter, der Audio wegschickt, gibt es nicht. `whisper_bin` ruft
+    ein Programm auf diesem Rechner auf; ist es nicht da, wird nichts
+    umgewandelt, statt auf etwas anderes auszuweichen.
+    """
+
+    wake_word: str = "jarvis"
+    speak: bool = True
+    voice_name: str = ""
+    rate: int = 0
+    whisper_bin: str = "whisper-cli"
+    whisper_model: str = ""
+    language: str = "de"
+    task: str = ""
+    record_command: tuple[str, ...] = ()
+
+    @property
+    def uses_model(self) -> bool:
+        return bool(self.task)
+
+
+@dataclass(frozen=True)
 class WebConfig:
     """Das Dashboard. Bindet ausschliesslich an die Loopback-Adresse.
 
@@ -286,6 +315,22 @@ class StopSwitch:
         except OSError:
             return None
 
+    def spoken_reason(self) -> str:
+        """Nur der Grund, ohne Zeitstempel und Urheber.
+
+        Die Datei traegt "<zeit> <urheber>: <grund>", damit man ihr ansieht,
+        wer sie gesetzt hat. Vorgelesen ist der Zeitstempel Laerm. Passt die
+        Zeile nicht auf die Form, wird sie unveraendert genommen -- die Datei
+        darf auch von Hand geschrieben worden sein.
+        """
+        roh = (self.reason() or "").strip()
+        if not roh:
+            return "ohne Angabe"
+        kopf, trenner, rest = roh.partition(": ")
+        if trenner and len(kopf.split()) == 2 and rest.strip():
+            return rest.strip()
+        return roh
+
     def engage(self, reason: str, *, actor: str = "cli") -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(UTC).isoformat(timespec="seconds")
@@ -316,6 +361,7 @@ class Config:
     llm: LLMConfig
     skills: dict[str, dict[str, Any]]
     web: WebConfig
+    voice: VoiceConfig
     source: Path | None
 
     @property
@@ -384,6 +430,7 @@ class Config:
                 "capabilities",
                 "llm",
                 "skills",
+                "voice",
                 "web",
             },
             "(Wurzel)",
@@ -401,6 +448,7 @@ class Config:
         llm = _parse_llm(raw.get("llm", {}))
         skills = _parse_skills(raw.get("skills", {}))
         web = _parse_web(raw.get("web", {}))
+        voice = _parse_voice(raw.get("voice", {}), known_tasks=set(llm.tasks))
         return cls(
             paths=paths,
             dry_run=dry_run,
@@ -411,6 +459,7 @@ class Config:
             llm=llm,
             skills=skills,
             web=web,
+            voice=voice,
             source=source,
         )
 
@@ -550,6 +599,51 @@ def _parse_web(raw: Any) -> WebConfig:
         raw.get("host", "127.0.0.1"),
         raw.get("port", 8765),
         raw.get("refresh_seconds", 0),
+    )
+
+
+def _parse_voice(raw: Any, *, known_tasks: set[str]) -> VoiceConfig:
+    if not isinstance(raw, dict):
+        raise ConfigError("voice: erwartet eine Tabelle")
+    _reject_unknown(
+        raw,
+        {
+            "wake_word",
+            "speak",
+            "voice_name",
+            "rate",
+            "whisper_bin",
+            "whisper_model",
+            "language",
+            "task",
+            "record_command",
+        },
+        "voice",
+    )
+
+    task = _as_str(raw.get("task", ""), "voice.task").strip()
+    if task and task not in known_tasks:
+        bekannt = ", ".join(sorted(known_tasks)) or "keine"
+        raise ConfigError(f"voice.task: {task!r} steht nicht in [llm.tasks] (bekannt: {bekannt})")
+
+    rate = _as_int(raw.get("rate", 0), "voice.rate")
+    if rate and not 80 <= rate <= 400:
+        raise ConfigError("voice.rate: 0 oder zwischen 80 und 400 Woertern je Minute")
+
+    befehl = raw.get("record_command", [])
+    if not isinstance(befehl, list) or not all(isinstance(t, str) for t in befehl):
+        raise ConfigError("voice.record_command: erwartet eine Liste von Zeichenketten")
+
+    return VoiceConfig(
+        wake_word=_as_str(raw.get("wake_word", "jarvis"), "voice.wake_word").strip(),
+        speak=_as_bool(raw.get("speak", True), "voice.speak"),
+        voice_name=_as_str(raw.get("voice_name", ""), "voice.voice_name").strip(),
+        rate=rate,
+        whisper_bin=_as_str(raw.get("whisper_bin", "whisper-cli"), "voice.whisper_bin").strip(),
+        whisper_model=_as_str(raw.get("whisper_model", ""), "voice.whisper_model").strip(),
+        language=_as_str(raw.get("language", "de"), "voice.language").strip() or "de",
+        task=task,
+        record_command=tuple(befehl),
     )
 
 
@@ -790,6 +884,15 @@ autonomy_level = 0
 requires_outbound = false
 rate_limits = { hour = 5, day = 20 }
 
+# Sprache. Liest vor und haelt an, mehr nicht -- es gibt im Code keinen Weg
+# von einem gesprochenen Satz zu einer ausgehenden Aktion. Sie laeuft deshalb
+# nicht durchs Gatter: wer angehalten hat, soll hoeren koennen, warum. Die
+# Obergrenze hier bremst nur den Modellrueckfall bei der Absichtserkennung.
+[capabilities.voice]
+autonomy_level = 0
+requires_outbound = false
+rate_limits = { hour = 60, day = 400 }
+
 
 # --------------------------------------------------------------------------- #
 # Modelle
@@ -850,6 +953,14 @@ confidential = true
 # zuerst; faellt die ganze Kette aus, entsteht die Fassung ohne Modell.
 [llm.tasks.briefing]
 providers = ["ollama", "anthropic"]
+effort = "low"
+
+# Gesprochene Saetze einer von sechs Absichten zuordnen. Vertraulich: was im
+# Raum gesagt wird, verlaesst diesen Rechner nicht. Damit steht hier nur ein
+# lokaler Anbieter, und die Konfiguration prueft das.
+[llm.tasks.voice]
+providers = ["ollama"]
+confidential = true
 effort = "low"
 
 
@@ -964,6 +1075,46 @@ max_words = 200
 # Ab wie vielen Tagen eine unbeantwortete Anfrage als Frist gilt. Gerechnet
 # wird ab dem ersten Sehen, nicht ab dem letzten Durchlauf.
 overdue_days = 3
+
+
+# --------------------------------------------------------------------------- #
+# Sprache
+#
+# Eine zusaetzliche Bedienweise, kein Ersatz. Sprache liest vor und kann
+# anhalten; senden und freigeben gehen nur im Dashboard. Ein Mikrofon hoert
+# den ganzen Raum -- auch den Fernseher, auch Besuch.
+# --------------------------------------------------------------------------- #
+
+[voice]
+# Ohne diese Anrede wird nicht geantwortet. Leer heisst: auf jeden Satz
+# reagieren. Das Weckwort ist ein Filter gegen Zufall, keine Sicherung.
+wake_word = "jarvis"
+
+# Antworten laut vorlesen. false heisst: nur schreiben.
+speak = true
+
+# Stimme von macOS ("say -v ?" zeigt die vorhandenen). Leer = Systemstimme.
+voice_name = ""
+
+# Sprechtempo in Woertern je Minute. 0 = Vorgabe des Systems.
+rate = 0
+
+# Whisper laeuft auf diesem Rechner. Ohne Modelldatei wird nichts umgewandelt;
+# es gibt bewusst keinen Anbieter, der Audio wegschickt.
+whisper_bin = "whisper-cli"
+whisper_model = ""
+language = "de"
+
+# Aufgabe aus [llm.tasks] fuer Saetze, die keine Regel trifft. Leer heisst:
+# nur Regeln. Das reicht fuer alles, was Sprache darf.
+task = "voice"
+
+# Wie aufgenommen wird. Leer heisst: "jarvis voice listen" steht nicht bereit,
+# und es bleibt bei "jarvis voice hear <datei>". macOS bringt kein
+# Aufnahmeprogramm mit; mit sox etwa:
+#   record_command = ["rec", "-q", "-r", "16000", "-c", "1", "{datei}", "trim", "0", "6"]
+# {datei} wird durch den Pfad der Aufnahme ersetzt.
+record_command = []
 
 
 # --------------------------------------------------------------------------- #

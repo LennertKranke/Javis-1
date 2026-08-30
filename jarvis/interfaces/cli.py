@@ -964,6 +964,156 @@ def cmd_briefing(args: argparse.Namespace, out: Out) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Sprache
+# --------------------------------------------------------------------------- #
+
+
+def _voice_ausgeben(antwort, out: Out) -> int:
+    """Immer auch schreiben. Was gesprochen wurde, soll nachlesbar sein."""
+    if not antwort.angesprochen:
+        out.line()
+        out.line(f"  {out.dim('Ohne Weckwort. Nichts geantwortet.')}")
+        if antwort.gehoert:
+            out.line(f"  {out.dim('Gehoert: ' + antwort.gehoert)}")
+        out.line()
+        return 0
+
+    out.line()
+    # Ist schon das Zuhoeren gescheitert, gibt es nichts zu "verstehen".
+    # Dann steht da der Fehler, nicht eine Absicht, die niemand gemeint hat.
+    if not antwort.gehoert and antwort.fehler:
+        for zeile in (antwort.text or "(nichts)").splitlines():
+            out.line(f"  {zeile}")
+        out.line(f"  {out.dim(antwort.fehler)}")
+        out.line()
+        return 1
+
+    out.field("Verstanden", f"{antwort.absicht}  ({antwort.quelle})")
+    if antwort.gehoert:
+        out.field("Gehoert", antwort.gehoert)
+    out.line()
+    for zeile in (antwort.text or "(nichts)").splitlines():
+        out.line(f"  {zeile}")
+    if antwort.fehler:
+        out.line()
+        out.line(f"  {out.dim('Nicht vorgelesen: ' + antwort.fehler)}")
+    out.line()
+    return 1 if antwort.fehler else 0
+
+
+def cmd_voice_check(args: argparse.Namespace, out: Out) -> int:
+    """Was auf diesem Rechner bereitsteht. Aendert nichts."""
+    from jarvis.interfaces.voice.speak import MacSpeaker
+    from jarvis.interfaces.voice.transcribe import CommandRecorder, WhisperCppTranscriber
+
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    stimme = config.voice
+
+    umwandler = WhisperCppTranscriber(
+        binary=stimme.whisper_bin, model=stimme.whisper_model, language=stimme.language
+    )
+    sprecher = MacSpeaker(voice=stimme.voice_name, rate=stimme.rate)
+    aufnahme = CommandRecorder(command=stimme.record_command)
+
+    out.line()
+    out.field("Weckwort", stimme.wake_word or "keins (jeder Satz gilt)")
+    out.field("Vorlesen", "an" if stimme.speak else "aus")
+    out.field("Absichten", f"Regeln + {stimme.task}" if stimme.uses_model else "nur Regeln")
+    out.line()
+    out.table(
+        ["TEIL", "BEREIT", "BEFUND"],
+        [
+            ["Aufnahme", "ja" if aufnahme.available() else "nein", aufnahme.describe()],
+            ["Whisper", "ja" if umwandler.available() else "nein", umwandler.describe()],
+            ["Stimme", "ja" if sprecher.available() else "nein", sprecher.describe()],
+        ],
+    )
+    out.line()
+    if not umwandler.available():
+        out.line(f"  {out.dim("Ohne Whisper bleibt: jarvis voice ask '...'")}")
+    hinweis = "Sprache liest vor und haelt an. Senden und Freigeben nur im Dashboard."
+    out.line(f"  {out.dim(hinweis)}")
+    out.line()
+    return 0
+
+
+def cmd_voice_ask(args: argparse.Namespace, out: Out) -> int:
+    """Ein getippter Satz durch dieselbe Kette. Braucht kein Mikrofon."""
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        from jarvis.interfaces.voice.session import build_session
+
+        sitzung = build_session(config, conn, speak=None if args.laut else False)
+        return _voice_ausgeben(sitzung.ask(" ".join(args.satz), herkunft="cli"), out)
+    finally:
+        conn.close()
+
+
+def cmd_voice_hear(args: argparse.Namespace, out: Out) -> int:
+    """Eine fertige Aufnahme."""
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        from jarvis.interfaces.voice.session import build_session
+
+        datei = Path(args.datei).expanduser()
+        if not datei.is_file():
+            out.line(f"Keine Aufnahme unter {datei}")
+            return 1
+        sitzung = build_session(config, conn, speak=None if args.laut else False)
+        return _voice_ausgeben(sitzung.hear(datei), out)
+    finally:
+        conn.close()
+
+
+def cmd_voice_listen(args: argparse.Namespace, out: Out) -> int:
+    """Aufnehmen, umwandeln, antworten. Eine Runde, keine Dauerschleife.
+
+    Eine Dauerschleife gehoert in den Daemon, den es noch nicht gibt. Bis
+    dahin ist das hier der ganze Weg vom Mikrofon bis zur Antwort.
+    """
+    import tempfile
+
+    paths = _paths(args)
+    config = Config.load(home=paths.home)
+    conn = _require_db(paths, out)
+    if conn is None:
+        return 1
+    try:
+        from jarvis.interfaces.voice.session import build_session
+        from jarvis.interfaces.voice.transcribe import CommandRecorder, RecordingError
+
+        aufnahme = CommandRecorder(command=config.voice.record_command)
+        if not aufnahme.available():
+            out.line(f"Aufnahme nicht eingerichtet: {aufnahme.describe()}")
+            out.line(f"  {out.dim('voice.record_command in der Konfiguration setzen.')}")
+            return 1
+
+        out.line()
+        out.line(f"  {out.dim('Aufnahme laeuft ...')}")
+        out.stream.flush()
+        with tempfile.TemporaryDirectory(prefix="jarvis-voice-") as ordner:
+            ziel = Path(ordner) / "aufnahme.wav"
+            try:
+                aufnahme.record(ziel)
+            except RecordingError as exc:
+                out.line(f"{exc}")
+                return 1
+            sitzung = build_session(config, conn, speak=None if args.laut else False)
+            return _voice_ausgeben(sitzung.hear(ziel), out)
+    finally:
+        conn.close()
+
+
+# --------------------------------------------------------------------------- #
 # Gedaechtnis und Kontext
 # --------------------------------------------------------------------------- #
 
@@ -1118,6 +1268,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default=None, help="statt [web].host")
     p.add_argument("--port", type=int, default=None, help="statt [web].port")
     p.set_defaults(func=cmd_web)
+
+    sprache = sub.add_parser("voice", help="Sprache: vorlesen und anhalten")
+    sprache_sub = sprache.add_subparsers(dest="unterbefehl", required=True)
+
+    v = sprache_sub.add_parser("check", help="Was auf diesem Rechner bereitsteht")
+    v.set_defaults(func=cmd_voice_check)
+
+    v = sprache_sub.add_parser("ask", help="Einen getippten Satz durch dieselbe Kette")
+    v.add_argument("satz", nargs="+", help="was gesagt worden waere")
+    v.add_argument("--laut", action="store_true", help="Antwort auch vorlesen")
+    v.set_defaults(func=cmd_voice_ask)
+
+    v = sprache_sub.add_parser("hear", help="Eine fertige Aufnahme auswerten")
+    v.add_argument("datei", help="Pfad zur Audiodatei")
+    v.add_argument("--laut", action="store_true", help="Antwort auch vorlesen")
+    v.set_defaults(func=cmd_voice_hear)
+
+    v = sprache_sub.add_parser("listen", help="Aufnehmen und antworten (eine Runde)")
+    v.add_argument("--laut", action="store_true", help="Antwort auch vorlesen")
+    v.set_defaults(func=cmd_voice_listen)
 
     kalender = sub.add_parser("calendar", help="Termine lesen und auf Konflikte pruefen")
     kalender_sub = kalender.add_subparsers(dest="unterbefehl", required=True)

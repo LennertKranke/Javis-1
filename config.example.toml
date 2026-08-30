@@ -81,6 +81,15 @@ autonomy_level = 0
 requires_outbound = false
 rate_limits = { hour = 5, day = 20 }
 
+# Sprache. Liest vor und haelt an, mehr nicht -- es gibt im Code keinen Weg
+# von einem gesprochenen Satz zu einer ausgehenden Aktion. Sie laeuft deshalb
+# nicht durchs Gatter: wer angehalten hat, soll hoeren koennen, warum. Die
+# Obergrenze hier bremst nur den Modellrueckfall bei der Absichtserkennung.
+[capabilities.voice]
+autonomy_level = 0
+requires_outbound = false
+rate_limits = { hour = 60, day = 400 }
+
 
 # --------------------------------------------------------------------------- #
 # Modelle
@@ -141,6 +150,14 @@ confidential = true
 # zuerst; faellt die ganze Kette aus, entsteht die Fassung ohne Modell.
 [llm.tasks.briefing]
 providers = ["ollama", "anthropic"]
+effort = "low"
+
+# Gesprochene Saetze einer von sechs Absichten zuordnen. Vertraulich: was im
+# Raum gesagt wird, verlaesst diesen Rechner nicht. Damit steht hier nur ein
+# lokaler Anbieter, und die Konfiguration prueft das.
+[llm.tasks.voice]
+providers = ["ollama"]
+confidential = true
 effort = "low"
 
 
@@ -255,6 +272,46 @@ max_words = 200
 # Ab wie vielen Tagen eine unbeantwortete Anfrage als Frist gilt. Gerechnet
 # wird ab dem ersten Sehen, nicht ab dem letzten Durchlauf.
 overdue_days = 3
+
+
+# --------------------------------------------------------------------------- #
+# Sprache
+#
+# Eine zusaetzliche Bedienweise, kein Ersatz. Sprache liest vor und kann
+# anhalten; senden und freigeben gehen nur im Dashboard. Ein Mikrofon hoert
+# den ganzen Raum -- auch den Fernseher, auch Besuch.
+# --------------------------------------------------------------------------- #
+
+[voice]
+# Ohne diese Anrede wird nicht geantwortet. Leer heisst: auf jeden Satz
+# reagieren. Das Weckwort ist ein Filter gegen Zufall, keine Sicherung.
+wake_word = "jarvis"
+
+# Antworten laut vorlesen. false heisst: nur schreiben.
+speak = true
+
+# Stimme von macOS ("say -v ?" zeigt die vorhandenen). Leer = Systemstimme.
+voice_name = ""
+
+# Sprechtempo in Woertern je Minute. 0 = Vorgabe des Systems.
+rate = 0
+
+# Whisper laeuft auf diesem Rechner. Ohne Modelldatei wird nichts umgewandelt;
+# es gibt bewusst keinen Anbieter, der Audio wegschickt.
+whisper_bin = "whisper-cli"
+whisper_model = ""
+language = "de"
+
+# Aufgabe aus [llm.tasks] fuer Saetze, die keine Regel trifft. Leer heisst:
+# nur Regeln. Das reicht fuer alles, was Sprache darf.
+task = "voice"
+
+# Wie aufgenommen wird. Leer heisst: "jarvis voice listen" steht nicht bereit,
+# und es bleibt bei "jarvis voice hear <datei>". macOS bringt kein
+# Aufnahmeprogramm mit; mit sox etwa:
+#   record_command = ["rec", "-q", "-r", "16000", "-c", "1", "{datei}", "trim", "0", "6"]
+# {datei} wird durch den Pfad der Aufnahme ersetzt.
+record_command = []
 
 
 # --------------------------------------------------------------------------- #

@@ -32,6 +32,7 @@ def test_vorlage_ist_gueltig(home):
         "calendar",
         "research",
         "briefing",
+        "voice",
     }
     # Alles startet auf Stufe 0 -- auch das Senden.
     assert all(int(c.autonomy_level) == 0 for c in config.capabilities.values())

@@ -18,6 +18,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from jarvis.core.files import secure_db, secure_dir
+
 __all__ = ["SCHEMA_VERSION", "connect", "migrate", "open_database", "transaction"]
 
 MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
@@ -302,7 +304,7 @@ def connect(path: Path | str) -> sqlite3.Connection:
     sonst heimlich Transaktionen oeffnet.
     """
     if path != ":memory:":
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        secure_dir(Path(path).parent)
     conn = sqlite3.connect(path, isolation_level=None, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -310,6 +312,10 @@ def connect(path: Path | str) -> sqlite3.Connection:
     if path != ":memory:":
         conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = FULL")
+    # Erst hier: die WAL-Begleitdateien entstehen mit `journal_mode`, und sie
+    # enthalten dieselben Daten wie die Datenbank. Jeder Verbindungsaufbau zieht
+    # die Rechte nach, damit auch eine aeltere Ablage geschlossen wird.
+    secure_db(path)
     return conn
 
 

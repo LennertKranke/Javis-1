@@ -19,8 +19,10 @@
     ThrottleInterval=60             : nach einem Absturz eine Minute warten,
       statt in einer Schleife neu zu starten.
     ProcessType=Background          : das System darf den Prozess drosseln.
-    Kein RunAtLoad-Sofortstart ohne Netz: der Daemon vertraegt Ausfaelle,
-      aber ein Start direkt beim Anmelden trifft oft noch kein Netz.
+    RunAtLoad=true                  : beim Anmelden sofort starten, damit
+      JARVIS einen Neustart ueberlebt, ohne dass jemand daran denken muss.
+      Dass dabei oft noch kein Netz steht, ist eingeplant: ein fehlgeschlagener
+      Durchlauf wird protokolliert, der naechste Tick versucht es erneut.
 -->
 <plist version="1.0">
 <dict>

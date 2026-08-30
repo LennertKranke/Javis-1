@@ -23,6 +23,7 @@ from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import DEFAULT_CONFIG_TOML, Config, ConfigError, Paths
 from jarvis.core.context import ContextBuilder, ShortTermContext
 from jarvis.core.db import open_database
+from jarvis.core.files import ist_geschuetzt, secure_file
 from jarvis.core.gate import Gate
 from jarvis.core.integrations import merke_kontakt
 from jarvis.core.log import configure as configure_logging
@@ -118,6 +119,7 @@ def cmd_init(args: argparse.Namespace, out: Out) -> int:
         out.line(f"Konfiguration vorhanden: {paths.config_file}")
     else:
         paths.config_file.write_text(DEFAULT_CONFIG_TOML, encoding="utf-8")
+        secure_file(paths.config_file)
         out.line(f"Konfiguration angelegt: {paths.config_file}")
 
     conn = open_database(paths.db_file)
@@ -180,6 +182,31 @@ def cmd_status(args: argparse.Namespace, out: Out) -> int:
     elif abweichung:
         out.line(f"  {out.dim(abweichung)}")
 
+    # Die Rechte auf der Ablage. JARVIS zieht sie beim Laden und beim
+    # Verbindungsaufbau selbst nach; hier steht nur, was danach noch offen ist
+    # -- etwa weil ein `chmod` scheiterte (fremder Eigentuemer, Netzlaufwerk).
+    #
+    # Nur bei eingerichteter Ablage. Ein leeres Verzeichnis vor `jarvis init`
+    # hat nichts, was auslaufen koennte, und `init` legt es ohnehin mit 0700
+    # an. Sonst meldete ein Lesebefehl eine Luecke, die es nicht gibt.
+    eingerichtet = paths.db_file.exists() or paths.config_file.exists()
+    offen = (
+        [
+            pfad.name or str(pfad)
+            for pfad in (paths.home, paths.log_dir, paths.db_file, paths.config_file)
+            if pfad.exists() and not ist_geschuetzt(pfad)
+        ]
+        if eingerichtet
+        else []
+    )
+    if offen:
+        out.line(
+            f"  {out.alarm(' OFFEN ')}  Auch andere Benutzer koennen lesen: "
+            f"{', '.join(offen)}. Erwartet werden 0700 auf Verzeichnissen und "
+            f"0600 auf Dateien."
+        )
+        exit_code = 1
+
     conn = None
     if paths.db_file.exists():
         conn = open_database(paths.db_file)
@@ -218,7 +245,13 @@ def cmd_status(args: argparse.Namespace, out: Out) -> int:
             spalten = zaehler[name]
             counters = "  ".join(z.ljust(breite) for z in spalten).rstrip() if spalten else "--"
             rows.append([name, level, "ja" if cap.requires_outbound else "nein", counters])
-        out.table(["FAEHIGKEIT", "STUFE", "AUSGEHEND", "ZAEHLER"], rows)
+        # "ERREICHT DRITTE", nicht "AUSGEHEND": beides ist nicht dasselbe, und
+        # die alte Ueberschrift war irrefuehrend. `mail` schreibt Labels und
+        # `mail_reply` legt Entwuerfe an -- beides geht ueber das Netz zu
+        # Google, bleibt aber im eigenen Postfach und erreicht keinen Menschen.
+        # Was hier "nein" steht, ist trotzdem am Gatter: Stoppschalter,
+        # Autonomiestufe und Obergrenze gelten fuer jede Faehigkeit.
+        out.table(["FAEHIGKEIT", "STUFE", "ERREICHT DRITTE", "ZAEHLER"], rows)
 
         # ------------------------------------------------------------------ #
         out.line()
@@ -898,8 +931,22 @@ def _durchlauf(skill, config, conn, out: Out) -> int:
     return 1 if report.failed else 0
 
 
-def _ortszeit(gespeichert: str | None, zone) -> str:
-    """Gespeichert wird UTC, angezeigt wird die Zeit auf der eigenen Uhr."""
+def _ortszeit(gespeichert: str | None, zone, *, ganztags: bool = False) -> str:
+    """Gespeichert wird UTC, angezeigt wird die Zeit auf der eigenen Uhr.
+
+    Ganztaegige Termine sind der Sonderfall, und zwar ein groesserer als er
+    aussieht. Sie standen hier als "00:00" -- eine Zahl, die wie eine Angabe
+    aussieht und keine ist. Beim Nachsehen kam der zweite Teil heraus: ein
+    ganztaegiger Termin wird als UTC-Mitternacht *seines Kalendertages*
+    abgelegt, ist also ein Datum und kein Zeitpunkt. Ihn in eine westliche
+    Zeitzone umzurechnen schiebt ihn auf den Vortag -- "01.03." fuer einen
+    Termin am 2. Maerz. Deshalb wird hier gerade nicht umgerechnet.
+    """
+    if not gespeichert:
+        return "ohne Zeit"
+    if ganztags:
+        gelesen = local_moment(gespeichert, UTC)
+        return f"{gelesen.strftime('%d.%m.')} ganztags" if gelesen else "ohne Zeit"
     oertlich = local_moment(gespeichert, zone)
     return oertlich.strftime("%d.%m. %H:%M") if oertlich else "ohne Zeit"
 
@@ -951,7 +998,7 @@ def cmd_calendar_state(args: argparse.Namespace, out: Out) -> int:
                 ["BEGINN", "TERMIN", "ZUSTAND", "BEFUND"],
                 [
                     [
-                        _ortszeit(e.starts_at, config.timezone),
+                        _ortszeit(e.starts_at, config.timezone, ganztags=e.all_day),
                         e.summary[:40],
                         e.state,
                         (e.finding or "--")[:44],

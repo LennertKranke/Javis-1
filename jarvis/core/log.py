@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
+from jarvis.core.files import secure_dir, secure_file
+
 __all__ = ["configure", "get_logger"]
 
 _STANDARD = frozenset(
@@ -69,6 +71,21 @@ class JsonlFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
+class _GeschuetzteRotation(TimedRotatingFileHandler):
+    """Wie `TimedRotatingFileHandler`, aber jede Datei entsteht mit 0600.
+
+    Ein einmaliges `chmod` nach dem Einrichten wuerde nur die erste Datei
+    treffen. Beim naechsten Tageswechsel legt der Handler selbst eine neue an --
+    mit den Standardrechten des Systems, und die Logzeilen nennen Absender und
+    Betreffzeilen. Deshalb an der Stelle, an der jede Datei geoeffnet wird.
+    """
+
+    def _open(self):  # type: ignore[no-untyped-def]
+        stream = super()._open()
+        secure_file(self.baseFilename)
+        return stream
+
+
 def configure(log_dir: Path, *, level: str = "INFO", stderr: bool = False) -> logging.Logger:
     """Richtet den Wurzel-Logger von JARVIS ein.
 
@@ -78,7 +95,7 @@ def configure(log_dir: Path, *, level: str = "INFO", stderr: bool = False) -> lo
     anderen Verzeichnis stillschweigend beim ersten bleiben.
     """
     logger = logging.getLogger("jarvis")
-    log_dir.mkdir(parents=True, exist_ok=True)
+    secure_dir(log_dir)
     target = str((log_dir / "jarvis.jsonl").resolve())
 
     for handler in list(logger.handlers):
@@ -88,7 +105,7 @@ def configure(log_dir: Path, *, level: str = "INFO", stderr: bool = False) -> lo
         logger.removeHandler(handler)
         handler.close()
 
-    file_handler = TimedRotatingFileHandler(
+    file_handler = _GeschuetzteRotation(
         target, when="midnight", backupCount=30, encoding="utf-8", utc=True
     )
     file_handler.setFormatter(JsonlFormatter())

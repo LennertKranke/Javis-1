@@ -1,7 +1,7 @@
 # JARVIS — Projektstand und Uebergabe
 
-Stand: Commit `d0a010a`, Branch `claude/jarvis-spec-phase-1-e3hopg`.
-980 Tests gruen, `ruff check` und `ruff format --check` sauber.
+Stand: Audit von Phase 1-7, Branch `claude/jarvis-audit-phase-1-7-w73he0`.
+1006 Tests gruen, `ruff check` und `ruff format --check` sauber.
 
 Dieses Dokument beschreibt den **tatsaechlichen** Stand, nicht die Absicht.
 Verbindliche Vorgabe bleibt `JARVIS-SPEC.md`. Ausfuehrliche Begruendungen
@@ -107,9 +107,50 @@ Davor, in `fb36f1c`: Laufzeit-Mock fuer Gmail und Kalender, `integrations.py`,
 
 ---
 
+## 2a. Audit Phase 1-7 und was daraus folgte
+
+Ein unabhaengiger Durchgang durch Phase 1-7, ohne die Angaben der vorigen
+Sitzung zu uebernehmen. Nachgemessen statt nachgelesen: Stoppschalter,
+Hash-Kette, Schemapruefung, Rahmenfaelschung, Kopfeinschleusung, XSS,
+Endpunktmuster und die Prozesstrennung wurden einzeln angegriffen.
+
+**Ergebnis:** Phase 1-3, 5, 6 tragen. Die vier Kernprinzipien halten, mit der
+bekannten und dokumentierten Einschraenkung bei 2.2 (das Netz bleibt offen,
+siehe README). Die Dokumentation war an keiner Stelle gruener als der
+Nachweis -- ausser bei der Mock-Aussage weiter oben, die jetzt korrigiert ist.
+
+**Behoben, jeweils mit Regressionstest:**
+
+| Befund | Was war | Wo |
+|---|---|---|
+| Dateirechte | `~/.jarvis` 0755, `state.db`/Logs/`config.toml` 0644. Darin: Entwurfstexte, Empfaenger, Betreffzeilen, Gedaechtnis | `core/files.py` (neu) |
+| `act()` ohne Ausnahmeschutz | eine unerwartete Ausnahme beendete den ganzen Durchlauf, die restlichen Vorgaenge fielen aus | `skills/runner.py` |
+| Endpunkt-Allowlist | `muster.match` statt `fullmatch` -- Pythons `$` laesst einen abschliessenden Umbruch durch | `mail/gmail.py`, `calendar/google.py` |
+| Ganztagestermine | standen als `00:00` da, und die Zeitzonenumrechnung schob sie in westlichen Zonen auf den **Vortag** | `interfaces/cli.py` |
+| Spalte "Ausgehend" | `mail` stand auf "nein", schreibt aber Labels zu Google. Der Wert war richtig, die Ueberschrift falsch | CLI + Dashboard |
+| plist-Kommentar | behauptete das Gegenteil von `RunAtLoad` | `deploy/` |
+| Mock-Aussage | siehe Abschnitt 5 | dieses Dokument |
+
+**Neu dazugekommen:** `jarvis status` meldet offene Dateirechte und gibt dann
+1 zurueck. JARVIS zieht die Rechte bei jedem Laden und jedem
+Verbindungsaufbau selbst nach -- auch bei einer Ablage, die vor dieser
+Aenderung entstanden ist. Die Meldung ist fuer den Fall, dass das `chmod`
+scheitert.
+
+**Beim Beheben zusaetzlich gefunden:** die Rechtepruefung im Statusbericht
+schlug zuerst auf einer noch leeren Ablage an -- ein Fehlalarm, der einen
+bestehenden Test brach. Beides steht jetzt als Test da.
+
+**Nicht angefasst:** das Dashboard weicht in Farbwerten, Schrift und
+Nachladeweise von der Designfassung der Spezifikation ab (Meta-Refresh statt
+SSE, keine IBM-Plex-Schriften). Das ist bekannt und bewusst offen gelassen --
+es gehoert in die konsolidierte Spezifikation, nicht in eine Korrekturrunde.
+
+---
+
 ## 3. Tests
 
-**980, alle gruen.** `uv run pytest` — Laufzeit rund 17 s.
+**1006, alle gruen.** `uv run pytest` — Laufzeit rund 16 s.
 
 Groesste Gruppen: `test_cli.py` (81), `test_voice.py` (79), `test_calendar.py`
 (55), `test_isolation.py` (41), `test_daemon.py` (38), `test_web.py` (40),
@@ -131,8 +172,7 @@ Alarm, wenn jemand etwas verdrahtet, das nicht verdrahtet sein darf:
 ## 4. Bekannte Fehler, Schulden und offene Punkte
 
 ### Echte Fehler
-- **`jarvis calendar state`** zeigt ganztaegige Termine als `00:00` statt
-  `ganztags`. Kosmetisch, in `cli.py`, `_ortszeit()` kennt `all_day` nicht.
+Keine offenen. Die aus dem Audit sind behoben, siehe Abschnitt 2a.
 
 ### Nie auf echter Hardware ausgefuehrt
 - **macOS-Sandbox** (`isolation = "sandbox"`): Profil und Aufruf getestet,
@@ -179,7 +219,13 @@ Alarm, wenn jemand etwas verdrahtet, das nicht verdrahtet sein darf:
   Einschleusversuch. Dieselbe Faehigkeitspruefung wie der echte Client.
 - **Kalender** (`skills/calendar/mock.py`) -- 5 Termine, beide Befundarten,
   verankert an *jetzt + 2 h*.
-- Damit laufen `mail poll`, `calendar poll`, `briefing --neu` vollstaendig.
+- Damit laufen `calendar poll` und `briefing --neu` vollstaendig -- beide
+  brauchen kein Modell.
+- **`mail poll` nicht.** Der Mock ersetzt Gmail, nicht das Modell: ohne
+  erreichbaren Anbieter enden alle Nachrichten in `Fehler`. Nachgemessen im
+  Audit. Wer den ganzen Weg ohne Netz sehen will, haengt `trocken` in
+  `[llm.tasks.classify]` und setzt dessen `reply` auf eine Antwort, die zum
+  Schema passt -- ein `{}` weist der Validierer korrekt ab.
 
 ### Stub mit klarer Naht, aber ohne Inhalt
 - **Research-Quelle**: `MockSource` mit vier festen Dokumenten. Das
@@ -261,7 +307,8 @@ Zugangsdaten im Repo, in Argumenten, in der Prozessumgebung oder in Logs.
 | Sprache handelt nie | sechs feste Absichten, kein `act`-Pfad im Sprachmodul |
 | Anhalten per Sprache, Fortsetzen nie | Asymmetrie in `voice/intents.py` |
 | Keychain-only auf macOS | `core/secrets.py`, `status` meldet Abweichung |
-| Endpunkt-Allowlists | Gmail und Kalender, abgeleitet aus den Faehigkeiten |
+| Endpunkt-Allowlists | Gmail und Kalender, abgeleitet aus den Faehigkeiten, `fullmatch` |
+| Ablage nur fuer den Eigentuemer | `core/files.py`, 0700/0600, reparierend; `status` meldet Abweichung |
 
 **Diese Mechanismen duerfen nicht abgeschwaecht werden.** SPEC Abschnitt 8.5:
 Wer unsicher ist, ob etwas gegen Abschnitt 2 verstoesst -- es verstoesst
@@ -288,7 +335,7 @@ dagegen. Anhalten und fragen.
 
 ```sh
 uv sync
-uv run pytest -q                 # 980 Tests
+uv run pytest -q                 # 1006 Tests
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe

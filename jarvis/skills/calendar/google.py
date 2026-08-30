@@ -89,7 +89,7 @@ class CalendarClient:
     def _check_endpoint(self, method: str, path: str) -> None:
         for capability in self._capabilities:
             for erlaubte_methode, muster in ENDPOINTS_BY_CAPABILITY[capability]:
-                if method == erlaubte_methode and muster.match(path):
+                if method == erlaubte_methode and muster.fullmatch(path):
                     return
         erlaubt = ", ".join(sorted(self._capabilities)) or "keine"
         raise GmailError(

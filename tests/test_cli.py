@@ -916,3 +916,43 @@ def test_fehlerhafte_recherche_einstellungen_werden_gemeldet(home, capsys):
     code = main(["--home", str(home), "research", "poll"])
     assert code == 2
     assert "skills.research.sources" in capsys.readouterr().err
+
+
+# --- Ganztaegige Termine ---------------------------------------------------- #
+
+
+def test_ganztaegiger_termin_zeigt_keine_uhrzeit():
+    """ "00:00" sieht aus wie eine Angabe und ist keine."""
+    from zoneinfo import ZoneInfo
+
+    from jarvis.interfaces.cli import _ortszeit
+
+    gespeichert = "2026-03-02T00:00:00+00:00"
+    assert _ortszeit(gespeichert, ZoneInfo("Europe/Berlin"), ganztags=True) == "02.03. ganztags"
+
+
+def test_ganztaegiger_termin_rutscht_nicht_auf_den_vortag():
+    """Der eigentliche Fehler hinter dem kosmetischen.
+
+    Ganztaegige Termine liegen als UTC-Mitternacht ihres Kalendertages in der
+    Datenbank -- sie sind ein Datum, kein Zeitpunkt. Wer sie nach New York
+    umrechnet, landet am Vorabend und zeigt den falschen Tag an.
+    """
+    from zoneinfo import ZoneInfo
+
+    from jarvis.interfaces.cli import _ortszeit
+
+    gespeichert = "2026-03-02T00:00:00+00:00"
+    for zone in ("America/New_York", "Pacific/Honolulu", "Asia/Tokyo"):
+        assert _ortszeit(gespeichert, ZoneInfo(zone), ganztags=True) == "02.03. ganztags"
+
+
+def test_termine_mit_uhrzeit_werden_weiterhin_umgerechnet():
+    """Die Gegenprobe: fuer echte Zeitpunkte gilt die Ortszeit unveraendert."""
+    from zoneinfo import ZoneInfo
+
+    from jarvis.interfaces.cli import _ortszeit
+
+    gespeichert = "2026-03-02T09:00:00+00:00"
+    assert _ortszeit(gespeichert, ZoneInfo("Europe/Berlin")) == "02.03. 10:00"
+    assert _ortszeit(gespeichert, ZoneInfo("America/New_York")) == "02.03. 04:00"

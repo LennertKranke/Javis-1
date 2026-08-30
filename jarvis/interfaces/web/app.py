@@ -221,7 +221,9 @@ def create_app(
                 + kopf
                 + "<h2>Faehigkeiten</h2>"
                 + tabelle(
-                    ["Faehigkeit", "Stufe", "Ausgehend", "Aktiv", "Zaehler"],
+                    # Siehe cli.py: "Ausgehend" war irrefuehrend. Labels und
+                    # Entwuerfe gehen zu Google, erreichen aber niemanden.
+                    ["Faehigkeit", "Stufe", "Erreicht Dritte", "Aktiv", "Zaehler"],
                     zeilen,
                     mono=(0, 4),
                 )

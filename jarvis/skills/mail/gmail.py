@@ -189,7 +189,13 @@ class GmailClient:
     def _check_endpoint(self, method: str, path: str) -> None:
         for capability in self._capabilities:
             for erlaubte_methode, muster in ENDPOINTS_BY_CAPABILITY[capability]:
-                if method == erlaubte_methode and muster.match(path):
+                # `fullmatch`, nicht `match`: die Muster sind zwar mit ^ und $
+                # verankert, aber Pythons `$` passt auch noch *vor* einem
+                # abschliessenden Zeilenumbruch. "/messages/abc\n" waere damit
+                # durchgekommen. Ausnutzbar war das nicht -- http.client weist
+                # Umbrueche in der Anfragezeile ohnehin ab --, aber eine
+                # Freigabeliste soll genau das erlauben, was sie hinschreibt.
+                if method == erlaubte_methode and muster.fullmatch(path):
                     return
         erlaubt = ", ".join(sorted(self._capabilities)) or "keine"
         raise GmailError(

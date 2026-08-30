@@ -238,3 +238,21 @@ def test_nicht_erreichbar(monkeypatch):
     client, _ = client_mit(monkeypatch, fehler=urllib.error.URLError("kein Netz"))
     with pytest.raises(GmailError, match="nicht erreichbar"):
         client.list_labels()
+
+
+# --- Verankerung der Freigabeliste ------------------------------------------ #
+
+
+@pytest.mark.parametrize("pfad", ["/messages/abc\n", "/labels\n", "/profile\n"])
+def test_ein_zeilenumbruch_kommt_nicht_durch_die_freigabeliste(pfad):
+    """Pythons `$` passt auch noch vor einem abschliessenden Umbruch.
+
+    Mit `muster.match` waere "/messages/abc\\n" als erlaubter Endpunkt
+    durchgegangen -- die Muster sehen verankert aus, waren es aber nur fast.
+    Ausnutzbar war es nicht, weil http.client Umbrueche in der Anfragezeile
+    ohnehin abweist. Eine Freigabeliste soll trotzdem genau das erlauben, was
+    sie hinschreibt. Die Gegenprobe steht in `test_erlaubte_endpunkte`.
+    """
+    client = GmailClient(FakeAuth(), capabilities=LABELLING)
+    with pytest.raises(GmailError, match="nicht auf der Liste"):
+        client._check_endpoint("GET", pfad)

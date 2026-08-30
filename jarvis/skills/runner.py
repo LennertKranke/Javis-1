@@ -109,7 +109,32 @@ def run_skill(
 
         result = None
         if verdict.may_act:
-            result = skill.act(decision)
+            # Eine Faehigkeit meldet Erwartbares als `Result(performed=False)`.
+            # Was hier durchschlaegt, ist das Unerwartete -- und das darf den
+            # Durchlauf nicht beenden: sonst nimmt ein einziger kaputter
+            # Vorgang alle folgenden mit, und der Daemon merkt beim naechsten
+            # Tick dasselbe noch einmal. Abschnitt 6, Dauerbetrieb: Fehler
+            # ueberleben. Der Vorgang gilt als fehlgeschlagen, nichts geht
+            # hinaus, und der naechste ist an der Reihe.
+            try:
+                result = skill.act(decision)
+            except Exception as exc:
+                audit.record(
+                    capability=skill.name,
+                    kind=KIND_ACTION,
+                    outcome="failed",
+                    subject=event.key,
+                    detail={"error": f"{type(exc).__name__}: {exc}"},
+                )
+                report.failed += 1
+                report.errors.append(f"{event.key}: {type(exc).__name__}: {exc}")
+                log.exception(
+                    "Ausfuehrung fehlgeschlagen",
+                    extra={"skill": skill.name, "event": event.key},
+                )
+                skill.after(event, decision, str(verdict.disposition), None)
+                continue
+
             audit.record(
                 capability=skill.name,
                 kind=KIND_ACTION,
@@ -242,7 +267,26 @@ def execute_approval(
         )
         return None
 
-    result = skill.act(decision)
+    # Wie im Durchlauf: Unerwartetes beendet hier nichts. Dieser Weg kommt aus
+    # dem Dashboard, und eine Ausnahme waere dort eine leere Fehlerseite mit
+    # einem Vorgang, der weiter als offen dasteht.
+    try:
+        result = skill.act(decision)
+    except Exception as exc:
+        audit.record(
+            capability=skill.name,
+            kind=KIND_ACTION,
+            outcome="failed",
+            subject=approval.event_key,
+            detail={"approval_id": approval.id, "error": f"{type(exc).__name__}: {exc}"},
+        )
+        approvals.settle(approval.id, FAILED, note=f"{type(exc).__name__}: {exc}"[:400])
+        log.exception(
+            "Freigabe fehlgeschlagen",
+            extra={"skill": skill.name, "approval": approval.id},
+        )
+        return None
+
     audit.record(
         capability=skill.name,
         kind=KIND_ACTION,

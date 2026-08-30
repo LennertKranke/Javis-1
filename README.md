@@ -3,8 +3,11 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 1-6 abgeschlossen. Phase 7 begonnen: Grundlagen der externen
-Anbindungen und die Recherchefaehigkeit aus Abschnitt 5.**
+**Stand: Phase 1-6 abgeschlossen, Phase 1-7 unabhaengig auditiert. Phase 7
+begonnen: Grundlagen der externen Anbindungen und die Recherchefaehigkeit aus
+Abschnitt 5.** Die Befunde des Audits sind behoben; was daraus folgte, steht in
+`CONTINUATION.md` Abschnitt 2a. Weiterhin gilt: **kein externer Dienst hat je
+mit JARVIS gesprochen**, und nichts davon ist auf macOS nachgemessen.
 Der Kern steht, JARVIS liest und ordnet den Posteingang ein, schreibt
 Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf der Allowlist senden,
 liest den Kalender und meldet Terminkonflikte, fasst den Tag in einem
@@ -1196,6 +1199,45 @@ auswertenden Prozesses noch im Protokoll auftaucht.
 
 Im `launchd`-Eintrag unter `deploy/` steht `JARVIS_SECRET_BACKEND=keychain`
 ausdruecklich drin -- nicht weil es noetig waere, sondern damit man es sieht.
+
+### Die Ablage gehoert nur dem Eigentuemer
+
+Zugangsdaten aus dem Projekt herauszuhalten ist die eine Haelfte. Die andere
+sind die Inhalte, und die lagen bis zum Audit offen: `~/.jarvis` entstand mit
+0755, `state.db`, `config.toml` und die Logs mit 0644 -- die Standardrechte bei
+umask 022, auch auf macOS. Da `/Users/<name>` durchquerbar ist, konnte jeder
+andere lokale Benutzer mitlesen.
+
+Mitzulesen gab es: den vollstaendigen Entwurfstext wartender Antworten samt
+Empfaenger (`approvals.targets`), Absender und Betreff (`approvals.summary`,
+`mail_replies`), Briefings, Langzeitgedaechtnis, Kontext und Rechercheergebnisse.
+Sparsam ist die Ablage durchaus -- `mail_messages` speichert nur Kennung und
+Kategorie, keine Inhalte --, aber das half hier nichts.
+
+Jetzt gilt `core/files.py`: 0700 auf Verzeichnissen, 0600 auf Dateien.
+
+Zwei Eigenschaften, auf die es dabei ankommt:
+
+* **Reparierend, nicht nur anlegend.** Die Rechte werden bei jedem Laden der
+  Konfiguration und bei jedem Verbindungsaufbau nachgezogen. Ein einmaliger
+  Fix beim Anlegen haette genau die Installationen offen gelassen, die schon
+  Daten enthalten -- `jarvis init` laeuft nur einmal.
+* **Auch die Begleitdateien.** Der WAL-Modus legt `state.db-wal` und
+  `state.db-shm` an; darin stehen noch nicht uebernommene Schreibvorgaenge,
+  also dieselben Daten. Und die Logrotation legt taeglich eine neue Datei an,
+  weshalb das `chmod` im Handler sitzt und nicht daneben.
+
+Scheitert ein `chmod` -- fremder Eigentuemer, Netzlaufwerk, Dateisystem ohne
+Unix-Rechte --, beendet das nichts, aber `jarvis status` sagt es und setzt den
+Rueckgabewert auf 1:
+
+```
+ OFFEN   Auch andere Benutzer koennen lesen: state.db. Erwartet werden 0700
+         auf Verzeichnissen und 0600 auf Dateien.
+```
+
+Vor `jarvis init` wird nicht gewarnt: ein leeres Verzeichnis hat nichts, was
+auslaufen koennte, und `init` legt es ohnehin geschlossen an.
 
 ### Kleinere bekannte Grenzen
 

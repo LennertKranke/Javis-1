@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from jarvis.core.files import secure_dir, secure_file
+
 __all__ = [
     "DEFAULT_CONFIG_TOML",
     "ISOLATION_MODES",
@@ -116,9 +118,14 @@ class Paths:
         return self.home / STOP_NAME
 
     def ensure(self) -> None:
-        """Legt Basis- und Logverzeichnis an. Idempotent."""
-        self.home.mkdir(parents=True, exist_ok=True)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        """Legt Basis- und Logverzeichnis an. Idempotent.
+
+        Beide mit 0700: unter `~/.jarvis` liegen Entwuerfe, Betreffzeilen und
+        das Gedaechtnis. Ein bereits vorhandenes Verzeichnis wird dabei
+        nachgezogen, sonst bliebe jede aeltere Ablage offen.
+        """
+        secure_dir(self.home)
+        secure_dir(self.log_dir)
 
 
 # --------------------------------------------------------------------------- #
@@ -175,6 +182,15 @@ class Capability:
 
     name: str
     autonomy_level: AutonomyLevel = AutonomyLevel.SHADOW
+    #: Erreicht diese Faehigkeit jemand anderen? Nicht zu verwechseln mit
+    #: "benutzt das Netz": `mail` schreibt Labels und `mail_reply` legt
+    #: Entwuerfe an -- beides geht zu Google, bleibt aber im eigenen Postfach.
+    #:
+    #: Das Flag entscheidet **nichts** ueber das Gatter. Stoppschalter,
+    #: Autonomiestufe, Protokoll und Obergrenze gelten fuer jede Faehigkeit,
+    #: auch fuer die mit `false` -- das ist strenger als Abschnitt 5.1 verlangt
+    #: und bleibt so. Was das Flag bewirkt: `true` erzwingt beim Laden
+    #: mindestens eine Obergrenze, und die Anzeige nennt die Faehigkeit.
     requires_outbound: bool = True
     enabled: bool = True
     collect_approvals: bool = False
@@ -387,9 +403,11 @@ class StopSwitch:
         return roh
 
     def engage(self, reason: str, *, actor: str = "cli") -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        secure_dir(self.path.parent)
         stamp = datetime.now(UTC).isoformat(timespec="seconds")
         self.path.write_text(f"{stamp} {actor}: {reason}\n", encoding="utf-8")
+        # Der Grund kann verraten, woran gerade gearbeitet wird.
+        secure_file(self.path)
 
     def release(self) -> bool:
         """Entfernt die Stoppdatei. Gibt zurueck, ob sie vorhanden war."""
@@ -462,6 +480,10 @@ class Config:
     def load(cls, home: Path | None = None) -> Config:
         paths = Paths(home=home) if home is not None else Paths.default()
         if paths.config_file.exists():
+            # Wie bei der Datenbank: die Rechte werden bei jedem Laden
+            # nachgezogen, nicht nur beim Anlegen. Sonst bliebe eine Ablage von
+            # vor dieser Aenderung dauerhaft offen -- `init` laeuft nur einmal.
+            secure_file(paths.config_file)
             with paths.config_file.open("rb") as fh:
                 try:
                     raw = tomllib.load(fh)

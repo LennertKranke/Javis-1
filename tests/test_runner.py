@@ -173,3 +173,53 @@ def test_der_ganze_weg_mit_praeparierter_nachricht(conn, home):
         assert "angreifer" not in json.dumps(wirksam, ensure_ascii=False)
 
     assert audit.verify().ok
+
+
+def test_eine_kaputte_ausfuehrung_kippt_den_durchlauf_nicht(conn, home):
+    """Das Gegenstueck zum Test darueber, eine Ebene tiefer.
+
+    `decide` war gegen Ausnahmen abgesichert, `act` nicht -- eine unerwartete
+    Ausnahme beim Handeln nahm die restlichen Vorgaenge des Durchlaufs mit.
+    Aufgefallen ist das erst, als der Fall nachgestellt wurde; einen Test dafuer
+    gab es nicht. Abschnitt 6 verlangt fuer den Dauerbetrieb, dass Fehler
+    ueberlebt werden.
+    """
+    nachrichten = [message(mid="gut1"), message(mid="kaputt"), message(mid="gut2")]
+    skill, client, gate, audit = aufbau(conn, home, nachrichten, dry_run=False)
+
+    echtes_act = skill.act
+
+    def manchmal_kaputt(decision):
+        if decision.event_key == "kaputt":
+            raise RuntimeError("Gmail antwortet Unsinn")
+        return echtes_act(decision)
+
+    skill.act = manchmal_kaputt
+    bericht = run_skill(skill, gate=gate, audit=audit)
+
+    assert bericht.failed == 1
+    assert bericht.acted == 2
+    # Der entscheidende Teil: was nach der kaputten Nachricht kam, wurde
+    # trotzdem bearbeitet.
+    assert [m[0] for m in client.modified] == ["gut1", "gut2"]
+    assert "kaputt" in bericht.errors[0]
+    assert "RuntimeError" in bericht.errors[0]
+
+
+def test_die_kaputte_ausfuehrung_steht_im_protokoll(conn, home):
+    """Fehlgeschlagen und stillschweigend uebersprungen sind nicht dasselbe."""
+    skill, _, gate, audit = aufbau(conn, home, [message(mid="a")], dry_run=False)
+    skill.act = _wirft
+
+    run_skill(skill, gate=gate, audit=audit)
+
+    eintraege = [e for e in audit.recent(10) if e.kind == "action"]
+    gescheitert = [e for e in eintraege if e.outcome == "failed"]
+    assert len(gescheitert) == 1
+    assert "RuntimeError" in str(gescheitert[0].detail["error"])
+    # Die Kette bleibt trotz des Fehlers zusammenhaengend.
+    assert audit.verify().ok
+
+
+def _wirft(decision):
+    raise RuntimeError("kaputt")

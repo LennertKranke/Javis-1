@@ -23,7 +23,7 @@ from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import DEFAULT_CONFIG_TOML, Config, ConfigError, Paths
 from jarvis.core.context import ContextBuilder, ShortTermContext
 from jarvis.core.db import open_database
-from jarvis.core.files import ist_geschuetzt, secure_file
+from jarvis.core.files import offene_pfade, secure_file
 from jarvis.core.gate import Gate
 from jarvis.core.integrations import merke_kontakt
 from jarvis.core.log import configure as configure_logging
@@ -186,24 +186,21 @@ def cmd_status(args: argparse.Namespace, out: Out) -> int:
     # Verbindungsaufbau selbst nach; hier steht nur, was danach noch offen ist
     # -- etwa weil ein `chmod` scheiterte (fremder Eigentuemer, Netzlaufwerk).
     #
-    # Nur bei eingerichteter Ablage. Ein leeres Verzeichnis vor `jarvis init`
-    # hat nichts, was auslaufen koennte, und `init` legt es ohnehin mit 0700
-    # an. Sonst meldete ein Lesebefehl eine Luecke, die es nicht gibt.
+    # Gelaufen wird das ganze Verzeichnis, nicht eine Liste bekannter Pfade.
+    # Die erste Fassung zaehlte vier auf und uebersah die zwei, die offen
+    # waren. Was JARVIS spaeter dort ablegt, faellt jetzt von selbst auf.
+    #
+    # Nur bei eingerichteter Ablage: ein leeres Verzeichnis vor `jarvis init`
+    # hat nichts, was auslaufen koennte, und `init` legt es geschlossen an.
     eingerichtet = paths.db_file.exists() or paths.config_file.exists()
-    offen = (
-        [
-            pfad.name or str(pfad)
-            for pfad in (paths.home, paths.log_dir, paths.db_file, paths.config_file)
-            if pfad.exists() and not ist_geschuetzt(pfad)
-        ]
-        if eingerichtet
-        else []
-    )
+    offen = [p.name or str(p) for p in offene_pfade(paths.home)] if eingerichtet else []
     if offen:
+        sichtbar = ", ".join(offen[:6]) + (
+            f" und {len(offen) - 6} weitere" if len(offen) > 6 else ""
+        )
         out.line(
-            f"  {out.alarm(' OFFEN ')}  Auch andere Benutzer koennen lesen: "
-            f"{', '.join(offen)}. Erwartet werden 0700 auf Verzeichnissen und "
-            f"0600 auf Dateien."
+            f"  {out.alarm(' OFFEN ')}  Auch andere Benutzer koennen lesen: {sichtbar}. "
+            f"Erwartet werden 0700 auf Verzeichnissen und 0600 auf Dateien."
         )
         exit_code = 1
 
@@ -1033,8 +1030,25 @@ def cmd_briefing(args: argparse.Namespace, out: Out) -> int:
         briefing = store.get(heute)
         if briefing is None:
             out.line()
-            hinweis = "Fuer heute liegt kein Briefing vor. Erzeugen: jarvis briefing --neu"
-            out.line(f"  {out.dim(hinweis)}")
+            # Drei Faelle, und sie sagen Verschiedenes. Der Trockenlauf haelt
+            # auch `act()` an, und beim Briefing ist `act()` das Ablegen --
+            # der alte Hinweis schickte nach `--neu` deshalb zu genau dem
+            # Befehl, der gerade gelaufen war. Das Gatter bleibt, wie es ist;
+            # nur die Auskunft wird richtig.
+            if args.neu and config.dry_run:
+                out.line(
+                    f"  {out.dim('Trockenlauf: das Briefing wurde erstellt, aber nicht abgelegt.')}"
+                )
+                out.line(f"  {out.dim('Zum Ablegen in der Konfiguration: dry_run = false')}")
+            elif config.dry_run:
+                out.line(f"  {out.dim('Fuer heute liegt kein Briefing vor.')}")
+                out.line(
+                    f"  {out.dim('Erzeugen: jarvis briefing --neu -- im Trockenlauf wird es')}"
+                )
+                out.line(f"  {out.dim('allerdings nicht abgelegt (dry_run = false aendert das).')}")
+            else:
+                hinweis = "Fuer heute liegt kein Briefing vor. Erzeugen: jarvis briefing --neu"
+                out.line(f"  {out.dim(hinweis)}")
             out.line()
             return 1
 

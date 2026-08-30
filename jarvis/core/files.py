@@ -38,6 +38,7 @@ __all__ = [
     "DIR_MODE",
     "FILE_MODE",
     "ist_geschuetzt",
+    "offene_pfade",
     "secure_db",
     "secure_dir",
     "secure_file",
@@ -58,10 +59,22 @@ def secure_dir(path: Path | str) -> Path:
     `mkdir(mode=...)` wirkt nur beim Anlegen und wird ausserdem von der umask
     beschnitten. Fuer ein Verzeichnis, das schon da ist, bleibt es wirkungslos
     -- deshalb danach immer noch ein `chmod`.
+
+    Und `parents=True` setzt den Modus **nur auf das letzte** Verzeichnis: bei
+    einem mehrstufigen Pfad entstanden die Zwischenstufen mit den
+    Standardrechten. Deshalb wird vorher festgehalten, welche Stufen noch
+    fehlen, und danach jede davon nachgezogen.
+
+    Nachgezogen wird ausschliesslich, was hier selbst entstanden ist. Ein
+    Verzeichnis, das es schon gab, gehoert jemand anderem -- `~` oder `/tmp`
+    umzustellen waere ein Uebergriff, nicht eine Absicherung.
     """
     ziel = Path(path)
+    neu_angelegt = [stufe for stufe in (ziel, *ziel.parents) if not stufe.exists()]
     ziel.mkdir(parents=True, exist_ok=True, mode=DIR_MODE)
-    _chmod(ziel, DIR_MODE)
+    for stufe in neu_angelegt:
+        _chmod(stufe, DIR_MODE)
+    _chmod(ziel, DIR_MODE)  # auch wenn es das Verzeichnis schon gab
     return ziel
 
 
@@ -101,6 +114,33 @@ def ist_geschuetzt(path: Path | str) -> bool:
         return False
     offen = stat.S_IRWXG | stat.S_IRWXO
     return not modus & offen
+
+
+def offene_pfade(basis: Path | str) -> list[Path]:
+    """Alles unter `basis`, worauf auch andere zugreifen duerfen.
+
+    Ein Durchlauf statt einer gepflegten Liste. Die erste Fassung dieser
+    Pruefung zaehlte vier bekannte Pfade auf -- und uebersah genau die zwei,
+    die tatsaechlich offen waren: die Sperrdatei des Daemons und den
+    Sitzungstoken des Dashboards. Eine Liste, die von Hand nachgezogen werden
+    muss, wird irgendwann nicht nachgezogen.
+
+    Symbolischen Verknuepfungen wird nicht gefolgt: sonst haengt das Ergebnis
+    davon ab, wohin jemand sie gelegt hat, und ein Ring liesse den Durchlauf
+    nie enden.
+    """
+    wurzel = Path(basis)
+    if not wurzel.exists():
+        return []
+
+    offen: list[Path] = [] if ist_geschuetzt(wurzel) else [wurzel]
+    for ordner, unterordner, dateien in os.walk(wurzel, followlinks=False):
+        hier = Path(ordner)
+        for name in sorted(unterordner) + sorted(dateien):
+            pfad = hier / name
+            if not pfad.is_symlink() and not ist_geschuetzt(pfad):
+                offen.append(pfad)
+    return offen
 
 
 def _chmod(path: Path, mode: int) -> None:

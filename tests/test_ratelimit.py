@@ -215,3 +215,25 @@ def test_der_zaehler_stimmt_nach_nebenlaeufigem_verbrauch(home):
     finally:
         conn.close()
     assert gezaehlt == 25, f"erwartet 25 verbrauchte Ereignisse, gezaehlt {gezaehlt}"
+
+
+def test_der_trockenlauf_verbraucht_kein_kontingent(home, conn):
+    """Und er erreicht die Grenze deshalb auch nie.
+
+    Der Kommentar im Gatter behauptete frueher, der Schattenbetrieb zeige,
+    wann die Grenze gegriffen haette. Er zeigt es nicht -- was nichts
+    verbraucht, laesst den Zaehler stehen. Der Test haelt beide Haelften fest:
+    kein Verbrauch, und als Folge keine Blockade.
+    """
+    config = build_config(home, outbound=True, limits={"hour": 2})
+    limiter = RateLimiter(conn, config.capabilities)
+
+    for _ in range(5):
+        urteil = limiter.acquire("mail", dry_run=True)
+        assert urteil.allowed
+        assert all(f.used == 0 for f in urteil.windows)
+
+    # Erst der echte Lauf zaehlt -- und stoesst dann auch an.
+    assert limiter.acquire("mail", dry_run=False).allowed
+    assert limiter.acquire("mail", dry_run=False).allowed
+    assert not limiter.acquire("mail", dry_run=False).allowed

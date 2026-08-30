@@ -163,6 +163,28 @@ class Skill(ABC):
 
         Wird immer aufgerufen, gleich wie das Gatter entschieden hat -- eine
         Faehigkeit soll auch festhalten koennen, was sie *nicht* getan hat.
+
+        Nur auf dem Weg durch `run_skill`. Auf dem Freigabeweg gibt es kein
+        Ereignis mehr -- dafuer `after_approval`.
+        """
+
+    def after_approval(  # noqa: B027 - wie after: freiwilliger Haken, nichts Abstraktes
+        self, decision: Decision, result: Result | None
+    ) -> None:
+        """Buchfuehrung, nachdem ein Mensch eine aufbewahrte Entscheidung freigab.
+
+        Getrennt von `after`, weil dort das `Event` fehlt: die Entscheidung lag
+        in der Datenbank, das Ereignis ist laengst vergangen, und einige
+        Faehigkeiten lesen aus `event.payload` Dinge, die sich nicht
+        rekonstruieren lassen.
+
+        Ohne diesen Haken endete der Freigabeweg als Sackgasse: `act()` legte
+        den Entwurf an, aber der Antwortspeicher erfuhr nichts davon. Der
+        Entwurf lag dann im Postfach, und `mail_send` sah ihn nie -- weil dort
+        weiter "geplant, kein Entwurf" stand.
+
+        Standard ist absichtlich nichts. Eine Faehigkeit, die auf dem
+        Freigabeweg nichts nachzutragen hat, soll nichts tun muessen.
         """
 
 

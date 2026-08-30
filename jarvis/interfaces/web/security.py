@@ -26,6 +26,8 @@ import hmac
 import secrets
 from pathlib import Path
 
+from jarvis.core.files import secure_dir, secure_file
+
 __all__ = [
     "COOKIE_NAME",
     "SECURITY_HEADERS",
@@ -60,9 +62,12 @@ def load_or_create_token(home: Path) -> str:
         if vorhanden:
             return vorhanden
     token = secrets.token_urlsafe(32)
-    home.mkdir(parents=True, exist_ok=True)
+    # `secure_dir`, nicht `mkdir`: die Tokendatei war schon immer 0600, aber
+    # das Verzeichnis darum entstand hier mit den Standardrechten. Wer den
+    # Token nicht lesen kann, soll auch nicht sehen, was sonst dort liegt.
+    secure_dir(home)
     pfad.write_text(token + "\n", encoding="utf-8")
-    pfad.chmod(0o600)
+    secure_file(pfad)
     return token
 
 

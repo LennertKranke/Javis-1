@@ -1,7 +1,7 @@
 # JARVIS — Projektstand und Uebergabe
 
-Stand: Audit von Phase 1-7, Branch `claude/jarvis-audit-phase-1-7-w73he0`.
-1006 Tests gruen, `ruff check` und `ruff format --check` sauber.
+Stand: End-to-End-Review Phase 1-7, Branch `claude/jarvis-audit-phase-1-7-w73he0`.
+1018 Tests gruen, `ruff check` und `ruff format --check` sauber.
 
 Dieses Dokument beschreibt den **tatsaechlichen** Stand, nicht die Absicht.
 Verbindliche Vorgabe bleibt `JARVIS-SPEC.md`. Ausfuehrliche Begruendungen
@@ -148,9 +148,72 @@ es gehoert in die konsolidierte Spezifikation, nicht in eine Korrekturrunde.
 
 ---
 
+## 2b. End-to-End-Review Phase 1-7
+
+Nach A-G ein zweiter, unabhaengiger Durchgang -- diesmal nicht Phase fuer Phase,
+sondern quer: greifen sie ineinander? Der Postfachlauf wurde vollstaendig
+durchgespielt (einordnen, entwerfen, freigeben, versenden) und dabei gemessen,
+was in der Datenbank landet.
+
+### Was der Durchgang belegt hat
+
+* **Prinzip 2.1 haelt durch die ganze Kette.** Die Einschleusungsnachricht des
+  Mocks verlangt Versand an `sammler@fremd.example`. In der Warteschlange steht
+  als Ziel `fremder@unbekannt.example` -- der Absender aus den Kopffeldern. Das
+  Angreiferziel kommt im ganzen Vorgang nicht vor.
+* **Eine Freigabe hebt den Trockenlauf nicht auf.** Gemessen: der Vorgang bleibt
+  offen, mit dem Vermerk "Trockenlauf global aktiv".
+* **Der Versand faellt geschlossen aus.** Ein Entwurf, der sich nicht mehr
+  verifizieren laesst, geht nicht hinaus -- auch nicht nach einer Freigabe.
+* **Ratenbegrenzung**: Trockenlauf verbraucht nichts, echte Laeufe schon.
+
+### Behobene Befunde
+
+| Befund | Was war | Wo |
+|---|---|---|
+| **Freigabeweg war eine Sackgasse** | `execute_approval` rief `skill.after()` nie. Der Entwurf entstand im Postfach, aber der Antwortspeicher blieb auf "geplant, kein Entwurf" -- und `pending_for_send` verlangt das Gegenteil. Ein im Dashboard freigegebener Entwurf konnte **nie versendet werden** | `skills/base.py`, `skills/runner.py`, `mail/reply.py` |
+| `secure_dir` liess Zwischenstufen offen | `mkdir(parents=True, mode=...)` setzt den Modus nur auf die letzte Stufe. Bei `JARVIS_HOME=/a/b/c` blieben `/a` und `/a/b` offen | `core/files.py` |
+| Web-Token legte das Basisverzeichnis mit 0755 an | N-1 aus dem Audit | `web/security.py` |
+| Sperrdatei des Daemons entstand mit 0644 | N-2 aus dem Audit | `daemon.py` |
+| Rechtepruefung zaehlte Pfade auf | N-3. Sie uebersah genau die zwei, die offen waren. Jetzt laeuft sie das Verzeichnis ab | `core/files.py`, `cli.py` |
+| Briefing-Hinweis fuehrte im Kreis | Nach `briefing --neu` im Trockenlauf stand da "Erzeugen: jarvis briefing --neu" -- genau der Befehl, der gerade lief | `cli.py` |
+| Gatter versprach zu viel | Der Kommentar sagte, der Schattenbetrieb zeige, *wann* die Grenze gegriffen haette. Tut er nicht: was nichts verbraucht, laesst den Zaehler stehen | `core/gate.py` |
+
+Der neue Haken **`after_approval`** ist die Gegenstelle zu `after`: auf dem
+Freigabeweg gibt es kein Ereignis mehr, weil die Entscheidung aus der Datenbank
+kommt. Standard ist absichtlich nichts; verdrahtet sind `mail_reply` und
+`mail_send`, deren Buchfuehrung das Ereignis ohnehin nie brauchte.
+
+### Bewusst nicht geaendert
+
+* **`mail` und `calendar` haben kein `after_approval`.** Nach einer Freigabe
+  bleibt ihr Zustand nicht-final, die Nachricht wird also erneut aufgegriffen.
+  Folgenarm: `cached_analysis` verhindert einen zweiten Modellaufruf, das Label
+  ist idempotent, und der naechste normale Durchlauf setzt den Zustand richtig.
+  Ihre `after`-Rumpfe lesen aus `event.payload` Dinge, die sich aus der
+  aufbewahrten Entscheidung nicht rekonstruieren lassen -- das waere ein Umbau,
+  keine Korrektur.
+* **`briefing` speichert nur in `act()`.** `mail` und `calendar` speichern in
+  `poll`/`after` und ueberleben damit den Trockenlauf; das Briefing nicht. Mit
+  dem voreingestellten `dry_run = true` entsteht deshalb nie eines. Das ist
+  folgerichtig (Trockenlauf heisst: nichts geschieht), aber es ist eine
+  Unstimmigkeit zwischen den Phasen. Der Hinweistext sagt es jetzt; die
+  Semantik zu aendern waere eine Entscheidung, keine Korrektur.
+* **`jarvis briefing --neu` gibt im Trockenlauf 1 zurueck.** Vertretbar in beide
+  Richtungen -- nichts ist schiefgegangen, aber es liegt auch kein Briefing vor.
+
+### Grenze des Mocks
+
+Der Gmail-Mock haelt Entwuerfe nur im Arbeitsspeicher. Ueber mehrere
+CLI-Aufrufe hinweg laesst sich der Versandweg deshalb nicht durchspielen: der
+Entwurf ist im naechsten Prozess weg, und die Integritaetspruefung haelt ihn --
+zu Recht -- zurueck. Innerhalb eines Prozesses laeuft die Kette vollstaendig.
+
+---
+
 ## 3. Tests
 
-**1006, alle gruen.** `uv run pytest` — Laufzeit rund 16 s.
+**1018, alle gruen.** `uv run pytest` — Laufzeit rund 16 s.
 
 Groesste Gruppen: `test_cli.py` (81), `test_voice.py` (79), `test_calendar.py`
 (55), `test_isolation.py` (41), `test_daemon.py` (38), `test_web.py` (40),
@@ -308,7 +371,9 @@ Zugangsdaten im Repo, in Argumenten, in der Prozessumgebung oder in Logs.
 | Anhalten per Sprache, Fortsetzen nie | Asymmetrie in `voice/intents.py` |
 | Keychain-only auf macOS | `core/secrets.py`, `status` meldet Abweichung |
 | Endpunkt-Allowlists | Gmail und Kalender, abgeleitet aus den Faehigkeiten, `fullmatch` |
-| Ablage nur fuer den Eigentuemer | `core/files.py`, 0700/0600, reparierend; `status` meldet Abweichung |
+| Ablage nur fuer den Eigentuemer | `core/files.py`, 0700/0600, reparierend, samt Zwischenstufen |
+| Rechtepruefung | `offene_pfade()` laeuft das Verzeichnis ab; `status` meldet und gibt 1 zurueck |
+| Freigabeweg vollstaendig | `verify_targets` -> Gatter -> `act` -> `after_approval`, symmetrisch zu `run_skill` |
 
 **Diese Mechanismen duerfen nicht abgeschwaecht werden.** SPEC Abschnitt 8.5:
 Wer unsicher ist, ob etwas gegen Abschnitt 2 verstoesst -- es verstoesst
@@ -335,7 +400,7 @@ dagegen. Anhalten und fragen.
 
 ```sh
 uv sync
-uv run pytest -q                 # 1006 Tests
+uv run pytest -q                 # 1018 Tests
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe

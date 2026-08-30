@@ -261,3 +261,130 @@ def test_eine_leere_ablage_ist_keine_luecke(tmp_path, capsys):
 
     assert "OFFEN" not in ausgabe
     assert code == 0
+
+
+# --- N-1 bis N-3: die Wege, die die Regel umgingen ------------------------- #
+
+
+def test_der_web_token_legt_das_verzeichnis_geschlossen_an(tmp_path):
+    """N-1: die Tokendatei war 0600, das Verzeichnis darum nicht.
+
+    Wer den Token nicht lesen kann, soll auch nicht sehen, was sonst dort
+    liegt. Ueber die Kommandozeile war der Weg nicht erreichbar -- `jarvis web`
+    bricht ohne Datenbank ab --, auf Bibliotheksebene schon.
+    """
+    from jarvis.interfaces.web.security import TOKEN_FILE, load_or_create_token
+
+    heim = tmp_path / "jarvis"
+    load_or_create_token(heim)
+
+    assert modus(heim) == DIR_MODE
+    assert modus(heim / TOKEN_FILE) == FILE_MODE
+
+
+def test_die_sperrdatei_des_daemons_ist_geschlossen(tmp_path):
+    """N-2: entstand mit 0644, weil `open("a+")` die Standardrechte nimmt.
+
+    Der Inhalt ist harmlos -- eine PID und ein Zeitstempel. Die Regel gilt
+    trotzdem: die naechste Datei an dieser Stelle ist vielleicht nicht harmlos.
+    """
+    from jarvis.daemon import DaemonLock
+
+    heim = tmp_path / "jarvis"
+    sperre = DaemonLock(heim / "daemon.lock")
+    sperre.acquire()
+    try:
+        assert modus(heim) == DIR_MODE
+        assert modus(heim / "daemon.lock") == FILE_MODE
+    finally:
+        sperre.release()
+
+
+def test_offene_pfade_findet_was_eine_liste_uebersieht(tmp_path):
+    """N-3: der Durchlauf ersetzt die von Hand gepflegte Liste.
+
+    Genau die zwei Dateien, die in der alten Aufzaehlung fehlten, waren die
+    offenen. Hier steht der Fall nachgestellt: etwas Unbekanntes, tief im
+    Baum, das keine Liste kennen wuerde.
+    """
+    from jarvis.core.files import offene_pfade
+
+    heim = secure_dir(tmp_path / "jarvis")
+    tief = secure_dir(heim / "spaeter" / "noch-tiefer")
+    fremd = tief / "unbekannt.dat"
+    fremd.write_text("x", encoding="utf-8")
+    os.chmod(fremd, 0o644)
+
+    gefunden = offene_pfade(heim)
+    assert fremd in gefunden
+    assert len(gefunden) == 1, f"unerwartet auch: {gefunden}"
+
+
+def test_offene_pfade_meldet_eine_geschlossene_ablage_als_leer(tmp_path):
+    heim = secure_dir(tmp_path / "jarvis")
+    secure_dir(heim / "logs")
+    (heim / "state.db").write_text("x", encoding="utf-8")
+    secure_file(heim / "state.db")
+
+    from jarvis.core.files import offene_pfade
+
+    assert offene_pfade(heim) == []
+
+
+def test_offene_pfade_meldet_auch_die_wurzel(tmp_path):
+    from jarvis.core.files import offene_pfade
+
+    heim = tmp_path / "jarvis"
+    heim.mkdir(mode=0o755)
+    os.chmod(heim, 0o755)
+    assert offene_pfade(heim) == [heim]
+
+
+def test_offene_pfade_folgt_keiner_verknuepfung(tmp_path):
+    """Sonst haengt das Ergebnis daran, wohin jemand die Verknuepfung legt.
+
+    Und ein Ring liesse den Durchlauf nie enden.
+    """
+    from jarvis.core.files import offene_pfade
+
+    aussen = tmp_path / "aussen"
+    aussen.mkdir(mode=0o755)
+    os.chmod(aussen, 0o755)
+
+    heim = secure_dir(tmp_path / "jarvis")
+    (heim / "zeigt-nach-aussen").symlink_to(aussen, target_is_directory=True)
+
+    assert offene_pfade(heim) == []
+
+
+def test_offene_pfade_bei_fehlendem_verzeichnis(tmp_path):
+    from jarvis.core.files import offene_pfade
+
+    assert offene_pfade(tmp_path / "gibtsnicht") == []
+
+
+def test_zwischenverzeichnisse_entstehen_ebenfalls_geschlossen(tmp_path):
+    """`mkdir(parents=True, mode=...)` setzt den Modus nur auf die letzte Stufe.
+
+    Gefunden beim Nachziehen von N-3: ein mehrstufiger Pfad hinterliess offene
+    Zwischenstufen. Bei `JARVIS_HOME=/a/b/c` waeren das `/a` und `/a/b`.
+    """
+    ziel = secure_dir(tmp_path / "eins" / "zwei" / "drei")
+
+    for stufe in (ziel, ziel.parent, ziel.parent.parent):
+        assert modus(stufe) == DIR_MODE, f"{stufe} ist offen"
+
+
+def test_ein_vorhandenes_fremdes_verzeichnis_wird_nicht_angetastet(tmp_path):
+    """Die Gegenprobe. `~` oder `/tmp` umzustellen waere ein Uebergriff.
+
+    Nachgezogen wird nur, was `secure_dir` selbst angelegt hat.
+    """
+    fremd = tmp_path / "gehoert-jemand-anderem"
+    fremd.mkdir(mode=0o755)
+    os.chmod(fremd, 0o755)
+
+    secure_dir(fremd / "unseres")
+
+    assert modus(fremd) == 0o755, "fremdes Verzeichnis wurde veraendert"
+    assert modus(fremd / "unseres") == DIR_MODE

@@ -12,9 +12,14 @@ weiter. Ein angehaltenes System bleibt angehalten, auch wenn jemand klickt;
 sonst waere der Stoppschalter nur eine Bitte.
 
 Die Reihenfolge ist Absicht. Der Stoppschalter kommt vor der Ratenbegrenzung,
-damit ein angehaltenes System keine Kontingente aufbraucht. Die Begrenzung wird
-auch im Trockenlauf ausgewertet, aber nicht verbraucht: so zeigt der
-Schattenbetrieb, wann sie gegriffen haette.
+damit ein angehaltenes System keine Kontingente aufbraucht.
+
+Die Begrenzung wird auch im Trockenlauf ausgewertet, aber nicht verbraucht --
+ein Schattenbetrieb soll kein echtes Kontingent aufessen. Hier stand frueher,
+der Schattenbetrieb zeige damit, *wann* die Grenze gegriffen haette. Das tut er
+nicht: was nichts verbraucht, laesst den Zaehler stehen, und die Grenze wird im
+Trockenlauf nie erreicht. Nachgemessen im End-to-End-Review; die Zusage ist
+gestrichen, nicht das Verhalten.
 
 Jeder Aufruf hinterlaesst einen Protokolleintrag. Auch der abgelehnte.
 """

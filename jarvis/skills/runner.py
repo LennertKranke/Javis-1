@@ -296,6 +296,30 @@ def execute_approval(
         | {"approval_id": approval.id, "approved": True}
         | ({"error": result.error} if result.error else {}),
     )
+    # Nachbereitung, bevor der Vorgang abgeschlossen wird. Ohne sie war der
+    # Freigabeweg eine Sackgasse: `act()` legte den Entwurf an, aber der
+    # Antwortspeicher erfuhr nichts davon -- der Entwurf lag im Postfach, und
+    # `mail_send` sah ihn nie. Ein Fehler beim Nachtragen darf die bereits
+    # ausgefuehrte Aktion nicht als gescheitert erscheinen lassen.
+    try:
+        skill.after_approval(decision, result)
+    except Exception as exc:
+        log.exception(
+            "Nachbereitung der Freigabe fehlgeschlagen",
+            extra={"skill": skill.name, "approval": approval.id},
+        )
+        audit.record(
+            capability=skill.name,
+            kind=KIND_ACTION,
+            outcome="failed",
+            subject=approval.event_key,
+            detail={
+                "approval_id": approval.id,
+                "phase": "after_approval",
+                "error": f"{type(exc).__name__}: {exc}",
+            },
+        )
+
     approvals.settle(
         approval.id,
         EXECUTED if result.performed else FAILED,

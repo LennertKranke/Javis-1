@@ -241,3 +241,73 @@ def test_das_protokoll_nennt_den_empfaenger(conn, home):
     entwurf_ablegen(conn, client=client)
     run_skill(skill, gate=gate, audit=audit)
     assert "anna@example.com" in json.dumps([e.detail for e in audit.recent(10)])
+
+
+# --- Der Freigabeweg war eine Sackgasse ------------------------------------ #
+
+
+def _freigabelauf(conn, home):
+    """Der echte Ablauf: im Trockenlauf sammeln, dann freigeben.
+
+    Die Warteschlange fuellt sich nur, solange das Gatter nicht handeln laesst
+    -- und eine Freigabe hebt den Trockenlauf ausdruecklich *nicht* auf. Beides
+    zusammen heisst: gesammelt wird mit `dry_run = true`, ausgefuehrt wird
+    danach mit einem Gatter, dem der Trockenlauf abgeschaltet wurde. Genau so
+    laeuft es auch beim Nutzer, nur mit einer Aenderung in der Konfiguration
+    dazwischen.
+    """
+    from jarvis.core.approvals import ApprovalStore
+
+    skill, client, gate, audit, _ = entwurfs_lauf(conn, home, [message(mid="a")])
+    store = ApprovalStore(conn)
+    run_skill(skill, gate=gate, audit=audit, approvals=store, collect_approvals=True)
+
+    scharf = konfig(home, dry_run=False)
+    freigabe_gate = Gate(scharf, audit, RateLimiter(conn, scharf.capabilities))
+    return skill, client, freigabe_gate, audit, store
+
+
+def test_eine_freigabe_traegt_den_entwurf_im_speicher_nach(conn, home):
+    """Der Befund aus dem End-to-End-Review von Phase 1-7.
+
+    `run_skill` ruft `skill.after()`, `execute_approval` rief nichts. Der
+    Entwurf entstand also im Postfach, aber der Antwortspeicher stand weiter
+    auf "geplant, kein Entwurf" -- und `pending_for_send` verlangt genau das
+    Gegenteil. Ein im Dashboard freigegebener Entwurf konnte deshalb nie
+    versendet werden.
+    """
+    from jarvis.skills.runner import execute_approval
+
+    skill, client, gate, audit, store = _freigabelauf(conn, home)
+    vorgang = store.pending(limit=1)[0]
+
+    ergebnis = execute_approval(vorgang, skill=skill, gate=gate, audit=audit, approvals=store)
+
+    assert ergebnis is not None and ergebnis.performed
+    assert list(client.drafts), "im Postfach ist ein Entwurf entstanden"
+
+    eintrag = ReplyStore(conn).get("a")
+    assert eintrag.disposition == "drafted", "der Entwurf ist im Speicher nicht angekommen"
+    assert eintrag.draft_id, "ohne Entwurfskennung findet ihn der Versand nie"
+
+    # Die eigentliche Folge: er steht jetzt ueberhaupt zum Versand bereit.
+    assert [e.message_id for e in ReplyStore(conn).pending_for_send()] == ["a"]
+
+
+def test_eine_kaputte_nachbereitung_macht_die_freigabe_nicht_ungueltig(conn, home):
+    """Die Aktion ist gelaufen -- das Nachtragen darf sie nicht zurueckdrehen."""
+    from jarvis.skills.runner import execute_approval
+
+    skill, _client, gate, audit, store = _freigabelauf(conn, home)
+    vorgang = store.pending(limit=1)[0]
+
+    def kaputt(decision, result):
+        raise RuntimeError("Speicher weg")
+
+    skill.after_approval = kaputt
+    ergebnis = execute_approval(vorgang, skill=skill, gate=gate, audit=audit, approvals=store)
+
+    assert ergebnis is not None and ergebnis.performed
+    assert store.get(vorgang.id).state == "executed"
+    gescheitert = [e for e in audit.recent(20) if e.outcome == "failed"]
+    assert any("after_approval" in str(e.detail) for e in gescheitert)

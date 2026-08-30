@@ -44,6 +44,7 @@ from jarvis.core.approvals import ApprovalStore
 from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import Config, ConfigError, Paths
 from jarvis.core.db import open_database
+from jarvis.core.files import secure_dir, secure_file
 from jarvis.core.gate import Gate
 from jarvis.core.ratelimit import RateLimiter
 from jarvis.core.secrets import SecretStore, default_store
@@ -77,8 +78,12 @@ class DaemonLock:
         self._fh: Any = None
 
     def acquire(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # Der Inhalt ist harmlos -- eine PID und ein Zeitstempel. Die Rechte
+        # werden trotzdem gesetzt: eine Regel mit Ausnahmen ist keine Regel,
+        # und die naechste Datei an dieser Stelle ist vielleicht nicht harmlos.
+        secure_dir(self.path.parent)
         self._fh = self.path.open("a+", encoding="utf-8")
+        secure_file(self.path)
         try:
             fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:

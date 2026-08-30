@@ -499,6 +499,13 @@ class MailDraftSkill(Skill):
     def after(
         self, event: Event, decision: Decision, disposition: str, result: Result | None
     ) -> None:
+        self._buchen(decision, result)
+
+    def after_approval(self, decision: Decision, result: Result | None) -> None:
+        """Derselbe Eintrag, nur ohne Ereignis -- der Rumpf brauchte es nie."""
+        self._buchen(decision, result)
+
+    def _buchen(self, decision: Decision, result: Result | None) -> None:
         if decision.is_noop:
             self._replies.plan(
                 message_id=decision.event_key,
@@ -741,6 +748,17 @@ class MailSendSkill(Skill):
     def after(
         self, event: Event, decision: Decision, disposition: str, result: Result | None
     ) -> None:
+        self._buchen(decision, result)
+
+    def after_approval(self, decision: Decision, result: Result | None) -> None:
+        """Ein von Hand freigegebener Versand muss genauso vermerkt werden.
+
+        Sonst bliebe die Nachricht unversendet in der Auswahl stehen und ginge
+        beim naechsten Durchlauf ein zweites Mal hinaus.
+        """
+        self._buchen(decision, result)
+
+    def _buchen(self, decision: Decision, result: Result | None) -> None:
         if result and result.performed:
             self._replies.mark_sent(decision.event_key)
         elif decision.action == "hold":

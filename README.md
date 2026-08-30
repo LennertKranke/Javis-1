@@ -3,7 +3,7 @@
 Persoenlicher, autonom laufender Assistent. Verbindliche Vorgabe ist
 `JARVIS-SPEC.md`; dieses Dokument beschreibt nur, was davon gebaut ist.
 
-**Stand: Phase 6 abgeschlossen.** Der Kern steht, JARVIS liest und ordnet den
+**Stand: Phase 6 abgeschlossen, Prozesstrennung nach Abschnitt 2.2 eingebaut.** Der Kern steht, JARVIS liest und ordnet den
 Posteingang ein, schreibt Antwortentwuerfe, kann sie ab Stufe 1 an Adressen auf
 der Allowlist senden, liest den Kalender und meldet Terminkonflikte, fasst den
 Tag in einem Morgenbriefing zusammen, und zeigt Zustand, Protokoll, Briefing
@@ -104,9 +104,10 @@ davor.
 
 **2.2 -- Lesen und Handeln getrennt.** `Provider.complete()` nimmt Text und
 gibt Text. Die Schnittstelle kennt keine Werkzeuge, keine Funktionsaufrufe,
-keine Websuche -- was es nicht gibt, kann nicht benutzt werden. Eine echte
-Prozesstrennung mit Netz-Sandbox ist damit *nicht* erreicht; siehe
-[Bewusst zurueckgestellt](#bewusst-zurueckgestellt).
+keine Websuche -- was es nicht gibt, kann nicht benutzt werden. Seit
+`[llm] isolation = "subprocess"` ist das nicht nur eine Zusage des Codes: der
+Modellaufruf laeuft in einem eigenen Prozess ohne Gmail-Zugangsdaten und ohne
+Weg zur Datenbank. Siehe [Prozesstrennung](#prozesstrennung-abschnitt-22).
 
 **2.3 -- Fremde Inhalte sind Daten.** `sanitize()` normalisiert nach NFKC,
 entfernt HTML samt Skriptinhalt, loescht unsichtbare Zeichen (Zero-Width,
@@ -711,30 +712,106 @@ einschaltet.
 
 ---
 
-## Bewusst zurueckgestellt
-
-Zwei Stellen weichen wissentlich von der Spezifikation ab. Sie stehen hier,
-damit aus einer Ausnahme nicht stillschweigend der Normalfall wird.
-
-### Keine echte Prozess- und Netztrennung (Abschnitt 2.2)
+## Prozesstrennung (Abschnitt 2.2)
 
 Die Spezifikation verlangt, dass der Teil, der fremde Inhalte verarbeitet,
-weder Werkzeugzugriff noch Netzverbindung nach aussen hat.
+weder Werkzeugzugriff noch einen Weg zum handelnden Teil hat. Logisch war das
+von Anfang an so -- `Provider.complete()` bietet gar nichts anderes an. Aber es
+war eine Eigenschaft des Codes, nicht des Betriebssystems: ein Fehler im
+Auswertungspfad steckte im selben Prozess wie die Gmail-Zugangsdaten.
 
-Erreicht ist davon die *logische* Haelfte: `Provider.complete()` nimmt Text und
-gibt Text zurueck, ohne Werkzeuge, Funktionsaufrufe oder Websuche -- die
-Schnittstelle bietet sie gar nicht erst an. Nicht erreicht ist die technische:
-alles laeuft in einem Prozess, und dieser Prozess darf ins Netz, weil er mit
-Gmail, Kalender und dem Anbieter spricht. Ein Fehler im Auswertungspfad ist
-damit nicht durch das Betriebssystem eingezaeunt, sondern nur dadurch, dass es
-den Weg im Code nicht gibt.
+Jetzt laeuft der Modellaufruf woanders:
 
-Was noetig waere: der auswertende Teil als eigener Prozess ohne Netzrechte
-(unter macOS `sandbox-exec` oder ein eigener Nutzer mit Paketfilterregel), der
-ueber eine Pipe Text bekommt und Text zurueckgibt; die Netzaufrufe blieben im
-handelnden Teil. Das ist Arbeit an der Prozessarchitektur, nicht an einer
-einzelnen Datei -- und sie gehoert vor den Dauerbetrieb, nicht in eine
-Fachphase.
+```
+Elternprozess                        Kindprozess
+  Gmail, Kalender, Keychain            nur der eine Modellschluessel
+  Datenbank, Gatter, Protokoll         kein JARVIS_HOME, keine Datenbank
+  berechnet die Ziele                  sieht kein Ziel
+        |                                     ^
+        |  Text + Schema  (stdin)             |
+        +------------------------------------>+
+        |  JSON            (stdout)           |
+        +<------------------------------------+
+```
+
+### Drei Stufen
+
+```toml
+[llm]
+isolation = "subprocess"   # off | subprocess | sandbox
+```
+
+| | |
+|---|---|
+| `off` | alles in einem Prozess. Schnell, aber 2.2 gilt dann nur als Zusage des Codes. |
+| `subprocess` | **Standard.** Eigener Prozess mit gefilterter Umgebung. |
+| `sandbox` | zusaetzlich `sandbox-exec` unter macOS -- dann verweigert das Betriebssystem den Zugriff, nicht der Code. |
+
+`jarvis status` zeigt in der Spalte TRENNUNG, was tatsaechlich gilt, und sagt
+es hin, wenn die Trennung aus ist.
+
+### Die Umgebung ist eine Allowlist, keine Sperrliste
+
+Eine Sperrliste waere die falsche Richtung -- man vergisst darin immer etwas.
+Durchgereicht wird nur, was das Kind braucht, um den Anbieter zu erreichen
+(`PATH`, Proxy- und Zertifikatsvariablen). Alles andere bleibt draussen,
+insbesondere alles mit `JARVIS_` im Namen. `HOME` zeigt auf ein leeres
+Verzeichnis, das nach dem Aufruf wieder verschwindet.
+
+Der Unterschied im Betrieb, mit einem echten Token im Elternprozess:
+
+```
+Kind ueber child_env()    : jarvis_vars=[]  home=/tmp/jarvis-llm-...  token sichtbar: false
+Kind mit geerbter Umgebung: jarvis_vars=[JARVIS_HOME, JARVIS_SECRET_GMAIL_TOKEN]  token sichtbar: true
+```
+
+Der Modellschluessel geht ueber die **Standardeingabe**, nicht ueber Umgebung
+oder Kommandozeile -- dort stuende er in `ps`.
+
+### Was im Kind fehlt
+
+`llm/isolated.py` importiert keine Faehigkeit, kein Gatter, keine Datenbank
+und keinen Schluesselbund. Es baut genau einen Anbieter mit genau einem
+Geheimnis und stellt genau eine Anfrage. Ein Test prueft das strukturell.
+
+Faellt dort etwas aus, kommt es als JSON zurueck, nicht als Prozessabsturz --
+und die Fehlerart (`unavailable`, `timeout`, `refused`) ueberlebt den
+Prozesswechsel, damit die Rueckfallkette des Routers weiter greift.
+
+### Der statische Anbieter bleibt drin
+
+`StaticProvider` antwortet mit einer Konstanten, ohne Netz und ohne den Text
+anzusehen. Dort gibt es nichts zu trennen, und ein Prozessstart je Aufruf
+waere reine Kosten in Tests und Trockenlaeufen. `jarvis status` schreibt bei
+ihm `-- (ohne Netz)`.
+
+### Was das kostet
+
+Ein Prozessstart je Modellaufruf, gemessen rund 100 ms. Fuer einen Assistenten,
+der ein paar Dutzend Mails am Tag einordnet, ist das nicht spuerbar; wer es
+anders sieht, setzt `isolation = "off"` und sieht die Folge in `jarvis status`.
+
+---
+
+## Bewusst zurueckgestellt
+
+Diese Stellen weichen wissentlich von der Spezifikation ab oder sind nicht
+vollstaendig geprueft. Sie stehen hier,
+damit aus einer Ausnahme nicht stillschweigend der Normalfall wird.
+
+### Die Sandbox-Stufe ist nicht auf Hardware geprueft
+
+`isolation = "subprocess"` ist vollstaendig geprueft. Die Stufe `"sandbox"`
+baut zusaetzlich ein `sandbox-exec`-Profil, das dem Kind den Zugriff auf
+`~/.jarvis` und den Schluesselbund verweigert. Profil und Aufruf sind
+getestet, ausgefuehrt wurde `sandbox-exec` nie -- es gibt es nur unter macOS,
+und die Entwicklungsumgebung ist Linux. Ohne macOS meldet die Stufe das
+sauber, statt stillschweigend ungeschuetzt zu laufen.
+
+Ausserdem bleibt das Netz im Profil offen: den Anbieter zu erreichen ist die
+einzige Aufgabe des Kindes, und `sandbox-exec` filtert ohnehin nicht nach
+Zielhost. Der Schutz liegt darin, dass dort keine Zugangsdaten fuer etwas
+anderes liegen.
 
 ### Zugangsdaten aus Umgebungsvariablen (Abschnitt 4)
 

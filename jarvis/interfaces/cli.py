@@ -136,6 +136,14 @@ def cmd_init(args: argparse.Namespace, out: Out) -> int:
     return 0
 
 
+def _trennung_von(provider) -> str:
+    """Laeuft der Modellaufruf dieses Anbieters woanders?"""
+    modus = getattr(provider, "mode", None)
+    if modus:
+        return modus
+    return "-- (ohne Netz)" if provider.config.kind == "static" else "derselbe Prozess"
+
+
 def cmd_status(args: argparse.Namespace, out: Out) -> int:
     paths = _paths(args)
     config = Config.load(home=paths.home)
@@ -214,8 +222,19 @@ def cmd_status(args: argparse.Namespace, out: Out) -> int:
                 state = "nicht geprueft"
             else:
                 state = "bereit" if provider.available() else "nicht verfuegbar"
-            rows.append([name, provider.model, "lokal" if provider.local else "extern", state])
-        out.table(["ANBIETER", "MODELL", "ORT", "ZUSTAND"], rows)
+            rows.append(
+                [
+                    name,
+                    provider.model,
+                    "lokal" if provider.local else "extern",
+                    _trennung_von(provider),
+                    state,
+                ]
+            )
+        out.table(["ANBIETER", "MODELL", "ORT", "TRENNUNG", "ZUSTAND"], rows)
+        if config.llm.isolation == "off":
+            hinweis = "Trennung aus: der Modellaufruf laeuft im selben Prozess (Abschnitt 2.2)."
+            out.line(f"  {out.dim(hinweis)}")
 
         # ------------------------------------------------------------------ #
         out.line()

@@ -98,6 +98,23 @@ rate_limits = { hour = 60, day = 400 }
 # secret nennt den Namen des Keychain-Eintrags, nie den Wert selbst.
 # --------------------------------------------------------------------------- #
 
+# Wie weit der auswertende Teil vom handelnden getrennt laeuft (Abschnitt 2.2).
+#
+#   off         alles in einem Prozess. Schnell, aber die Trennung gilt dann
+#               nur als Zusage des Codes.
+#   subprocess  der Modellaufruf laeuft in einem eigenen Prozess, mit
+#               gefilterter Umgebung: kein JARVIS_HOME, keine Gmail-
+#               Zugangsdaten, kein Weg zur Datenbank. Der Standard.
+#   sandbox     zusaetzlich sandbox-exec unter macOS -- dann verweigert das
+#               Betriebssystem den Zugriff auf ~/.jarvis und den
+#               Schluesselbund, nicht nur der Code.
+#
+# Der statische Anbieter wird nie ausgelagert: er antwortet mit einer
+# Konstanten und sieht den Text gar nicht an.
+[llm]
+isolation = "subprocess"
+
+
 [llm.providers.anthropic]
 kind = "anthropic"
 model = "claude-opus-5"

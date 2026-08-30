@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 __all__ = [
     "DEFAULT_CONFIG_TOML",
+    "ISOLATION_MODES",
     "AutonomyLevel",
     "Capability",
     "Config",
@@ -183,6 +184,11 @@ class Capability:
 # --------------------------------------------------------------------------- #
 
 EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
+
+#: Wie weit der auswertende Teil vom handelnden getrennt laeuft (Abschnitt 2.2).
+#: Steht hier und nicht in llm/isolation.py, damit config.py nichts aus llm/
+#: importieren muss -- der Kern kennt die Schichten ueber sich nicht.
+ISOLATION_MODES = ("off", "subprocess", "sandbox")
 PROVIDER_KINDS = frozenset({"anthropic", "ollama", "static"})
 
 
@@ -220,6 +226,9 @@ class TaskRoute:
 class LLMConfig:
     providers: dict[str, ProviderConfig]
     tasks: dict[str, TaskRoute]
+    #: Wie weit der Modellaufruf vom handelnden Teil getrennt laeuft.
+    #: "off" | "subprocess" | "sandbox" -- siehe llm/isolation.py.
+    isolation: str = "subprocess"
 
 
 LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -661,10 +670,14 @@ def _parse_skills(raw: Any) -> dict[str, dict[str, Any]]:
 def _parse_llm(raw: Any) -> LLMConfig:
     if not isinstance(raw, dict):
         raise ConfigError("llm: erwartet eine Tabelle")
-    _reject_unknown(raw, {"providers", "tasks"}, "llm")
+    _reject_unknown(raw, {"providers", "tasks", "isolation"}, "llm")
     providers = _parse_providers(raw.get("providers", {}))
     tasks = _parse_tasks(raw.get("tasks", {}), providers)
-    return LLMConfig(providers=providers, tasks=tasks)
+    trennung = _as_str(raw.get("isolation", "subprocess"), "llm.isolation").strip()
+    if trennung not in ISOLATION_MODES:
+        erlaubt = ", ".join(ISOLATION_MODES)
+        raise ConfigError(f"llm.isolation: {trennung!r} unbekannt (erlaubt: {erlaubt})")
+    return LLMConfig(providers=providers, tasks=tasks, isolation=trennung)
 
 
 def _parse_providers(raw: Any) -> dict[str, ProviderConfig]:
@@ -900,6 +913,23 @@ rate_limits = { hour = 60, day = 400 }
 # local = true bedeutet: laeuft auf diesem Rechner, verlaesst ihn nicht.
 # secret nennt den Namen des Keychain-Eintrags, nie den Wert selbst.
 # --------------------------------------------------------------------------- #
+
+# Wie weit der auswertende Teil vom handelnden getrennt laeuft (Abschnitt 2.2).
+#
+#   off         alles in einem Prozess. Schnell, aber die Trennung gilt dann
+#               nur als Zusage des Codes.
+#   subprocess  der Modellaufruf laeuft in einem eigenen Prozess, mit
+#               gefilterter Umgebung: kein JARVIS_HOME, keine Gmail-
+#               Zugangsdaten, kein Weg zur Datenbank. Der Standard.
+#   sandbox     zusaetzlich sandbox-exec unter macOS -- dann verweigert das
+#               Betriebssystem den Zugriff auf ~/.jarvis und den
+#               Schluesselbund, nicht nur der Code.
+#
+# Der statische Anbieter wird nie ausgelagert: er antwortet mit einer
+# Konstanten und sieht den Text gar nicht an.
+[llm]
+isolation = "subprocess"
+
 
 [llm.providers.anthropic]
 kind = "anthropic"

@@ -6,7 +6,9 @@ Status:                CURRENT SOURCE OF TRUTH
 Version:               3.0
 Created:               2026-08-30
 Repository state:      commit 0b7b9b7, Arbeitsbaum sauber
-Test state:            1018 pytest gruen, ruff check sauber, ruff format sauber
+Test state:            1017 von 1018 pytest gruen, ruff check und format sauber
+                       Ein Test ist zeitabhaengig und faellt taeglich fuer rund
+                       zwei Stunden aus -- siehe KI-8. Kein Codefehler
 Based on:              aktueller Repository-Code und tatsaechlich ausgefuehrte Tests
                        Phase-1-7-Audit (zwei Runden, abgeschlossen)
                        historische JARVIS-SPEC.md (SPEC-1)
@@ -79,8 +81,9 @@ lokalen Dashboard, in dem sich Entscheidungen freigeben lassen.
 **Was tatsaechlich steht.** Der Kern (Konfiguration, Datenbank, Protokoll mit
 Hash-Kette, Ratenbegrenzung, Stoppschalter, Normalisierung, Gatter, Freigaben)
 ist vollstaendig und in den sicherheitskritischen Teilen belastbar getestet:
-15 882 Zeilen Quellcode, 12 062 Zeilen Tests, 1018 Tests gruen. Sechs
-Faehigkeiten nach einem einheitlichen Vertrag. Drei Bedienwege: CLI, Dashboard,
+15 882 Zeilen Quellcode, 12 062 Zeilen Tests, 1018 Tests -- davon 1017 zu jeder
+Tageszeit gruen, einer zeitabhaengig (KI-8). Sechs Faehigkeiten nach einem
+einheitlichen Vertrag. Drei Bedienwege: CLI, Dashboard,
 Sprache.
 
 **Was fehlt.** Nicht Qualitaet, sondern Kontakt mit der Wirklichkeit. Jeder
@@ -112,6 +115,19 @@ REQUIRED-Punkte in Abschnitt 21.
 > Gruene Tests je Phase beweisen nicht, dass die Phasen zusammenspielen. Alle drei
 > schwersten Befunde lagen **zwischen** Bausteinen, die einzeln einwandfrei
 > funktionierten.
+
+### Der Leitsatz
+
+> **JARVIS soll heute so gebaut werden, dass er morgen sehr viel mehr koennen
+> kann -- aber wir bauen morgen nicht schon heute.**
+
+Daraus folgen zwei Anforderungen, die einander begrenzen. Der heutige Code
+**MUST** stabil, sicher, modular und zukunftsfaehig sein. Die beschriebene
+Zukunftsarchitektur **MUST** konkret genug sein, um heutige Fehlentscheidungen
+zu verhindern -- und **MUST** abstrakt genug bleiben, damit spaetere
+Technologien und Implementierungen frei waehlbar sind. Wo dieses Dokument
+konkreter wird als noetig, ist das ein Fehler; wo es so vage bleibt, dass eine
+falsche Abzweigung nicht auffaellt, ebenfalls.
 
 ---
 
@@ -309,6 +325,26 @@ abgewiesen. Auch abgelehnte Aktionen werden protokolliert.
 | DECIDE (`decide`) | Analysieren, strukturierte Absicht erzeugen | **ja** | **nein** |
 | ACT (`act`) | Externe Zustandsaenderung | **nein** | Code, deterministisch |
 
+### 3.4 Nicht-funktionale Anforderungen
+
+Qualitaetseigenschaften, an denen sich jede Aenderung messen lassen muss. Sie
+stehen hier und nicht in einem eigenen Abschnitt, weil es Architektur-, keine
+Funktionsanforderungen sind.
+
+| Eigenschaft | Anforderung | Heutiger Stand |
+|---|---|---|
+| **Security** | Jede Aktion nach aussen **MUST** deterministisch autorisiert sein | erfuellt fuer die vorhandenen Wege; SEC-1 und SEC-2 offen |
+| **Reliability** | Ein Fehler **MUST NOT** zu einer unkontrollierten Aktion fuehren, und **MUST NOT** wie ein Erfolg aussehen | erfuellt: `decide` und `act` auf beiden Wegen abgesichert, Daemon je Tick, alles faellt geschlossen aus |
+| **Observability** | Jede Aktion **MUST** nachvollziehbar sein -- siehe 4.9 | erfuellt fuer Entscheidung, Gatterurteil und Ergebnis |
+| **Modularity** | Skills und Anbieter **MUST** austauschbar sein, ohne den Kern anzufassen | erfuellt: `@register_skill`, `Provider`-Schnittstelle, Zuordnung in der Konfiguration |
+| **Maintainability** | Eine neue Faehigkeit **SHOULD** ohne Eingriff in den Kern integrierbar sein | erfuellt; Einschraenkung: `core/config.py` waechst mit jeder Faehigkeit (TD-4) |
+| **Privacy** | Daten **MUST** nur dort verarbeitet und gespeichert werden, wo es noetig ist | erfuellt: keine Mailinhalte in der Ablage, Vertraulichkeitssperre, 0700/0600 |
+| **Portability** | macOS ist Zielplattform und **MUST** beruecksichtigt werden | Plattformweichen vorhanden, **nichts davon auf macOS gemessen** (Abschnitt 14) |
+| **Testability** | Sicherheitskritische Funktionen **MUST** automatisiert pruefbar sein | erfuellt: 1018 Tests, Sicherheitseigenschaften einzeln getestet und gegen Mutation geprueft |
+
+Diese Liste ist kein Wunschzettel: wo eine Eigenschaft heute nicht erfuellt ist,
+steht der Verweis auf den Befund, der sie offen haelt.
+
 ---
 
 ## 4. Security Architecture
@@ -349,7 +385,36 @@ Stoppschalter, **nicht** den Ein-Aus-Schalter, **nicht** die Obergrenze und
 **Gemessen:** Bei aktivem Trockenlauf bleibt ein freigegebener Vorgang offen,
 mit Vermerk "Trockenlauf global aktiv".
 
-### 4.3 Least Privilege bei Gmail
+### 4.3 Autonomiestufen
+
+**CURRENT.** Vier Stufen, im Code als `AutonomyLevel` festgelegt. Sie gelten
+**je Faehigkeit**, nicht global, und stehen in `[capabilities]`.
+
+| Stufe | Bezeichnung im Code | Verhalten | Wechsel zur naechsten Stufe |
+|---|---|---|---|
+| **0** | `Schattenbetrieb` | Entscheidet alles, handelt nichts nach aussen, protokolliert was es getan haette | 2 Wochen ohne Einwand im Protokoll |
+| **1** | `Allowlist` | Handelt automatisch gegenueber Zielen auf der Freigabeliste | 4 Wochen ohne Vorfall |
+| **2** | `Freigegebene Kategorien` | Handelt automatisch in freigegebenen Kategorien gegenueber bekannten Kontakten | manuelle Freigabe durch den Nutzer |
+| **3** | `Alles ausser Gesperrtes` | Handelt automatisch, ausser bei ausdruecklich gesperrten Kategorien | -- |
+
+Die Blueprint-Vorlage nennt beispielhaft fuenf Stufen (Observe, Prepare,
+Approval, Limited, Full). Diese Nummerierung wird **nicht** uebernommen: der
+Code hat bereits ein vierstufiges System, und eine Umnummerierung waere ein
+Eingriff ohne Gewinn. Was die Vorlage als "Prepare / Draft" fuehrt, ist hier
+kein eigener Rang, sondern eine Eigenschaft der Faehigkeit -- `mail_reply`
+entwirft auf Stufe 0, weil ein Entwurf niemanden erreicht.
+
+**MUST:** Autonomie darf niemals implizit entstehen. Eine neue Faehigkeit
+startet auf Stufe 0, und die verlangte Stufe steht am Skill, nicht in der
+Konfiguration. Wer eine Faehigkeit baut, die hinausgreift, setzt
+`autonomy_level = 1` -- sonst laesst das Gatter sie schon auf Stufe 0 durch
+(siehe 6.1).
+
+**MAY:** Eine Stufe darf jederzeit gesenkt werden, auch mitten im Betrieb. Ein
+Herabstufen ist keine Konfigurationsaenderung mit Vorlauf, sondern ein zulaessiger
+Eingriff -- die naechste Auswertung des Gatters liest den neuen Wert.
+
+### 4.4 Least Privilege bei Gmail
 
 **CURRENT.** Die Rechte des Gmail-Clients haengen an der Autonomiestufe:
 
@@ -361,14 +426,14 @@ send_capabilities(config) -> SENDING   wenn permits("mail_send", 1)
 Auf Stufe 0 ist der Sende-Endpunkt **gar nicht freigeschaltet**. Ein Fehler in
 der Sendelogik kann dort nichts senden. Vier Tests decken das ab.
 
-### 4.4 Endpunkt-Allowlists
+### 4.5 Endpunkt-Allowlists
 
 **CURRENT.** Je Faehigkeit eine Liste aus Methode und verankertem Muster,
 geprueft mit `fullmatch`. `/messages/send` steht bewusst **nicht** darin --
 Versand geht ausschliesslich ueber `/drafts/send`, damit genau der Entwurf
 hinausgeht, der vorher geprueft wurde.
 
-### 4.5 Dashboard-Absicherung
+### 4.6 Dashboard-Absicherung
 
 **CURRENT**, gemessen: Bindung ausschliesslich an Loopback (`--host 0.0.0.0`
 scheitert mit `ConfigError`), Sitzungstoken 32 Byte in `~/.jarvis/web-token`
@@ -379,7 +444,7 @@ Anfrage, CSP `default-src 'none'`, `nosniff`, `no-store`, kein JavaScript.
 Sicherheitsinstanz. Es ruft `execute_approval` auf, das dieselbe Kette durchlaeuft
 wie jeder andere Weg. Ein Knopf darf nie direkt einen externen Dienst aufrufen.
 
-### 4.6 Zugangsdaten
+### 4.7 Zugangsdaten
 
 **MUST.** Zugangsdaten gehoeren nicht in Git, Logs, SQLite, Konfigurationsdateien,
 Prompts oder Protokolleintraege.
@@ -388,7 +453,7 @@ Prompts oder Protokolleintraege.
 Rueckfall**. Abweichungen meldet `jarvis status` und setzt den Rueckgabewert auf
 1. Das Log wurde auf fuenf Geheimnisbegriffe durchsucht: 0 Treffer.
 
-### 4.7 Dateirechte
+### 4.8 Dateirechte
 
 **CURRENT**, seit dem Audit. 0700 auf Verzeichnissen, 0600 auf Dateien, in
 `core/files.py` an einer Stelle gekapselt. Zwei Eigenschaften sind wesentlich:
@@ -402,6 +467,39 @@ Rueckfall**. Abweichungen meldet `jarvis status` und setzt den Rueckgabewert auf
 
 `offene_pfade()` laeuft das Verzeichnis ab, statt bekannte Pfade aufzuzaehlen;
 `jarvis status` meldet, was danach noch offen ist.
+
+### 4.9 Observability
+
+Ein System, das im Namen des Nutzers handelt, **MUST** hinterher erklaeren
+koennen, was es getan hat. Acht Fragen muessen aus dem Protokoll beantwortbar
+sein:
+
+| Frage | Woher, CURRENT |
+|---|---|
+| Was ist passiert? | `audit_log.kind` und `outcome` |
+| Warum ist es passiert? | `detail.reason` -- bei Modellentscheidungen die Begruendung, bei Vorfilter und Allowlist der Regelgrund |
+| Welche Komponente war beteiligt? | `capability` plus `detail.decided_by` (`model`, `prefilter`, `cached`, `allowlist`, `integritaet`) |
+| Welche Aktion wurde vorgeschlagen? | `outcome` des `decision`-Eintrags |
+| Welche Regel hat gegriffen? | `detail.reason` des `action`-Eintrags, mit `granted_level` und `required_level` |
+| War eine Freigabe noetig? | `dry_run`-Kennzeichen plus `approval_id`, wenn der Vorgang ueber den Freigabeweg lief |
+| Wurde die Aktion blockiert? | `outcome = blocked`, mit dem Grund -- **auch abgelehnte Aktionen stehen im Protokoll** |
+| Welches Ergebnis kam heraus? | `performed` oder `failed`, mit `detail` |
+
+**MUST:** Protokolleintraege enthalten **keine** Geheimnisse. Geprueft: das Log
+wurde auf fuenf Geheimnisbegriffe durchsucht, 0 Treffer. Der Modellschluessel
+taucht weder in `stdout` noch `stderr` des auswertenden Prozesses noch im
+Protokoll auf -- dafuer gibt es einen eigenen Test.
+
+**SHOULD:** Der Fremdtext selbst gehoert nicht ins Protokoll. `audit_detail`
+nimmt Kategorie, Begruendung und berechnete Ziele auf, nicht den
+Nachrichtentext. Absender und Betreff stehen darin, weil das Dashboard sie zum
+Einordnen braucht.
+
+**Bekannte Grenze.** Die Kette deckt heute `decision` und `action` ab. Eine
+laengere Kette -- Eingang, Entscheidung, Intent, Validierung, Freigabe,
+Ausfuehrung, Ergebnis -- waere bei komplexeren Aktionen nachvollziehbarer.
+**PLANNED**, siehe 19.2. Eine solche Erweiterung **MUST NOT** dazu fuehren, dass
+mehr Inhalte geloggt werden als heute.
 
 ---
 
@@ -438,8 +536,36 @@ Freigabeweg eine Sackgasse (siehe Abschnitt 17, Q-1).
 | Mail | `seen`, `analysed`, `acted`, `skipped` |
 | Antwort | `planned`, `drafted`, `skipped`, `held`, gesendet ueber `sent_at` |
 
-**Bekannte Luecke:** Es gibt **keinen** zentralen, atomaren Anspruch auf eine
-Aktion (`CLAIMED` / `EXECUTING`). Siehe SEC-2.
+Zuordnung zu den neun konzeptionell geforderten Zustaenden -- damit sichtbar
+wird, welche das System heute wirklich unterscheidet und welche nicht:
+
+| Konzeptioneller Zustand | Heute abgebildet durch | Vorhanden |
+|---|---|---|
+| `SUCCESS` | `Result.performed = True`, Protokoll `performed` | ja |
+| `PENDING` | `approvals.state = pending` | ja |
+| `BLOCKED` | `Disposition.BLOCKED` -- Stoppschalter, Obergrenze, abgeschaltete Faehigkeit | ja |
+| `REJECTED` | `approvals.state = rejected` (im Dashboard verworfen) | ja |
+| `FAILED` | `Result.performed = False` mit `error`, Protokoll `failed` | ja |
+| `DRY_RUN` | `Disposition.DRY_RUN`, im Protokoll als `T` gekennzeichnet | ja |
+| `UNVERIFIED` | -- kein Zustand. Der Nachweisstand externer Dienste (`nie`) traegt diese Bedeutung, aber nicht als Aktionszustand | **nein** |
+| `OFFLINE` | -- kein eigener Zustand. Ein nicht erreichbarer Anbieter endet als `failed` mit Fehlertext | **nein** |
+| `CANCELLED` | -- kein Zustand. Verwerfen im Dashboard fuehrt zu `rejected` | **nein** |
+
+**MUST:** Ein Fehler darf nie wie ein Erfolg aussehen. Erfuellt: `failed` und
+`performed` sind getrennt, und eine Ausnahme wird als `failed` protokolliert,
+nicht verschluckt.
+
+**Bekannte Luecken.** Zwei, und sie haengen zusammen:
+
+1. Es gibt **keinen** zentralen, atomaren Anspruch auf eine Aktion (`CLAIMED` /
+   `EXECUTING`). Siehe SEC-2.
+2. Ein **teilweise ausgefuehrter** externer Vorgang hat keinen eigenen Zustand.
+   Bricht `act()` nach dem Aufruf des Dienstes ab -- der Entwurf ist gesendet,
+   das Nachtragen scheitert --, steht im Protokoll `failed`, obwohl aussen etwas
+   geschehen ist. Heute ist das entschaerft, weil das Nachtragen nach dem
+   Versand gegen einen Fehler abgesichert ist und die Aktion trotzdem als
+   ausgefuehrt gilt. Als allgemeine Eigenschaft fehlt es. Gehoert zusammen mit
+   SEC-2 in den Execution Layer, siehe 19.2 und OD-1.
 
 ### 5.3 Fehlerbehandlung
 
@@ -477,6 +603,25 @@ class Skill:
     def after(self, event, decision, disposition, result) -> None: ...
     def after_approval(self, decision, result) -> None: ...
 ```
+
+Der Vertrag ist die technische Form. Fachlich **MUST** jede Faehigkeit
+ausserdem diese sieben Eigenschaften besitzen -- sie sind die Pruefliste, an der
+sich eine neue Faehigkeit messen laesst:
+
+| Eigenschaft | Wo sie im Vertrag steckt | Beispiel `mail_send` |
+|---|---|---|
+| **Klar definierte Inputs** | `poll()` liefert `Event`; nur `Event.content` ist Fremdtext | wartende Entwuerfe aus dem Antwortspeicher |
+| **Klare Outputs** | `Decision` mit getrennten `fields` und `targets`, `Result` mit `performed` und `detail` | gesendet ja/nein plus Entwurfskennung |
+| **Definierte Permissions** | `requires_outbound` plus die Rechte, die die Fabrik dem Client gibt | `SENDING` erst ab Stufe 1, sonst `DRAFTING` |
+| **Definierte Autonomie** | `autonomy_level` am Skill (verlangt) gegen `[capabilities]` (gewaehrt) | verlangt 1 |
+| **Definierte Targets** | ausschliesslich `Decision.targets`, aus vertrauenswuerdiger Quelle | Empfaenger aus dem Antwortdatensatz, nie aus der Modellantwort |
+| **Deterministische Validierung** | `verify_targets()` baut die Ziele neu und vergleicht | Entwurf, Versandzustand, Durchsicht, Fingerabdruck |
+| **Audit-Faehigkeit** | `Decision.audit_detail` plus die Eintraege, die `run_skill` und `execute_approval` schreiben | Entscheidung, Gatterurteil und Ergebnis je Vorgang |
+
+**MUST:** Eine Faehigkeit wird nie direkt mit dem Modell verheiratet. Sie
+bekommt einen `Router`, keinen Anbieter -- welches Modell antwortet, entscheidet
+die Konfiguration. `mail_send` und `calendar` rufen ueberhaupt kein Modell auf;
+dort entscheidet Code.
 
 **Fallstricke, die Geld oder Sicherheit gekostet haben:**
 
@@ -546,11 +691,23 @@ wird nie ausgelagert (reine Kosten).
 | Memory | `state.db`, `memory_facts` | hoechstens 500 Tatsachen |
 | Short-term Context | `state.db`, `context_entries` | begrenzte Fenstergroesse |
 | Logs | `~/.jarvis/logs/*.jsonl` | 0600, taegliche Rotation, kein Fremdtext |
+| External Data | `state.db` -- `research_findings`, sowie Fremdtext waehrend eines Durchlaufs | **nie roh gespeichert**: von Mail bleiben nur Kennung, Thread und Kategorie |
+| User Data | `state.db` -- `mail_allowlist`, `style_profile`, `briefings` | vom Nutzer stammend oder aus seinem Verhalten abgeleitet |
+| Tasks | -- | **existiert nicht.** PLANNED, Abschnitt 19.5 |
+| Events | -- | **existiert nicht** als eigene Kategorie. `Event` ist ein Laufzeitobjekt, es wird nirgends abgelegt |
 | Temporary | Prozessweise `TemporaryDirectory` | leeres `HOME` je Modellaufruf |
 
 **Datensparsamkeit, CURRENT:** `mail_messages` speichert nur Kennung, Thread und
 Kategorie -- **keine** Inhalte. Absender und Betreff stehen im Protokoll und in
 Freigaben (das Dashboard zeigt sie), der Nachrichtentext nirgends.
+
+**MUST:** Diese Kategorien werden nicht vermischt. Die beiden Faelle, in denen
+das heute besonders zaehlt: Zugangsdaten liegen **ausserhalb** der Datenbank
+(Keychain), und externe Inhalte werden nicht zu Anwendungszustand, sondern
+erzeugen ihn allenfalls in abgeleiteter Form (eine Kategorie, kein Text).
+
+**MUST NOT:** Eine kuenftige Kategorie -- Tasks, Events -- darf nicht in eine
+bestehende Tabelle hineinwachsen, nur weil dort schon eine Spalte frei ist.
 
 ---
 
@@ -567,9 +724,58 @@ Freigaben (das Dashboard zeigt sie), der Nachrichtentext nirgends.
 **MUST:** Memory heisst nicht "alles dauerhaft speichern". Jede Tatsache traegt
 Quelle und Zeitpunkt und ist ueber `jarvis memory` einsehbar und loeschbar.
 
-**Was fehlt (PLANNED):** ein ausdruecklicher Vertrauensgrad je Eintrag, und eine
-Unterscheidung zwischen vom Nutzer gesagten und aus Fremdtext abgeleiteten
-Tatsachen. Siehe OD-2.
+### 9.1 Informationsarten
+
+**MUST:** Memory heisst nicht "alles dauerhaft speichern". Diese Arten werden
+unterschieden -- und drei davon existieren heute ausdruecklich **nicht**:
+
+| Art | Heute | Wo |
+|---|---|---|
+| Conversation Context | CURRENT | `context_entries`, begrenztes Fenster je Bereich |
+| User Facts | CURRENT | `memory_facts`, Kategorie `person`, `zugang`, `sonstiges` |
+| Preferences | CURRENT | `memory_facts`, Kategorie `praeferenz` |
+| Task State | **existiert nicht** | PLANNED, Abschnitt 19.5 |
+| External Information | teilweise | `research_findings` -- an eine Frage gebunden, kein Gedaechtnis |
+| Derived Knowledge | **existiert nicht** | JARVIS leitet heute nichts selbst ab, das es dauerhaft behaelt |
+| Audit Data | CURRENT | `audit_log`, getrennt vom Gedaechtnis und unveraenderlich |
+
+### 9.2 Was ueber eine gespeicherte Tatsache bekannt ist
+
+| Attribut | CURRENT | Anmerkung |
+|---|---|---|
+| Quelle | ja | `source`-Spalte |
+| Zeitpunkt | ja | `created_at` und `updated_at` |
+| Status | teilweise | nur ueber `weight` und die Verdraengung, kein eigenes Feld |
+| **Vertrauensgrad** | **nein** | eine vom Nutzer gesagte und eine aus Fremdtext abgeleitete Tatsache sind nicht unterscheidbar |
+| Aenderbarkeit | ja | erneutes Ablegen desselben Schluessels ueberschreibt |
+| Loeschbarkeit | ja | `jarvis memory --vergessen <schluessel>` |
+
+**REQUIRED, sobald etwas anderes als der Nutzer schreibt.** Heute schreibt nur
+der Nutzer ins Langzeitgedaechtnis -- deshalb ist der fehlende Vertrauensgrad
+noch folgenlos. Sobald Dokumente, Recherche oder Mailinhalte Tatsachen erzeugen
+duerfen, **MUST** jede Tatsache ihre Herkunftsklasse tragen, sonst wird
+Fremdtext ununterscheidbar von einer Nutzeraussage. Siehe OD-2.
+
+### 9.3 User Context
+
+**PLANNED.** JARVIS soll langfristig einen dauerhaften Benutzerkontext besitzen
+-- wer der Nutzer ist, was er bevorzugt, woran er gerade arbeitet.
+
+Der Kern **MUST NOT** davon ausgehen, dass alles, was irgendwann gesagt wurde,
+dauerhaft gespeichert werden darf. Heute ist das strukturell abgesichert, nicht
+durch Vorsatz: ins Langzeitgedaechtnis kommt ausschliesslich, was der Nutzer
+ausdruecklich mit `jarvis memory <schluessel> <wert>` ablegt. Es gibt **keinen**
+Pfad, auf dem ein Gespraech oder eine Mail von selbst zu einer dauerhaften
+Tatsache wird -- und das ist eine Eigenschaft, die erhalten bleiben **MUST**.
+
+**MUST:** Privacy und Memory werden gemeinsam entworfen, nicht nacheinander.
+Konkret heisst das fuer jede kuenftige Erweiterung des Gedaechtnisses: bevor
+eine neue Quelle schreiben darf, sind Herkunftsklasse (9.2), Loeschweg und die
+Frage geklaert, ob der Inhalt ueberhaupt an ein externes Modell gehen darf
+(Abschnitt 10).
+
+**Explizit nicht jetzt umgesetzt:** kein Nutzerprofil, keine automatische
+Extraktion von Tatsachen aus Gespraechen oder Mails, keine Ableitung.
 
 ---
 
@@ -632,14 +838,49 @@ Systemschriften und `meta refresh`. Das ist **bewusst offen** und keine Schuld:
 SPEC-2 ist nicht mehr verbindlich. Ob angeglichen wird, ist eine offene
 Entscheidung (OD-4).
 
-**MUST:** Das Dashboard ist niemals die Sicherheitsinstanz (§4.5).
+**MUST:** Das Dashboard ist niemals die Sicherheitsinstanz (§4.6).
+
+### Was es heute zeigt, und was eine Control Plane zeigen muesste
+
+**PLANNED.** Die folgende Liste ist ein Zielbild, **kein Arbeitsauftrag**. Sie
+steht hier, damit sichtbar bleibt, wie weit die heutige Oberflaeche davon
+entfernt ist.
+
+| Bereich | Heute |
+|---|---|
+| System Status | CURRENT -- Zustand, Trockenlauf, Zugangsdatenquelle, Dateirechte |
+| Stop Switch | CURRENT -- auf jeder Ansicht |
+| Skills | CURRENT -- Name, Stufe, erreicht Dritte, aktiv, Zaehler |
+| Autonomy | CURRENT -- als Spalte in der Faehigkeitstabelle |
+| Approvals | CURRENT -- eigene Ansicht mit Freigeben und Verwerfen |
+| Pending Actions | CURRENT -- dieselbe Ansicht |
+| Audit | CURRENT -- Protokollansicht |
+| Integrations | **fehlt** -- der Nachweisstand steht nur in `jarvis services check` |
+| Model Status | **fehlt** -- Anbieterzustand nur in `jarvis status` |
+| Provider Status | **fehlt** -- dito, inkl. Rueckfallkette und Trennung |
+| Errors | **fehlt** -- Fehler stehen im Protokoll, aber ohne eigene Sicht |
+| Events | **fehlt** |
+| Memory | **fehlt** -- nur ueber `jarvis memory` |
+| Tasks | **fehlt**, weil es keine Tasks gibt (PLANNED) |
+| Automations | **fehlt**, weil es keine Automationen gibt (PLANNED) |
+
+Sieben von fuenfzehn. Die fehlenden acht sind kein Versaeumnis, sondern
+unentschieden: ob das Dashboard zur Control Plane ausgebaut wird und in welcher
+Form, ist OD-4. Vier der acht setzen ausserdem Faehigkeiten voraus, die es nicht
+gibt.
+
+**MUST NOT:** Ein Ausbau darf keinen zweiten Aktionsweg schaffen. Jede
+Schaltflaeche, die etwas ausloest, geht durch `execute_approval` und damit durch
+dasselbe Gatter -- nicht direkt an einen Dienst.
 
 ---
 
 ## 13. Testing
 
 **CURRENT:** 1018 Tests, Laufzeit rund 16 s. Verhaeltnis Testcode zu Quellcode
-0,76 : 1.
+0,76 : 1. **1017 davon laufen zu jeder Tageszeit gruen**; einer ist zeitabhaengig
+und faellt taeglich in einem Zwei-Stunden-Fenster aus (KI-8). Das ist ein Fehler
+im Test, nicht im Code -- aber er entwertet jede pauschale "alle gruen"-Aussage.
 
 | Art | Vorhanden | Beispiel |
 |---|---|---|
@@ -860,6 +1101,7 @@ Alle mit Regressionstest, alle gegen Mutation geprueft.
 | KI-4 | `jarvis briefing --neu` gibt im Trockenlauf 1 zurueck | vertretbar in beide Richtungen; eine Entscheidung, keine Korrektur |
 | KI-5 | Recherche hat keine Netzquelle | Faehigkeit vollstaendig, aber sie findet nur den Beispielbestand |
 | KI-6 | Gmail-Mock haelt Entwuerfe nur im Arbeitsspeicher | begrenzt End-to-End-Tests ueber Prozessgrenzen |
+| KI-8 | **Zeitabhaengiger Test.** `test_das_briefing_entsteht_aus_mock_daten` nutzt `Europe/Berlin`, der Kalender-Mock verankert Termine an *jetzt + 2 h*, und das Briefing gilt fuer *heute*. Ab 22:00 Ortszeit rollt der Mock auf den Folgetag, das Briefing findet keine Termine, der Test faellt aus | **Fehler im Test, nicht im Code.** Beim Erstellen dieser Matrix aufgefallen, weil der Lauf zufaellig um 22:02 Berliner Zeit stattfand. Rund zwei von 24 Stunden taeglich. Er entwertet jede pauschale "alle Tests gruen"-Aussage und gehoert deshalb behoben, bevor eine solche Aussage wieder getroffen wird. Empfohlene Richtung: die Uhr im Test festnageln, statt `datetime.now()` zu benutzen -- der Mock kann das bereits (`beispiel_kalender(jetzt=...)`) |
 | KI-7 | Kurzzeitkontext laesst sich nicht ueber die CLI leeren. `ShortTermContext.clear()` existiert, `jarvis context` bietet keinen Weg dorthin | klein, aber ein Privacy-Versprechen ohne Bedienweg. Beim Erstellen von SPEC-3 gefunden |
 
 ---
@@ -968,121 +1210,256 @@ Teil der Autorisierung statt der Entscheidung.
 Umbau. Die Beschreibung dient dazu, SEC-1 und SEC-2 nicht als Einzelpflaster zu
 loesen, sondern in die richtige Richtung.
 
-### 19.3 Feature-Steckbriefe
+### 19.3 Extension Points
 
-#### Tasks — PLANNED
+Die heutige Architektur **MAY** Erweiterungspunkte besitzen -- aber nur dort, wo
+sie sich aus dem vorhandenen Design ergeben, nicht dort, wo eine Zukunftsfunktion
+sie spaeter braeuchte.
 
-```
-Feature:       Aufgabenverwaltung
-Status:        PLANNED
-Purpose:       Aufgaben erkennen, verwalten, priorisieren, an Fristen erinnern
-Architectural role:  Neue Faehigkeit nach dem Vertrag aus Abschnitt 6
-Inputs:        Mail, Kalender, direkte Eingabe
-Outputs:       strukturierte Aufgaben mit Faelligkeit und Zustand
-Security:      Aufgabentexte aus Mail sind untrusted. Das Modell darf eine
-               Aufgabe vorschlagen, aber kein Ziel und keine Frist erzwingen,
-               die eine Aktion ausloest
-Integration boundary:  eigener Speicher, eigene Faehigkeit, Stufe 0
-Dependencies:  keine externen Dienste
-What today's architecture must support:
-               Skill-Vertrag traegt sie unveraendert; Gatter, Protokoll und
-               Ratenbegrenzung erbt sie ueber run_skill
-Explicitly NOT implemented now:
-               keine Task-Klasse, keine Tabelle, kein Scheduler, keine
-               Erinnerung, kein Dashboard-Element, kein CLI-Befehl
-```
+| Erweiterungspunkt | CURRENT | Was daran erweiterbar ist |
+|---|---|---|
+| **Provider Interface** | ja, `llm/provider.py` | ein neuer Anbieter braucht keine Aenderung am Router. Bewusst **ohne** Werkzeugparameter |
+| **Skill Interface** | ja, `skills/base.py` | `@register_skill`, kein Eingriff in den Kern |
+| **Storage Abstraction** | teilweise | jede Faehigkeit bringt ihren eigenen Speicher mit (`MailStore`, `CalendarStore`, ...). Gemeinsam ist nur die Datenbank, keine Abstraktion darueber |
+| **Execution Interface** | **nein** | es gibt zwei Wege (`run_skill`, `execute_approval`), aber keine gemeinsame Schnittstelle. Genau das waere 19.2 |
+| **Input Abstraction** | teilweise | `Event` vereinheitlicht, was eine Faehigkeit findet. Die Bedienwege (CLI, Web, Sprache) haben dagegen keine gemeinsame Grenze |
 
-#### Documents — PLANNED
+**MUST NOT:** Ein Erweiterungspunkt ist keine Erlaubnis fuer halbfertigen Code.
+Es gibt in diesem Repository **keinen** `HomeKitSkill`, `VoiceSkill`,
+`TaskSkill` oder `DocumentSkill` -- auch nicht leer, auch nicht als Stub, auch
+nicht registriert. Wer einen anlegt, ohne dass ein Auftrag ihn verlangt,
+verstoesst gegen die goldene Regel.
 
-```
-Feature:       Dokumentenanalyse
-Status:        PLANNED
-Purpose:       PDFs, Rechnungen, Vertraege verstehen
-Architectural role:  Leseweg mit besonders strenger Untrusted-Grenze
-Security:      Dokumente sind untrusted, ausnahmslos. Ein Dokument darf keine
-               Anweisung an JARVIS ausloesen. Der Analyseprozess bekommt keine
-               Werkzeuge -- genau wie heute der Modellaufruf
-What today's architecture must support:
-               sanitize() und die Prozesstrennung sind der vorgesehene Weg;
-               beide sind vorhanden und muessen es bleiben
-Explicitly NOT implemented now:
-               kein Parser, kein OCR, keine Dokumententabelle, kein Skill
-```
+### 19.4 Future Compatibility
 
-#### Files — PLANNED
+**MUST:** Bei jeder wichtigen Architekturentscheidung wird gefragt: *Blockiert
+sie eine bereits geplante Faehigkeit?* Wenn ja, wird das Problem dokumentiert
+und eine bessere Architektur empfohlen -- die Faehigkeit selbst wird deshalb
+**nicht** gebaut.
 
-```
-Feature:       Dateiablage
-Status:        PLANNED
-Purpose:       Dateien finden, klassifizieren, kontrolliert ablegen
-Security:      Dateipfade sind Ziele im Sinne von P1. Sie muessen
-               deterministisch berechnet werden -- nie aus der Modellantwort
-What today's architecture must support:
-               Die Zielfeldsperre deckt path, filepath, filename und
-               destination bereits ab. Jede schreibende Aktion muss durch
-               denselben Ausfuehrungsweg wie eine E-Mail
-Explicitly NOT implemented now:
-               kein Dateiskill, keine Pfad-Allowlist, kein Index
-```
+Der Stand dieser Pruefung heute:
 
-#### Research (Netzquelle) — REQUIRED, nicht PLANNED
+| Geplante Faehigkeit | Blockiert? | Begruendung |
+|---|---|---|
+| Tasks | nein | Der Skill-Vertrag traegt sie unveraendert |
+| Documents | nein | `sanitize()` und die Prozesstrennung sind der vorgesehene Weg und vorhanden |
+| Files | nein | Die Zielfeldsperre deckt `path`, `filename`, `destination` bereits ab |
+| Voice-Komfort | nein | Sprache ist bereits Bedienweise ohne `act`-Pfad |
+| Home Automation | **teilweise** | Das Gatter kennt nur Faehigkeitsnamen und Stufen, ist also nicht Gmail-spezifisch. Aber es gibt kein Modell fuer *Zielarten* -- eine Geraeteadresse ist etwas anderes als eine E-Mail-Adresse, und die Zielpruefung liegt heute je Faehigkeit statt zentral. Empfehlung: mit 19.2 loesen, nicht mit einem Geraeteskill |
+| Proactive Agent | **teilweise** | Es gibt keinen Weg, von sich aus zu melden. Der Daemon kann pollen, aber nichts zustellen. Empfehlung: ein Benachrichtigungsweg, der durch dasselbe Gatter geht -- nicht daneben |
 
-Die Faehigkeit **existiert** (CURRENT), ihr fehlt nur die Quelle. Siehe
-Abschnitt 21.
+Zwei Befunde, kein Auftrag. Beide sind in der Roadmap verortet (Abschnitt 21),
+und beide **MUST NOT** durch vorgezogene Implementierung geloest werden.
 
-#### Voice (Komfort) — PLANNED
+### 19.5 Feature-Steckbriefe
+
+Alle nach demselben Schema. Die beiden letzten Felder sind die wichtigsten: sie
+trennen "woran die heutige Architektur nicht scheitern darf" von "was jetzt
+ausdruecklich nicht gebaut wird".
+
+#### Tasks
 
 ```
-Feature:       Weckwort, Dauerschleife, komfortablere Sprachbedienung
-Status:        PLANNED  (die Sprachschicht selbst ist CURRENT)
-Security:      Ein Sprachbefehl darf nie mehr Rechte haben als derselbe Befehl
-               als Text. Die heutige Asymmetrie -- anhalten per Sprache moeglich,
-               fortsetzen nie -- MUST erhalten bleiben
-What today's architecture must support:
-               Sprache ist Bedienweise, keine Faehigkeit, und hat keinen
-               act-Pfad. Das MUST so bleiben
-Explicitly NOT implemented now:
-               kein Weckwort, keine Dauerschleife, keine Sprachfaehigkeit
+Feature:            Aufgabenverwaltung
+Status:             PLANNED
+Purpose:            Aufgaben erkennen, verwalten, priorisieren, an Faelligkeiten
+                    erinnern
+Future UX:          Aufgaben tauchen im Briefing und im Dashboard auf; JARVIS
+                    fragt nach, statt selbst zu entscheiden, was dringend ist
+Architectural role: Neue Faehigkeit nach dem Vertrag aus Abschnitt 6
+Inputs:             Mail, Kalender, direkte Eingabe
+Outputs:            Strukturierte Aufgabe mit Faelligkeit, Kategorie, Zustand
+Security:           Aufgabentexte aus Mail sind untrusted. Das Modell darf eine
+                    Aufgabe vorschlagen, aber weder Faelligkeit noch Ziel so
+                    setzen, dass daraus eine Aktion entsteht
+Integration:        Eigener Speicher, eigene Faehigkeit, Stufe 0
+Dependencies:       keine externen Dienste
+Heute noetig:       Skill-Vertrag traegt sie unveraendert; Gatter, Protokoll und
+                    Ratenbegrenzung erbt sie ueber run_skill. Datenkategorie
+                    "Tasks" ist in Abschnitt 8 benannt, aber leer
+NICHT jetzt:        keine Task-Klasse, keine Tabelle, kein Scheduler, keine
+                    Erinnerung, kein Dashboard-Element, kein CLI-Befehl
 ```
 
-#### Home Automation — PLANNED
+#### Documents
 
 ```
-Feature:       HomeKit oder MQTT
-Status:        PLANNED
-Security:      Sicherheitskritischer als alles Bisherige. Das Modell darf nie
-               eine Geraeteadresse oder ein Kommando erzeugen und ausfuehren.
-               Modell entscheidet WAS grundsaetzlich gewuenscht ist ->
-               deterministischer Code waehlt erlaubtes Geraet und Befehl ->
-               Sicherheitsgatter -> Audit -> Aktion
-What today's architecture must support:
-               Der Action-/Permission-Layer darf nicht so eng an Gmail gekoppelt
-               werden, dass externe Aktoren sich nicht sauber einfuegen. Heute
-               ist er es nicht: das Gatter kennt nur Faehigkeitsnamen und Stufen
-Explicitly NOT implemented now:
-               keine HomeKit-Anbindung, kein MQTT, kein Geraeteskill,
-               keine Geraete-Allowlist
+Feature:            Dokumentenanalyse
+Status:             PLANNED
+Purpose:            PDFs, Rechnungen, Vertraege verstehen
+Future UX:          Ein Dokument wird abgelegt, JARVIS sagt was drinsteht und
+                    ordnet es einem Vorgang zu
+Architectural role: Leseweg mit besonders strenger Untrusted-Grenze
+Inputs:             PDF, Text, Tabellen, spaeter OCR
+Outputs:            Strukturiertes Ergebnis -- Klassifikation, Extraktion,
+                    Zusammenfassung
+Security:           Dokumente sind untrusted, ausnahmslos. Ein Dokument darf
+                    keine Anweisung an JARVIS ausloesen. Der Analyseprozess
+                    bekommt keine Werkzeuge, genau wie heute der Modellaufruf.
+                    OCR-Ergebnisse sind ebenfalls untrusted
+Integration:        Parser -> Normalisierung -> Untrusted-Grenze -> Analyse ->
+                    strukturiertes Ergebnis -> optional Memory
+Dependencies:       ein Parser; fuer OCR zusaetzlich eine lokale Engine
+Heute noetig:       sanitize() und die Prozesstrennung sind der vorgesehene Weg
+                    und vorhanden. Wenn Dokumente ins Gedaechtnis schreiben
+                    duerfen, wird der Vertrauensgrad aus 9.2 zur Pflicht
+NICHT jetzt:        kein Parser, kein OCR, keine Dokumententabelle, kein Skill
 ```
 
-#### Proactive Agent — PLANNED
+#### Files
 
 ```
-Feature:       Proaktivitaet
-Status:        PLANNED
-Purpose:       Wichtige Mail, bevorstehende Frist, Kalenderkonflikt, offene
-               Entscheidung von sich aus melden
-Security:      Proactive Observation ist nicht Proactive Action. Beobachten
-               darf JARVIS; jede daraus entstehende Aktion MUST weiterhin durch
-               Policy, Permission, Autonomy, Approval, Gate, Execution, Audit
-What today's architecture must support:
-               Kalenderkonflikte und Fristen werden bereits erkannt. Es fehlt
-               nur der Weg, sich von selbst zu melden -- und der darf kein
-               zweiter Aktionspfad werden
-Explicitly NOT implemented now:
-               keine Benachrichtigung, kein Push, keine Regel-Engine
+Feature:            Dateiablage
+Status:             PLANNED
+Purpose:            Dateien finden, klassifizieren, kontrolliert ablegen
+Future UX:          "Wo liegt der Vertrag von Maerz" -- und spaeter: kontrolliert
+                    einsortieren
+Architectural role: Erste Faehigkeit mit schreibendem Zugriff ausserhalb von Mail
+Inputs:             Dateipfade aus einem freigegebenen Bereich, Dateiinhalte
+Outputs:            Fundstellen, Klassifikation, vorgeschlagene Ablage
+Security:           Dateipfade sind Ziele im Sinne von P1 und MUST
+                    deterministisch berechnet werden -- nie aus der
+                    Modellantwort. Jede schreibende Aktion durchlaeuft denselben
+                    Weg wie ein Mailversand
+Integration:        Faehigkeit mit Pfad-Freigabeliste, analog zur Allowlist
+Dependencies:       keine externen Dienste
+Heute noetig:       Die Zielfeldsperre deckt path, filepath, filename und
+                    destination bereits ab -- ein Schema mit solchen Feldern
+                    laesst sich nicht anlegen
+NICHT jetzt:        kein Dateiskill, keine Pfad-Allowlist, kein Index, kein
+                    Verschieben
 ```
 
----
+#### Research -- Netzquelle
+
+```
+Feature:            Recherche mit echter Quelle
+Status:             REQUIRED, nicht PLANNED
+Purpose:            Die Faehigkeit existiert (CURRENT) und findet nur den
+                    Beispielbestand
+Future UX:          unveraendert -- jarvis research ask, nur mit echten Funden
+Architectural role: Neue Source hinter der vorhandenen Freigabeliste
+Inputs:             Suchbegriffe vom Modell, Quelle vom Code gewaehlt
+Outputs:            Belege mit Quelle und Fundstelle
+Security:           Webseiten sind untrusted. JARVIS darf sie analysieren, ihre
+                    Inhalte duerfen seine Systemregeln nicht veraendern. Der
+                    Rueckweg laeuft durch dieselbe Normalisierung wie Mail
+Integration:        Source-Protokoll in research/source.py, waehle_quellen()
+Dependencies:       Anbieter-Key oder eine eigene Quelle
+Heute noetig:       Rollentrennung steht: Modell macht Begriffe, Code waehlt die
+                    Quelle. Stufe 1 ist gesetzt, Ratenbegrenzung greift
+NICHT jetzt:        keine Recherche-Engine, kein Crawler, kein Index. Nur eine
+                    Source hinter der bestehenden Naht -- nach separatem Auftrag
+```
+
+#### Voice -- Komfort
+
+```
+Feature:            Weckwort, Dauerschleife, komfortablere Sprachbedienung
+Status:             PLANNED  (die Sprachschicht selbst ist CURRENT)
+Purpose:            Sprache als beilaeufige Bedienweise statt einzelner Aufrufe
+Future UX:          Ansprechen ohne Tastatur, kurze Antwort, kein Bildschirm
+Architectural role: Zusaetzliche Ein-/Ausgabeschicht, keine Faehigkeit
+Inputs:             Mikrofon -> Whisper -> Text
+Outputs:            Text -> macOS say
+Security:           Ein Sprachbefehl MUST NOT mehr Rechte haben als derselbe
+                    Befehl als Text. Die heutige Asymmetrie -- anhalten per
+                    Sprache moeglich, fortsetzen nie -- MUST erhalten bleiben.
+                    Sprache MUST NOT einen act-Pfad bekommen
+Integration:        interfaces/voice/, gebaut ueber build_session
+Dependencies:       whisper.cpp, ein Modell, ein Mikrofon
+Heute noetig:       Die Eingabemodalitaet ist nicht fest auf CLI verdrahtet:
+                    build_skill("voice") scheitert absichtlich, Sprache laeuft
+                    ueber sechs feste Absichten. Das MUST so bleiben
+NICHT jetzt:        kein Weckwort, keine Dauerschleife, keine Sprachfaehigkeit,
+                    keine Sprachrechte, keine Sprach-UI
+```
+
+#### Home Automation
+
+```
+Feature:            HomeKit oder MQTT
+Status:             PLANNED
+Purpose:            Geraete steuern
+Future UX:          "Licht im Buero aus" -- und JARVIS weiss, welches Geraet
+                    gemeint ist, ohne dass das Modell die Adresse waehlt
+Architectural role: Erste Faehigkeit mit physischer Wirkung
+Inputs:             Absicht des Nutzers, Geraeteliste aus vertrauenswuerdiger
+                    Quelle
+Outputs:            Ein erlaubtes Kommando an ein erlaubtes Geraet
+Security:           Sicherheitskritischer als alles Bisherige. Das Modell MUST
+                    NOT eine Geraeteadresse oder ein Kommando erzeugen und
+                    ausfuehren. Ablauf: Modell entscheidet WAS grundsaetzlich
+                    gewuenscht ist -> deterministischer Code waehlt erlaubtes
+                    Geraet und erlaubten Befehl -> Sicherheitsgatter -> Audit ->
+                    Aktion. Neue Geraetefaehigkeiten starten auf Stufe 0
+Integration:        Eigene Faehigkeit mit Geraete-Freigabeliste
+Dependencies:       HomeKit braucht macOS und eine Zentrale; MQTT einen Broker
+Heute noetig:       Der Aktionsweg ist nicht Gmail-spezifisch -- das Gatter kennt
+                    nur Faehigkeitsnamen und Stufen. Was fehlt: ein Modell fuer
+                    Zielarten, siehe 19.4
+NICHT jetzt:        keine HomeKit-Anbindung, kein MQTT, kein Geraeteskill, keine
+                    Geraete-Allowlist, keine Geraetetabelle
+```
+
+#### Proactive Agent
+
+```
+Feature:            Proaktivitaet
+Status:             PLANNED
+Purpose:            Wichtige Mail, bevorstehende Frist, Kalenderkonflikt, offene
+                    Entscheidung von sich aus melden
+Future UX:          JARVIS meldet sich knapp, wenn etwas ansteht -- nicht, wenn
+                    nichts ansteht
+Architectural role: Beobachtungsschicht ueber vorhandenen Faehigkeiten
+Inputs:             Bestehende Befunde: Kalenderkonflikte, Fristen, wartende
+                    Freigaben
+Outputs:            Eine Meldung, keine Aktion
+Security:           Proactive Observation ist nicht Proactive Action. Beobachten
+                    darf JARVIS, sofern erlaubt. Jede daraus entstehende Aktion
+                    MUST weiterhin durch Policy, Permission, Autonomy, Approval,
+                    Gate, Execution, Audit. Der Meldeweg selbst MUST NOT ein
+                    zweiter Aktionspfad werden
+Integration:        Zustellweg, der durch dasselbe Gatter geht
+Dependencies:       ein Zustellweg (Push, Mail an sich selbst, Dashboard)
+Heute noetig:       Konflikte und Fristen werden bereits erkannt -- es fehlt nur
+                    das Melden. Der Daemon kann pollen, aber nichts zustellen,
+                    siehe 19.4
+NICHT jetzt:        keine Benachrichtigung, kein Push, keine Regel-Engine, kein
+                    Schwellenwertsystem
+```
+
+#### Always-On / Daemon
+
+```
+Feature:            Dauerbetrieb als macOS-Hintergrunddienst
+Status:             PLANNED  (der Daemon selbst ist CURRENT, ungeprueft auf macOS)
+Purpose:            JARVIS laeuft dauerhaft, ueberlebt Neustarts und Fehler
+Future UX:          Man merkt ihn nicht, ausser wenn er sich meldet
+Architectural role: Zeitsteuerung ueber launchd
+Inputs:             Zeitplan aus [daemon.schedule]
+Outputs:            Regelmaessige Durchlaeufe der eingeplanten Faehigkeiten
+Security:           Ein dauerhaft laufender Prozess MUST NOT eine
+                    Sicherheitsregel umgehen. Er ruft dieselben Faehigkeiten
+                    ueber dasselbe Gatter auf. Der Stoppschalter wirkt sofort
+                    und unabhaengig vom Daemon
+Integration:        deploy/com.jarvis.daemon.plist
+Dependencies:       macOS, launchd
+Heute noetig:       Sechs geforderte Eigenschaften, gemessen am Ist-Stand:
+                      restartfaehig    -- KeepAlive und ThrottleInterval gesetzt,
+                                          nie geladen
+                      ueberwacht       -- fehlt. Kein Gesundheitszustand, keine
+                                          Meldung bei wiederholtem Scheitern
+                      ressourcenschonend -- ProcessType=Background gesetzt, nie
+                                          gemessen
+                      sicher           -- erfuellt: dasselbe Gatter, Einzelinstanz
+                                          per flock
+                      stoppbar         -- erfuellt: Stoppschalter und
+                                          launchctl bootout
+                      auditierbar      -- erfuellt: jeder Durchlauf protokolliert
+NICHT jetzt:        keine Ueberwachung, kein Gesundheitsendpunkt, keine
+                    Ressourcenmessung, keine Always-On-Architektur
+```
 
 ## 20. Future Capability Matrix
 
@@ -1097,6 +1474,7 @@ versehentlich als aktuelle Arbeitspakete gelesen werden.
 | Voice-Komfort | PLANNED | Weckwort, Dauerschleife | Sprache bleibt Bedienweise ohne `act`-Pfad | **NO** |
 | Home Automation | PLANNED | Geraete steuern | Aktionsweg darf nicht Gmail-spezifisch werden | **NO** |
 | Proactive Agent | PLANNED | Von sich aus melden | Kein zweiter Aktionspfad am Gatter vorbei | **NO** |
+| Always-On / Daemon | PLANNED | Dauerbetrieb, ueberwacht und ressourcenschonend | Daemon existiert; Ueberwachung fehlt, siehe 19.5 | **NO** |
 | Weitere Anbieter | PLANNED | OpenAI, Google, lokale Modelle | Provider-Schnittstelle ist bereits schmal genug | **NO** |
 | Kostenbasiertes Routing | PLANNED | Modellwahl nach Kosten, Tempo, Kontextgroesse | Router existiert; Kriterien fehlen | **NO** |
 | Smartphone-Steuerung | IDEA | -- | -- | **NO** |
@@ -1293,7 +1671,7 @@ vorhandene `JARVIS-SPEC.md` ist SPEC-1 und ebenfalls historisch.
 
 * Die Designfassung des Dashboards aus SPEC-2 §7. Sie bleibt eine gute Vorlage
   fuer die kuenftige Control Plane, ist aber kein Abnahmekriterium (OD-4).
-* Der Entscheidungsstrom als Signaturelement (§7.5) -- die Zweiteilung "was das
+* Der Entscheidungsstrom als Signaturelement (SPEC-2 §7.5) -- die Zweiteilung "was das
   Modell entschied / was der Code tat" macht die Vertrauensgrenze sichtbar und
   bleibt eine starke Idee.
 
@@ -1355,6 +1733,30 @@ Damit SPEC-3 nicht wieder veraltet.
 **MUST:** Keine Erfolgsmeldung darf staerker formuliert sein als der
 tatsaechliche Nachweis.
 
+### Wie konkret dieses Dokument werden darf
+
+**MUST:** Bei Sicherheit konkret werden. Nicht "JARVIS soll sicher sein",
+sondern: "Jede Aktion nach aussen durchlaeuft vor der Ausfuehrung eine
+deterministische Zielpruefung und Autorisierung." Nicht "Fremdtext wird
+behandelt", sondern: "Unvertrauenswuerdiger externer Inhalt wird vom Modelllayer
+niemals zu einer vertrauenswuerdigen Anweisung erhoben."
+
+**MUST NOT:** Technische Details festschreiben, die keine Architekturentscheidung
+sind. Eine Bibliothek und ihre Version gehoeren in `pyproject.toml`, nicht in
+eine Spezifikation -- sonst veraltet sie beim naechsten Update.
+
+Die Grenze verlaeuft an der Frage: *Wuerde eine andere Wahl hier die
+Sicherheitsarchitektur oder eine geplante Faehigkeit beruehren?* Wenn ja, ist es
+eine Architekturentscheidung und gehoert hierher. Wenn nein, gehoert es in den
+Code.
+
+Beispiele aus diesem Dokument. Festgeschrieben, weil Architektur: dass das
+Dashboard ausschliesslich an Loopback bindet; dass der Modellschluessel ueber
+die Standardeingabe geht; dass Ziele aus vertrauenswuerdiger Quelle neu
+berechnet werden. Bewusst nicht festgeschrieben: welcher Webserver, welches
+Schriftbild, welche SQLite-Version, welches Modell -- alles austauschbar, ohne
+eine Zusage dieses Dokuments zu brechen.
+
 ---
 
 ## 28. Handoff Instructions
@@ -1375,7 +1777,7 @@ ausdruecklich **nicht** zu bauen.
 
 ```sh
 uv sync
-uv run pytest -q                              # 1018 Tests
+uv run pytest -q                              # 1018 Tests, siehe KI-8
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe
@@ -1433,12 +1835,104 @@ Antwort, die zum Schema passt.
 
 ---
 
-## Anhang — Self-Audit dieser Spezifikation
+## Anhang A — Abdeckung der 70 Blueprint-Anforderungen
+
+Der SPEC-3-Blueprint enthaelt **70 nummerierte Anforderungen** (§1-§70) und
+verlangt in §69 zusaetzlich **28 Ausgabe-Abschnitte**. Beides ist zweierlei: die
+28 Abschnitte sind die Gliederung, die 70 Anforderungen sind der Inhalt. Diese
+Matrix fuehrt die 70 einzeln nach.
+
+Status: **erfuellt** = im Dokument vorhanden und belegt. Der Beleg nennt die
+SPEC-3-Stelle.
+
+| § | Anforderung | Status | Beleg in SPEC-3 |
+|---|---|---|---|
+| 1 | Nichts blind uebernehmen, Quellenhierarchie | erfuellt | Kopf ("Repository state", "Based on"); Lesehinweis; Abschnitt 2 durchgehend am Code belegt |
+| 2 | Vier Statusstufen | erfuellt | Abschnitt *Statusstufen*, fuenf Stufen inkl. HISTORICAL |
+| 3 | Goldene Regel fuer Zukunftsfunktionen | erfuellt | *Statusstufen* → "Die goldene Regel", 15 verbotene Artefakte |
+| 4 | Warum die Zukunft beschrieben wird | erfuellt | 19.1; 19.4 mit der konkreten Sackgassen-Pruefung |
+| 5 | Zielbild von JARVIS | erfuellt | 19.1 |
+| 6 | Grundarchitektur | erfuellt | 3.1 Diagramm |
+| 7 | Das Modell ist nicht die Autoritaet | erfuellt | 3.2 P1, vierfach abgesichert; 5.1 |
+| 8 | Read / Decide / Act | erfuellt | 3.3 Tabelle |
+| 9 | Untrusted Content | erfuellt | 3.2 P3; 4.1 Vertrauensgrenzen |
+| 10 | Prompt-Injection als Architekturprinzip | erfuellt | 3.2 P1+P2+P3 zusammen; gemessenes Beispiel in 3.2 P1 |
+| 11 | Action Execution Layer | erfuellt | 19.2 |
+| 12 | Atomische Aktion, Race Conditions | erfuellt | 5.2 bekannte Luecken; SEC-2; OD-1 |
+| 13 | Approval System | erfuellt | 4.2; 5.1; SEC-1 als bestaetigter Verstoss gegen genau diese Regel |
+| 14 | Stop Switch | erfuellt | 4.2 Reihenfolge; Security Matrix |
+| 15 | Autonomie explizit modelliert | erfuellt | **4.3**, vier Stufen tabelliert; Begruendung gegen die 5-Stufen-Vorlage |
+| 16 | Skill-System, sieben Eigenschaften | erfuellt | **6.1**, Tabelle mit Beispiel `mail_send` |
+| 17 | LLM Layer, Provider-Abstraktion | erfuellt | Abschnitt 7; Routing-Kriterien als PLANNED in Abschnitt 20 |
+| 18 | Lokale und Cloud-Modelle, modellagnostisch | erfuellt | Abschnitt 7, MUST-Satz |
+| 19 | Isolation, Model vs JARVIS capability | erfuellt | 3.2 P2 mit Messung; OD-5 Zielhost-Allowlist |
+| 20 | Secrets | erfuellt | 4.7; Abschnitt 8 Kategorie Secrets |
+| 21 | Datenarchitektur, zehn Kategorien | erfuellt | **Abschnitt 8**, alle zehn, drei davon ausdruecklich leer |
+| 22 | Memory, Arten und Attribute | erfuellt | **9.1** sieben Arten, **9.2** sechs Attribute |
+| 23 | User Context | erfuellt | **9.3** |
+| 24 | Task System | erfuellt | 19.5 Steckbrief Tasks |
+| 25 | Document System | erfuellt | 19.5 Steckbrief Documents |
+| 26 | File System | erfuellt | 19.5 Steckbrief Files |
+| 27 | Research / Web | erfuellt | 19.5 Steckbrief Research (als REQUIRED gefuehrt, weil die Faehigkeit existiert) |
+| 28 | Voice | erfuellt | 19.5 Steckbrief Voice |
+| 29 | Home Automation | erfuellt | 19.5 Steckbrief Home Automation |
+| 30 | Proaktivitaet | erfuellt | 19.5 Steckbrief Proactive Agent |
+| 31 | Daemon / Always-On | erfuellt | **19.5 Steckbrief Always-On**, sechs Eigenschaften einzeln bewertet |
+| 32 | Dashboard als Control Plane | erfuellt | **Abschnitt 12**, alle 15 Bereiche mit Ist-Stand (7 vorhanden) |
+| 33 | Dashboard ist nicht die Sicherheitsinstanz | erfuellt | 4.6; Abschnitt 12 MUST |
+| 34 | Observability | erfuellt | **4.9**, acht Fragen mit Herkunft |
+| 35 | Audit-Integritaet | erfuellt | 3.2 P4; 4.9 bekannte Grenze |
+| 36 | Privacy | erfuellt | Abschnitt 10; 9.3 |
+| 37 | Fehlerzustaende | erfuellt | **5.2**, neun Zustaende zugeordnet, drei fehlen nachweislich |
+| 38 | Idempotenz | erfuellt | SEC-2 mit Messung; Security Matrix; OD-1 |
+| 39 | Teststrategie, sieben Arten | erfuellt | Abschnitt 13, Tabelle |
+| 40 | Mock ist nicht Live | erfuellt | *Statusstufen* → Nachweisstufen; Abschnitt 11 |
+| 41 | macOS | erfuellt | Abschnitt 14, PLATFORM VERIFIED = NO ausnahmslos |
+| 42 | Technische Schulden, sechs Felder | erfuellt | Abschnitt 18, TD-1 bis TD-5 |
+| 43 | Security Findings aus dem Audit | erfuellt | Abschnitt 17, 12 behobene und 7 offene |
+| 44 | **Approval + Allowlist pruefen** | erfuellt | **SEC-1** -- geprueft, bestaetigt, als SECURITY ISSUE gefuehrt |
+| 45 | **Doppelte Ausfuehrung pruefen** | erfuellt | **SEC-2** -- geprueft, bestaetigt, mit Messung |
+| 46 | SPEC-2 Vergleich | erfuellt | Abschnitt 25, alle fuenf Kategorien |
+| 47 | Zwoelf-Felder-Schema je PLANNED-Feature | erfuellt | **19.5**, acht Steckbriefe, alle zwoelf Felder |
+| 48 | Keine Phantom-Implementierungen | erfuellt | 19.3 MUST NOT; Abschnitt 24; kein Code geaendert |
+| 49 | Architectural Playground / Extension Points | erfuellt | **19.3**, fuenf Punkte mit Ist-Stand |
+| 50 | Future Compatibility | erfuellt | **19.4**, sechs Faehigkeiten geprueft, zwei Befunde |
+| 51 | Roadmap aus dem Ist-Zustand | erfuellt | Abschnitt 21 mit Reihenfolgebegruendung |
+| 52 | Security before Autonomy | erfuellt | Abschnitt 21 Leitregel |
+| 53 | Nicht-funktionale Anforderungen | erfuellt | **3.4**, alle acht mit Ist-Stand |
+| 54 | Current Capability Matrix | erfuellt | Abschnitt 15, sieben Spalten |
+| 55 | Security Matrix | erfuellt | Abschnitt 16, alle elf geforderten Eigenschaften |
+| 56 | Future Capability Matrix | erfuellt | Abschnitt 20, "Implement Now?" durchgehend NO |
+| 57 | Open Architectural Decisions | erfuellt | Abschnitt 23, OD-1 bis OD-5 |
+| 58 | Non-Goals | erfuellt | Abschnitt 24 |
+| 59 | Change Management | erfuellt | Abschnitt 27 |
+| 60 | Versionierung | erfuellt | Kopfblock |
+| 61 | Handoff-Anforderung | erfuellt | Abschnitt 28, alle 15 Fragen beantwortet |
+| 62 | MUST / SHOULD / MAY / PLANNED / IDEA | erfuellt | *Statusstufen*; **MAY tatsaechlich verwendet** in 4.3 und 19.3 |
+| 63 | Technische Details nur wo stabil | erfuellt | **Abschnitt 27** → "Wie konkret dieses Dokument werden darf" |
+| 64 | Sicherheit muss konkret sein | erfuellt | Abschnitt 27 mit Gegenbeispielen; 3.2 durchgehend |
+| 65 | Keine Code-Aenderungen waehrend der Spec | erfuellt | Abschnitt 17 SEC-1/SEC-2 als Finding statt Fix; Anhang B |
+| 66 | Validierung der fertigen Spec | erfuellt | Anhang B |
+| 67 | Finaler Self-Audit | erfuellt | Anhang B |
+| 68 | Abschliessender Grundsatz | erfuellt | **Abschnitt 1** → "Der Leitsatz" |
+| 69 | Erwartetes Ergebnis, 28 Abschnitte | erfuellt | Abschnitte 1-28 vollstaendig vorhanden |
+| 70 | Letzte Anweisung, nichts vorziehen | erfuellt | goldene Regel; Abschnitt 20; Abschnitt 24; kein Code geaendert |
+
+**70 von 70 erfuellt.** Die fett gesetzten Belege sind in der Nachtragsrunde
+entstanden -- acht Anforderungen fehlten ganz, acht waren nur teilweise
+abgedeckt. Gefunden wurden sie nicht durch den Self-Audit unten, sondern durch
+eine Auszaehlung der Blueprint-Anforderungen: der Self-Audit prueft gegen die
+**Gliederung**, und eine vollstaendige Gliederung kann fehlenden Inhalt
+verdecken. Beide Pruefungen sind noetig, und sie pruefen Verschiedenes.
+
+---
+
+## Anhang B — Self-Audit dieser Spezifikation
 
 | Pruefung | Ergebnis |
 |---|---|
 | Ist der aktuelle Code korrekt dargestellt? | ja -- jede CURRENT-Aussage am Code oder an ausgefuehrten Tests geprueft |
-| Sind alle Audit-Befunde beruecksichtigt? | ja -- 12 behobene in Abschnitt 17, 6 offene Unstimmigkeiten, 2 neue Sicherheitsluecken |
+| Sind alle Audit-Befunde beruecksichtigt? | ja -- 12 behobene in Abschnitt 17, 7 offene Unstimmigkeiten, 2 Sicherheitsluecken |
 | Sind offene Probleme sichtbar? | ja -- SEC-1 und SEC-2 in Executive Summary, Security Matrix, Known Issues und Roadmap |
 | Sind Security-Findings korrekt klassifiziert? | ja -- SEC-1 und SEC-2 als SECURITY ISSUE, nicht als technische Schuld (Blueprint §44) |
 | Sind Mock und Live getrennt? | ja -- Abschnitt 11, alle fuenf LIVE VERIFIED = NO |
@@ -1446,17 +1940,18 @@ Antwort, die zum Schema passt.
 | Ist SPEC-2 als historisch gekennzeichnet? | ja -- Abschnitt 25 |
 | Sind aktuelle Anforderungen von Zukunftsplaenen getrennt? | ja -- Abschnitte 1-16 vs. 19-21 |
 | Sind PLANNED-Features nicht zur Implementierung freigegeben? | ja -- Abschnitt 20, Spalte "Implement Now?" durchgehend NO |
-| Ist die zukuenftige Architektur ausreichend beschrieben? | ja -- Abschnitt 19 mit Steckbriefen |
-| Voice, Tasks, Files, Documents, Research, Home Automation, Proaktivitaet? | ja -- alle in Abschnitt 19/20; Research als REQUIRED, weil die Faehigkeit existiert |
-| Gibt es Phantom-Implementierungen? | nein -- diese Runde hat **keinen** Code geaendert |
-| Ist das Execution-/Authorization-Modell klar? | ja -- Abschnitt 5 |
-| Ist die Approval-Architektur klar? | ja -- Abschnitt 5.1, mit beiden offenen Luecken |
-| Ist der Stop Switch geschuetzt? | ja -- Abschnitt 4.2, gemessen |
-| Ist Untrusted Content korrekt behandelt? | ja -- P3, gemessen |
-| Ist Idempotenz/Race Condition beruecksichtigt? | ja -- SEC-2, gemessen und bestaetigt |
-| Sind Memory und Privacy beruecksichtigt? | ja -- Abschnitte 9 und 10 |
+| Ist die zukuenftige Architektur ausreichend beschrieben? | ja -- Abschnitt 19 mit acht Steckbriefen nach vollem Schema |
+| Voice, Tasks, Files, Documents, Research, Home Automation, Proaktivitaet? | ja -- alle in 19.5; Research als REQUIRED, weil die Faehigkeit existiert |
+| Gibt es Phantom-Implementierungen? | nein -- weder die Spec-Erstellung noch die Nachtragsrunde hat Code geaendert |
+| Ist das Execution-/Authorization-Modell klar? | ja -- Abschnitt 5, beide Wege symmetrisch |
+| Ist die Approval-Architektur klar? | ja -- 5.1, mit beiden offenen Luecken |
+| Ist der Stop Switch geschuetzt? | ja -- 4.2, gemessen |
+| Ist Untrusted Content korrekt behandelt? | ja -- 3.2 P3, gemessen |
+| Ist Idempotenz/Race Condition beruecksichtigt? | ja -- SEC-2, gemessen und bestaetigt; 5.2 nennt zusaetzlich den Teilausfuehrungsfall |
+| Sind Memory und Privacy beruecksichtigt? | ja -- Abschnitte 9 und 10, gemeinsam entworfen (9.3) |
 | Ist die Roadmap nachvollziehbar? | ja -- Abschnitt 21 mit Begruendung der Reihenfolge |
 | Kann ein neuer Claude allein mit Repository + SPEC-3 arbeiten? | Abschnitt 28 ist darauf ausgelegt |
+| Sind alle 70 Blueprint-Anforderungen abgedeckt? | ja -- Anhang A, einzeln mit Beleg |
 
 **Nicht geprueft und ausdruecklich offen:** alles unter Abschnitt 14 (macOS) und
 Abschnitt 11 (Live-Verbindungen). Diese Luecken lassen sich nicht durch Lesen

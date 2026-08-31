@@ -492,33 +492,36 @@ def test_bedienweise_ohne_faehigkeit_zeigt_keine_verlangte_stufe(dashboard):
     assert '<span class="verlangt">/ --</span>' in text
 
 
-def test_vorgang_trennt_modell_und_code(dashboard):
+def test_vorgang_zeigt_ziele_und_modellfelder_in_einer_liste(dashboard):
+    """Eine gemeinsame Faktenliste: Ziele zuerst, dann die Modellfelder.
+
+    Die frueher hier gepruefte Zweiteilung ist entfernt -- SPEC-3 25 fuehrt den
+    Entscheidungsstrom als Bauplan, nicht als umzusetzendes Element. Die
+    Information bleibt vollstaendig, nur die Trennung ist weg.
+    """
     vorgang_einstellen(dashboard, fields={"category": "geschaeftlich"})
     text = klient(dashboard).get("/entscheidungen").text
 
-    assert "Modell entschied" in text
-    assert "Code berechnete" in text
+    assert "Modell entschied" not in text
+    assert "Code berechnete" not in text
+    assert 'class="naht' not in text
 
-    # Nur innerhalb der Naht messen: in der Zusammenfassung darueber steht die
-    # Adresse ohnehin, und das ist keine Aussage ueber ihre Herkunft.
-    naht = text.index('<div class="naht">')
-    modell = text.index("naht-halb modell", naht)
-    code = text.index("naht-halb code", naht)
-    kategorie = text.index("geschaeftlich", naht)
-    ziel = text.index("kunde@example.com", naht)
-
-    # Was das Modell entschied, steht links; das Ziel rechts. Stuende es links,
-    # waere das kein Schoenheits-, sondern ein Prinzipienfehler -- und genau
-    # daran zu erkennen.
-    assert modell < kategorie < code < ziel
+    liste = text.index('<dl class="facts">')
+    ende = text.index("</dl>", liste)
+    block = text[liste:ende]
+    # Beides steht drin, und die Ziele stehen zuerst.
+    assert block.index("kunde@example.com") < block.index("geschaeftlich")
+    assert "Entschieden von" in block
 
 
-def test_entwurfstext_steht_ausserhalb_beider_haelften(dashboard):
-    """Vom Modell geschriebene Prosa ist kein berechnetes Ziel."""
+def test_entwurfstext_steht_ausserhalb_der_faktenliste(dashboard):
+    """Vom Modell geschriebene Prosa ist keine Faktenzeile."""
     vorgang_einstellen(dashboard)
     text = klient(dashboard).get("/entscheidungen").text
     assert "Entwurfstext" in text
     assert '<div class="item-body">Guten Tag.</div>' in text
+    liste = text[text.index('<dl class="facts">') : text.index("</dl>")]
+    assert "Guten Tag." not in liste
 
 
 def test_gatterleiter_nennt_alle_fuenf_sprossen(dashboard):

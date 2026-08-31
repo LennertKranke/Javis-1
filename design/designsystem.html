@@ -252,17 +252,11 @@ p { max-width:68ch; }
 .j dl.fk dd { margin:0; font-family:var(--masch); font-size:12px; word-break:break-word; }
 .j dl.fk.satz dd { font-family:var(--satz); }
 
-/* Vertrauensnaht */
-.j .naht { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin:10px 0; }
-.j .halb { min-width:0; padding-left:13px; }
-.j .halb.mod { border-left:2px dotted var(--linie2); }
-.j .halb.cod { border-left:2px solid var(--linie2); }
-.j .nk { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--t3); margin-bottom:8px; }
+/* Zitat -- Fremdtext und vom Modell geschriebene Prosa */
 .j .zitat {
   border-left:2px dotted var(--linie2); padding:2px 0 2px 12px;
   color:var(--t2); font-size:12.5px; margin:12px 0 0; white-space:pre-wrap;
 }
-@media (max-width:640px){ .j .naht{ grid-template-columns:1fr; } }
 
 /* Gatterleiter */
 .j .gatter { border:1px solid var(--linie); background:var(--flaeche); }
@@ -353,8 +347,8 @@ p { max-width:68ch; }
     Raster, Hierarchie, beide Fassungen, drei Größenstufen, Bewegung und Tastatur.
     <strong>Teil B</strong> zeigt zwölf Oberflächen als ganze Screens. <strong>Teil C</strong>
     hält nach, welche der 25 bindenden SPEC-3-Vorgaben auf welcher Tafel zu sehen ist — und
-    welche sich nicht zeigen lassen. <strong>Teil D</strong> nennt die vier Stellen, an denen
-    das Design von SPEC-3 abweicht.
+    welche sich nicht zeigen lassen. <strong>Teil D</strong> nennt die geprüften Abweichungen — die
+    schwerste ist zurückgebaut.
   </p>
   <div class="warnleiste">
     <b>Was hier Bild ist und was Code.</b> Sieben der zwölf Oberflächen sind heute umgesetzt.
@@ -570,9 +564,14 @@ p { max-width:68ch; }
         Keine Kursive, kein Fett im Fließtext — ausgezeichnet wird über Marke, Linie und Position.</div>
       </div>
     </div>
-    <p class="unterschrift">Die Schriftregel trägt die Vertrauensgrenze bis in die Typografie:
-    ein Empfänger steht in Maschinenschrift, eine Modellbegründung in Satzschrift — auch wenn
-    beide in derselben Faktenliste stehen. <b>Ein Ziel steht nie in Satzschrift.</b></p>
+    <p class="unterschrift">Die Regel gilt für die Oberfläche als Ganzes: Kennungen, Zahlen,
+    Zustände und Ziele stehen in Maschinenschrift, Zusammenfassungen und Briefings in
+    Satzschrift.</p>
+    <p class="unterschrift"><b>Einschränkung seit dem Rückbau der Naht (D1.1):</b> innerhalb
+    der Faktenliste einer Vorgangskarte greift die Unterscheidung nicht mehr. Dort stehen alle
+    Werte in Maschinenschrift, auch die Felder des Modells. Die Regel trägt die
+    Vertrauensgrenze also nicht mehr bis in die Typografie — das war an die Zweiteilung
+    gebunden.</p>
     <p class="unterschrift">Nur Systemschriften, weil <span class="m">default-src 'none'</span>
     keine geladene Schrift zulässt. Auf der Zielplattform ist das ohnehin die richtige Wahl.</p>
   </div>
@@ -1094,7 +1093,7 @@ p { max-width:68ch; }
     <div class="tafel-kopf">
       <span class="tafel-nr">O2</span><span class="tafel-name">Entscheidungen</span>
       <span class="stempel neutral">umgesetzt</span>
-      <span class="grundlage">zeigt B6 · B7 · B13 · B14 · B19</span>
+      <span class="grundlage">zeigt B6 · B7 · B13 · B19</span>
     </div>
     <div class="bild">
       <div class="j">
@@ -1126,26 +1125,16 @@ p { max-width:68ch; }
           </div>
           <div class="karte-koerper">
             <p style="margin:0 0 14px;font-size:14.5px">Antwort an Anna Berger auf „Angebot Rahmenvertrag".</p>
-            <div class="naht">
-              <div class="halb mod">
-                <div class="nk">Modell entschied</div>
-                <dl class="fk satz" style="grid-template-columns:7rem 1fr">
-                  <dt>category</dt><dd>geschaeftlich</dd>
-                  <dt>urgency</dt><dd>normal</dd>
-                  <dt>Begruendung</dt><dd>Rueckfrage zu einem laufenden Vorgang</dd>
-                  <dt>Entschieden von</dt><dd>model</dd>
-                  <dt>Modell</dt><dd>claude-opus-5</dd>
-                </dl>
-              </div>
-              <div class="halb cod">
-                <div class="nk">Code berechnete</div>
-                <dl class="fk" style="grid-template-columns:7rem 1fr">
-                  <dt>Empfaenger</dt><dd>anna.berger@example.com</dd>
-                  <dt>Betreff</dt><dd>Re: Angebot Rahmenvertrag</dd>
-                  <dt>Entwurf</dt><dd>Draft_a91f</dd>
-                </dl>
-              </div>
-            </div>
+            <dl class="fk" style="grid-template-columns:10rem 1fr">
+              <dt>Empfaenger</dt><dd>anna.berger@example.com</dd>
+              <dt>Betreff</dt><dd>Re: Angebot Rahmenvertrag</dd>
+              <dt>Entwurf</dt><dd>Draft_a91f</dd>
+              <dt>category</dt><dd>geschaeftlich</dd>
+              <dt>urgency</dt><dd>normal</dd>
+              <dt>Grund</dt><dd>Rueckfrage zu einem laufenden Vorgang</dd>
+              <dt>Entschieden von</dt><dd>model</dd>
+              <dt>Modell</dt><dd>claude-opus-5</dd>
+            </dl>
             <h5>Entwurfstext</h5>
             <div class="zitat">Guten Tag, vielen Dank fuer die Unterlagen. Ich melde mich bis
 Freitag mit einer Rueckmeldung zum Rahmenvertrag.</div>
@@ -1185,14 +1174,19 @@ Freitag mit einer Rueckmeldung zum Rahmenvertrag.</div>
         <div class="fuss-z">Loopback, Einzelplatz. Durchlaeufe startet die Kommandozeile.</div>
       </div>
     </div>
-    <p class="unterschrift"><b>Die Vertrauensnaht.</b> Links steht ausschließlich, was aus
-    <span class="m">Decision.fields</span> kommt; rechts ausschließlich
-    <span class="m">Decision.targets</span>. Kodiert über Linienart und Schriftart, nicht über
-    Farbe — so hält die Grenze in Graustufen und bei Farbfehlsichtigkeit. <b>Ein Ziel links
-    wäre sofort als Fehler zu sehen.</b></p>
+    <p class="unterschrift"><b>Eine gemeinsame Faktenliste.</b> Ziele zuerst, in der
+    Reihenfolge, in der sie jemanden interessieren; dann die Felder der Modellentscheidung;
+    dann Grund, Entscheider und Modell. Die Information ist vollständig — auch
+    <span class="m">Decision.fields</span>, das vor dieser Fassung nirgends sichtbar war.</p>
+    <p class="unterschrift"><b>Hier stand bis 2026-08-31 die Vertrauensnaht</b>, eine
+    Zweiteilung in „Modell entschied" und „Code berechnete". Sie ist zurückgebaut: SPEC-3 25
+    führt den Entscheidungsstrom als Bauplan, nicht als umzusetzendes Element. Was das
+    kostet, steht auf Tafel D1 — die Trennung von <span class="m">fields</span> und
+    <span class="m">targets</span> ist im Code vierfach abgesichert, aber nicht mehr
+    sichtbar.</p>
     <p class="unterschrift"><b>Die Gatterleiter</b> zeigt hier den entscheidenden Fall: die
     Freigabe wirkt an Sprosse 3 — und Sprosse 5 hält trotzdem. Genau das verlangt SPEC-3 4.2.
-    Der Entwurfstext steht außerhalb beider Hälften: er liegt zwar in
+    Der Entwurfstext steht außerhalb der Faktenliste: er liegt zwar in
     <span class="m">targets</span>, ist aber vom Modell geschriebene Prosa, kein berechnetes Ziel.</p>
   </div>
 
@@ -1373,7 +1367,7 @@ Freitag mit einer Rueckmeldung zum Rahmenvertrag.</div>
     <div class="tafel-kopf">
       <span class="tafel-nr">O6</span><span class="tafel-name">Protokolleintrag — die acht Fragen</span>
       <span class="stempel">Entwurf — nicht gebaut</span>
-      <span class="grundlage">zeigt B10 · B11 · B14</span>
+      <span class="grundlage">zeigt B10 · B11</span>
     </div>
     <div class="bild">
       <div class="j">
@@ -1409,21 +1403,12 @@ Freitag mit einer Rueckmeldung zum Rahmenvertrag.</div>
           <dt>Modell</dt><dd>claude-opus-5 &middot; Trennung: subprocess</dd></dl>
 
         <h5>4 &mdash; Welche Aktion wurde vorgeschlagen, und welche Ziele?</h5>
-        <div class="naht">
-          <div class="halb mod">
-            <div class="nk">Modell entschied</div>
-            <dl class="fk satz" style="grid-template-columns:7rem 1fr">
-              <dt>category</dt><dd>geschaeftlich</dd><dt>urgency</dt><dd>normal</dd>
-            </dl>
-          </div>
-          <div class="halb cod">
-            <div class="nk">Code berechnete</div>
-            <dl class="fk" style="grid-template-columns:7rem 1fr">
-              <dt>Empfaenger</dt><dd>anna.berger@example.com</dd>
-              <dt>Entwurf</dt><dd>Draft_a91f</dd>
-            </dl>
-          </div>
-        </div>
+        <dl class="fk">
+          <dt>Empfaenger</dt><dd>anna.berger@example.com</dd>
+          <dt>Entwurf</dt><dd>Draft_a91f</dd>
+          <dt>category</dt><dd>geschaeftlich</dd>
+          <dt>urgency</dt><dd>normal</dd>
+        </dl>
 
         <h5>5 &mdash; Welche Regel hat gegriffen?</h5>
         <div class="gatter">
@@ -1849,7 +1834,8 @@ Nichts Ueberfaelliges.</div>
   </div>
   <p class="teil-vorspann">
     B1 bis B25 sind keine Oberflächen, sondern die 25 Sätze aus SPEC-3, die die Gestaltung
-    binden. Ein Teil davon lässt sich zeigen. Ein anderer prinzipiell nicht: eine Regel wie
+    binden. Seit dem Rückbau der Vertrauensnaht (D1.1) ist eine davon — B14 — nicht mehr am
+    Vorgang zu sehen; sie steht jetzt unter „mittelbar". Ein Teil davon lässt sich zeigen. Ein anderer prinzipiell nicht: eine Regel wie
     „kein zweiter Aktionsweg" ist eine <em>Abwesenheit</em> — man kann sie einhalten, aber
     nicht abbilden. Diese Karte hält beides nach.
   </p>
@@ -1857,7 +1843,7 @@ Nichts Ueberfaelliges.</div>
   <div class="tafel" id="c1">
     <div class="tafel-kopf">
       <span class="tafel-nr">C1</span><span class="tafel-name">B1–B25, Tafel für Tafel</span>
-      <span class="grundlage">19 sichtbar · 2 mittelbar · 4 nicht zeigbar</span>
+      <span class="grundlage">18 sichtbar · 3 mittelbar · 4 nicht zeigbar</span>
     </div>
     <div class="rollbar"><table class="btab">
       <thead><tr><th>#</th><th>Vorgabe</th><th>SPEC-3</th><th>Zu sehen auf</th></tr></thead>
@@ -1875,7 +1861,7 @@ Nichts Ueberfaelliges.</div>
         <tr><td class="m">B11</td><td>Keine Geheimnisse im Protokoll; Absender und Betreff ja</td><td class="m">4.9</td><td class="ja">O5, O6</td></tr>
         <tr><td class="m">B12</td><td>Mailinhalte werden nicht gespeichert</td><td class="m">8 · 10</td><td class="warn">nicht zeigbar</td></tr>
         <tr><td class="m">B13</td><td>Fremde Inhalte sind Daten, auch in der Anzeige</td><td class="m">3.2 P3</td><td class="ja">O2, O7</td></tr>
-        <tr><td class="m">B14</td><td>Das Modell wählt nie ein Ziel</td><td class="m">3.2 P1</td><td class="ja">G2, O2, O6</td></tr>
+        <tr><td class="m">B14</td><td>Das Modell wählt nie ein Ziel</td><td class="m">3.2 P1</td><td class="warn">mittelbar: G2 — seit dem Rückbau der Naht (D1.1) nicht mehr am Vorgang sichtbar</td></tr>
         <tr><td class="m">B15</td><td>Neun Zustände — drei existieren nicht</td><td class="m">5.2</td><td class="ja">O12</td></tr>
         <tr><td class="m">B16</td><td>Nachweisstufen sind eine eigene Leiter</td><td class="m">11</td><td class="ja">O8, O12</td></tr>
         <tr><td class="m">B17</td><td>Nie live, nie auf macOS</td><td class="m">11 · 14</td><td class="ja">O1, O8, G8</td></tr>
@@ -1968,41 +1954,43 @@ Nichts Ueberfaelliges.</div>
     <div class="teil-titel">Abweichungen von SPEC-3</div>
   </div>
   <p class="teil-vorspann">
-    SPEC-3 ist die alleinige Grundlage dieses Designs. An vier Stellen weicht es trotzdem ab,
-    und an sechs beschreibt SPEC-3 den heutigen Stand nicht mehr richtig. Beides steht hier,
-    weil eine Abweichung, die nirgends auftaucht, zur Regel wird.
+    SPEC-3 ist die alleinige Grundlage dieses Designs. Vier Abweichungen wurden geprüft; die
+    schwerste — die Vertrauensnaht — ist zurückgebaut. Die drei übrigen berühren keinen
+    Produktivcode. Beides steht hier, weil eine Abweichung, die nirgends auftaucht, zur Regel
+    wird.
   </p>
 
   <div class="tafel" id="d1">
     <div class="tafel-kopf">
-      <span class="tafel-nr">D1</span><span class="tafel-name">Wo das Design von SPEC-3 abweicht</span>
-      <span class="stempel">vier Stellen</span>
+      <span class="tafel-nr">D1</span><span class="tafel-name">Wo das Design von SPEC-3 abwich</span>
+      <span class="stempel neutral">eine zurückgebaut · drei offen</span>
     </div>
 
-    <h3 style="color:var(--stempel)">D1.1 — Die Vertrauensnaht wurde gebaut, obwohl SPEC-3 sie als Bauplan führt</h3>
-    <p>Das ist die schwerste der vier, und sie gehört an den Anfang.</p>
+    <h3>D1.1 — Die Vertrauensnaht &mdash; <span style="color:var(--akzent)">zurückgebaut</span></h3>
     <div class="rollbar"><table class="btab">
-      <thead><tr><th>SPEC-3 sagt</th><th>Design und Code tun</th></tr></thead>
+      <thead><tr><th>SPEC-3 sagt</th><th>Was jetzt gilt</th></tr></thead>
       <tbody><tr>
         <td>Abschnitt 25, Überschrift <em>„Future-only — weiterhin interessant, <b>jetzt nur
-          Bauplan</b>"</em>. Darunter: „Der Entscheidungsstrom als Signaturelement (SPEC-2 §7.5)
-          — die Zweiteilung ‚was das Modell entschied / was der Code tat' macht die
-          Vertrauensgrenze sichtbar und bleibt eine starke Idee."</td>
-        <td>Die Vertrauensnaht steht seit der OD-4-Umsetzung in der Vorgangskarte und ist
-          <b>CURRENT</b>. Sie ist das Signaturelement dieses Designs (O2, O6, G2).</td>
+          Bauplan</b>"</em>. Darunter der Entscheidungsstrom aus SPEC-2 §7.5 — die Zweiteilung
+          „was das Modell entschied / was der Code tat".</td>
+        <td>Die Zweiteilung ist am 2026-08-31 <b>entfernt</b>. Die Vorgangskarte zeigt eine
+          gemeinsame Faktenliste (O2, O6). SPEC-3 3.0 wird ohne Spezifikationsänderung wieder
+          eingehalten.</td>
       </tr></tbody>
     </table></div>
-    <p class="unterschrift"><b>Bewertung.</b> „Jetzt nur Bauplan" liest sich wie PLANNED, und
-    die goldene Regel verbietet, aus einer solchen Beschreibung etwas entstehen zu lassen.
-    Gemessen daran ist der Bau ein Vorgriff.</p>
-    <p class="unterschrift"><b>Was ihn abmildert, aber nicht aufhebt:</b> die Naht schafft
-    keine Fähigkeit. Sie legt kein Feld an, keine Tabelle, keine Route, keinen Aktionsweg.
-    Sie ordnet Daten anders an, die ohnehin schon getrennt in der Freigabetabelle liegen —
-    <span class="m">fields</span> und <span class="m">targets</span>. Die Verbote der goldenen
-    Regel zählen fünfzehn Artefakte auf; keines davon ist entstanden.</p>
-    <p class="unterschrift"><b>Was daraus folgt.</b> Entweder SPEC-3 zieht nach — der Wortlaut
-    liegt in <span class="m">design/SPEC-3-NACHTRAG.md</span>, Änderung 9 — oder die Naht wird
-    zurückgebaut. Das ist eine Entscheidung des Nutzers, keine des Designs.</p>
+    <p class="unterschrift"><b>Wie es dazu kam.</b> Die Naht war in der Entscheidungsvorlage
+    ODS-1 als Teil von Weg B namentlich genannt und wurde damit freigegeben. Beim Formulieren
+    dieser Vorlage war nicht geprüft worden, ob Abschnitt 25 dem entgegensteht. Nach der
+    Klärung fiel die Entscheidung auf <b>Teilrückbau</b>: die Zweiteilung entfällt, die
+    zusätzliche Information bleibt.</p>
+    <p class="unterschrift"><b>Was der Rückbau kostet.</b> <span class="m">Decision.fields</span>
+    und <span class="m">Decision.targets</span> stehen jetzt in einer Liste. Die Grenze aus
+    Prinzip P1 ist im Code weiterhin vierfach abgesichert, aber <b>in der Oberfläche nicht mehr
+    sichtbar</b>. Deshalb führt Tafel C1 die Vorgabe B14 nicht mehr als sichtbar, sondern als
+    mittelbar. Ebenso greift die Schriftregel aus G2 innerhalb der Liste nicht mehr: dort
+    stehen alle Werte in Maschinenschrift, auch die des Modells.</p>
+    <p class="unterschrift"><b>Was er einbringt.</b> Kein Element der Oberfläche geht über das
+    hinaus, was SPEC-3 3.0 vorsieht. Das war der Zweck.</p>
 
     <h3>D1.2 — Ein Akzent und zwei Funktionssignale statt einer einzigen Akzentfarbe</h3>
     <div class="rollbar"><table class="btab">
@@ -2039,7 +2027,7 @@ Nichts Ueberfaelliges.</div>
   <div class="tafel" id="d2">
     <div class="tafel-kopf">
       <span class="tafel-nr">D2</span><span class="tafel-name">Wo SPEC-3 dem Stand hinterherhängt</span>
-      <span class="stempel">sechs Stellen · Nachtrag liegt vor</span>
+      <span class="stempel">fünf Stellen offen · eine erledigt</span>
     </div>
     <p style="margin-top:16px">SPEC-3 steht auf Fassung <b>3.0</b>. Abschnitt 27 verlangt, dass
     eine Codeänderung den betroffenen Abschnitt im selben Commit mitzieht. Das ist offen —
@@ -2052,13 +2040,13 @@ Nichts Ueberfaelliges.</div>
         <tr><td class="m">4.2</td><td>Das Gatter hat eine Methode, <span class="m">evaluate()</span>.</td>
           <td class="warn">Es hat zwei. <span class="m">preview()</span> bildet die Reihenfolge lesend ab — kein Protokoll, kein Kontingent. Ohne diesen Absatz könnte sie für einen zweiten Entscheidungsweg gehalten werden.</td></tr>
         <tr><td class="m">12</td><td>Lokale Instrumententafel: Zustand, Briefing, Entscheidungen, Protokoll.</td>
-          <td class="warn">Dazu vier Anzeigen, die mehr als Gestaltung tragen: Stufe gewährt/verlangt, Zustandsmarke, Gatterleiter, Vertrauensnaht.</td></tr>
+          <td class="warn">Dazu drei Anzeigen, die mehr als Gestaltung tragen: Stufe gewährt/verlangt, Zustandsmarke, Gatterleiter. (Die Vertrauensnaht war eine vierte und ist zurückgebaut.)</td></tr>
         <tr><td class="m">15</td><td>Dashboard: Token, Origin, CSP, kein JS.</td>
           <td class="warn">Zusätzlich Gatterleiter und Naht.</td></tr>
         <tr><td class="m">23 OD-4</td><td>Status: OFFEN.</td>
           <td class="warn">Entschieden und umgesetzt — Weg B, nur was neue Information bringt.</td></tr>
         <tr><td class="m">25</td><td>Der Entscheidungsstrom ist Future-only.</td>
-          <td class="warn">Er ist CURRENT. Siehe D1.1 — das ist zugleich die Abweichung und ihre Auflösung.</td></tr>
+          <td class="ja">Stimmt wieder — die Zweiteilung ist zurückgebaut. <b>Diese Zeile ist erledigt.</b></td></tr>
         <tr><td class="m">1 · 3.4 · 13 · 28</td><td>1018 Tests, 15 882 Zeilen Quellcode.</td>
           <td class="warn">1048 Tests, 16 517 Zeilen. Der zeitabhängige Test (KI-8) besteht weiter: 1047 von 1048 zu jeder Tageszeit.</td></tr>
       </tbody>

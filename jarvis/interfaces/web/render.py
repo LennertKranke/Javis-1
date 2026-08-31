@@ -18,9 +18,6 @@ Drei Bausteine tragen mehr als Gestaltung:
   `gatterleiter`   Die Reihenfolge aus Abschnitt 4.2, sichtbar. Sie zeigt, an
                    welcher Sprosse es haengt -- und dass eine Freigabe nur auf
                    Sprosse 3 wirkt.
-  `naht`           Was das Modell entschied, links; was der Code berechnete,
-                   rechts. Die Grenze aus Prinzip 2.1, unterscheidbar gemacht
-                   ueber Linienart und Schriftart, nicht ueber Farbe.
 """
 
 from __future__ import annotations
@@ -39,11 +36,11 @@ __all__ = [
     "hinweis",
     "leer",
     "marke",
-    "naht",
     "seite",
     "stufe",
     "tabelle",
     "vorgang",
+    "vorgangsfakten",
     "zustandsmarke",
 ]
 
@@ -176,12 +173,7 @@ def gatterleiter(vorschau: GatePreview, *, ueberschrift: str = "") -> str:
     return f'{kopf}<div class="gatter">{"".join(zeilen)}</div>'
 
 
-def _halb(klasse: str, kopf: str, paare: Sequence[tuple[str, object]], *, satz: bool) -> str:
-    inhalt = fakten(paare, satz=satz) if paare else leer("Nichts vermerkt.")
-    return f'<div class="naht-halb {klasse}"><div class="naht-kopf">{esc(kopf)}</div>{inhalt}</div>'
-
-
-def naht(
+def vorgangsfakten(
     fields: Mapping[str, Any],
     targets: Mapping[str, Any],
     *,
@@ -189,25 +181,16 @@ def naht(
     entschieden_von: str = "",
     modell: str | None = None,
 ) -> str:
-    """Was das Modell entschied, und was der Code berechnete.
+    """Alles, was ueber einen Vorgang bekannt ist, in einer Liste.
 
-    Die Trennung ist nicht Gestaltung, sondern Prinzip 2.1: ein Ziel steht
-    ausschliesslich rechts. Taucht eines links auf, ist das an der Anzeige
-    sofort zu sehen -- und ein Fehler.
+    Ziele zuerst, in der Reihenfolge, in der sie jemanden interessieren; dann
+    die Felder der Modellentscheidung; dann Begruendung, Entscheider und
+    Modell.
 
-    Kodiert wird die Grenze ueber Linienart (gepunktet gegen durchgezogen) und
-    Schriftart (Satz gegen Maschine), nicht ueber Farbe: so haelt sie auch in
-    Graustufen und bei Farbfehlsichtigkeit.
+    `body` bleibt aussen vor: der Entwurfstext ist vom Modell geschriebene
+    Prosa und wird darunter als Zitat gezeigt, nicht als Faktenzeile.
     """
-    links: list[tuple[str, object]] = [(k, v) for k, v in sorted(fields.items())]
-    if grund:
-        links.append(("Begruendung", grund))
-    if entschieden_von:
-        links.append(("Entschieden von", entschieden_von))
-    if modell:
-        links.append(("Modell", modell))
-
-    rechts = [
+    paare: list[tuple[str, object]] = [
         (name, targets[schluessel])
         for schluessel, name in BEKANNTE_ZIELE
         if targets.get(schluessel)
@@ -215,14 +198,15 @@ def naht(
     weitere = sorted(
         k for k in targets if k not in {s for s, _ in BEKANNTE_ZIELE} and k != "body" and targets[k]
     )
-    rechts += [(k, targets[k]) for k in weitere]
-
-    return (
-        '<div class="naht">'
-        + _halb("modell", "Modell entschied", links, satz=True)
-        + _halb("code", "Code berechnete", rechts, satz=False)
-        + "</div>"
-    )
+    paare += [(k, targets[k]) for k in weitere]
+    paare += [(k, v) for k, v in sorted(fields.items())]
+    if grund:
+        paare.append(("Grund", grund))
+    if entschieden_von:
+        paare.append(("Entschieden von", entschieden_von))
+    if modell:
+        paare.append(("Modell", modell))
+    return fakten(paare) if paare else ""
 
 
 def seite(
@@ -318,10 +302,9 @@ def _tatsache(name: str, wert: object, *, gefahr: bool = False) -> str:
     )
 
 
-def fakten(paare: Iterable[tuple[str, object]], *, satz: bool = False) -> str:
-    klasse = "facts satz" if satz else "facts"
+def fakten(paare: Iterable[tuple[str, object]]) -> str:
     zeilen = "".join(f"<dt>{esc(name)}</dt><dd>{esc(wert)}</dd>" for name, wert in paare)
-    return f'<dl class="{klasse}">{zeilen}</dl>'
+    return f'<dl class="facts">{zeilen}</dl>'
 
 
 def tabelle(
@@ -359,7 +342,7 @@ def hinweis(text: str, *, art: str = "") -> str:
 
 
 def vorgang(eintrag: Approval, *, ausfuehrbar: bool, vorschau: GatePreview | None = None) -> str:
-    """Ein anstehender Vorgang: Kopf, Satz, Naht, Gatter, Handlung.
+    """Ein anstehender Vorgang: Kopf, Satz, Fakten, Gatter, Handlung.
 
     Die Reihenfolge folgt der Frage, die ein Mensch tatsaechlich stellt: Was
     ist das? Was soll passieren? Woher kommt das? Wer haelt es auf? Was tue ich?
@@ -375,7 +358,7 @@ def vorgang(eintrag: Approval, *, ausfuehrbar: bool, vorschau: GatePreview | Non
 
     koerper = [f'<p class="item-summary">{esc(eintrag.summary)}</p>']
     koerper.append(
-        naht(
+        vorgangsfakten(
             eintrag.fields,
             eintrag.targets,
             grund=eintrag.reason,
@@ -387,8 +370,8 @@ def vorgang(eintrag: Approval, *, ausfuehrbar: bool, vorschau: GatePreview | Non
     entwurf = eintrag.targets.get("body")
     if entwurf:
         # Vom Modell geschriebene Prosa. Sie steht in `targets`, ist aber kein
-        # Ziel -- deshalb weder links noch rechts in der Naht, sondern
-        # darunter, als Zitat gekennzeichnet.
+        # Ziel -- deshalb nicht in der Faktenliste, sondern darunter, als
+        # Zitat gekennzeichnet.
         koerper.append("<h3>Entwurfstext</h3>")
         koerper.append(f'<div class="item-body">{esc(entwurf)}</div>')
 

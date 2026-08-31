@@ -229,26 +229,11 @@ nav .count { font-family: var(--masch); font-size: 0.78rem; color: var(--akzent)
 .gatter-sprosse.entschieden .gatter-name { color: var(--text); }
 .gatter-sprosse.offen { opacity: 0.5; }
 
-/* --- Vertrauensnaht: das Modell links, der Code rechts -------------------- */
-
-.naht { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 0.8rem 0; }
-.naht-halb { min-width: 0; padding-left: 0.9rem; }
-.naht-halb.modell { border-left: 2px dotted var(--linie-stark); }
-.naht-halb.code { border-left: 2px solid var(--linie-stark); }
-.naht-kopf {
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-gedaempft);
-  margin-bottom: 0.5rem;
-}
-
 /* --- Fakten und Tabellen ------------------------------------------------- */
 
 .facts { display: grid; grid-template-columns: 10rem 1fr; gap: 0.3rem 1.2rem; margin: 0; }
 .facts dt { color: var(--text-gedaempft); font-size: 0.84rem; }
 .facts dd { margin: 0; font-family: var(--masch); font-size: 0.84rem; word-break: break-word; }
-.facts.satz dd { font-family: var(--satz); }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
 th {
@@ -365,7 +350,6 @@ footer { color: var(--text-gedaempft); font-size: 0.78rem; padding-top: 2.5rem; 
 
 @media (max-width: 46rem) {
   .wrap { padding: 0 1rem; }
-  .naht { grid-template-columns: 1fr; gap: 0.9rem; }
   .facts { grid-template-columns: 1fr; gap: 0; }
   .facts dt { margin-top: 0.5rem; }
   .gatter-sprosse { grid-template-columns: 1.3rem 1fr auto; row-gap: 0.2rem; }

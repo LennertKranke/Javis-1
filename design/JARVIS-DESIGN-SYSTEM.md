@@ -111,7 +111,8 @@ macht die Vertrauensgrenze sichtbar und bleibt eine starke Idee."
 
 Das ist die einzige gestalterische Aussage, die SPEC-3 selbst positiv bewertet.
 Sie ist **nicht verbindlich** (Future-only), aber sie ist der Grund, warum die
-Vertrauensnaht in diesem Dokument das Signaturelement wird (DD-27).
+Vertrauensnaht in diesem Dokument zunaechst das Signaturelement wurde (DD-27) -- und warum
+sie am 2026-08-31 zurueckgebaut wurde, siehe Abschnitt 51.
 
 ## 3. SPEC-3-Luecken, die dieses Design **nicht** schliesst
 
@@ -361,7 +362,13 @@ festgelegt, damit es nicht in SPEC-3 landet.
 | Satz | `-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", sans-serif` | macOS ist Zielplattform (SPEC-3 14). Systemschrift heisst: keine Ladezeit, kein Fremdzugriff, keine Verletzung von `default-src 'none'` |
 | Maschine | `ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace` | Kennungen, Zahlen, Zustaende, Faehigkeitsnamen, Ziele |
 
-**DD-08 -- Die Schriftregel traegt die Vertrauensnaht.**
+**DD-08 -- Maschinenschrift fuer Gerechnetes, Satzschrift fuer Gelesenes.**
+
+> **Eingeschraenkt seit dem Rueckbau der Naht (Abschnitt 51):** innerhalb der Faktenliste
+> einer Vorgangskarte greift die Unterscheidung nicht mehr. Dort stehen alle Werte in
+> Maschinenschrift, auch die des Modells. Die Regel gilt weiter fuer die Oberflaeche als
+> Ganzes, aber sie traegt die Vertrauensgrenze nicht mehr -- das war an die Zweiteilung
+> gebunden.
 
 > Alles, was eine Maschine gerechnet hat, steht in Maschinenschrift.
 > Alles, was ein Mensch als Satz liest, steht in Satzschrift.
@@ -661,7 +668,7 @@ eine Fundstelle im Prototyp und eine Grundlage.
 | K3 | **Nachweisleiter** | Fuenf Sprossen plus `live: nie` | B16, B17 | DESIGN |
 | K4 | **Autonomieanzeige** | gewaehrt / verlangt, mit Bezeichnung | B8, DD-16 | DESIGN |
 | K5 | **Gatterleiter** | Fuenf Sprossen in fester Reihenfolge | B6, B7 | DESIGN |
-| K6 | **Vertrauensnaht** | Modellhaelfte gegen Codehaelfte | B14, Abschnitt 25 | DESIGN |
+| K6 | ~~Vertrauensnaht~~ | **entfaellt.** Ersetzt durch `vorgangsfakten()`: eine Liste aus Zielen, Modellfeldern, Grund, Entscheider und Modell | Abschnitt 25 | zurueckgebaut |
 | K7 | **Vorgangskarte** | Ein anstehender Vorgang mit seinen Handlungen | CURRENT `render.vorgang` | CURRENT erweitert |
 | K8 | **Faktenliste** | Name/Wert-Paare, Wert in Maschinenschrift | CURRENT `render.fakten` | CURRENT |
 | K9 | **Tabelle** | Dichte Liste, im schmalen Fenster zu Bloecken | CURRENT `render.tabelle` | CURRENT erweitert |
@@ -701,7 +708,18 @@ Grundlage: D4, und die Asymmetrie, die SPEC-3 19.5 fuer Sprache ausdruecklich
 festhaelt ("anhalten per Sprache moeglich, fortsetzen nie") -- dieselbe Logik,
 anderer Bedienweg.
 
-## 23. Vertrauensnaht (K6) -- das Signaturelement
+## 23. Vertrauensnaht (K6) -- ZURUECKGEZOGEN
+
+> **Nicht mehr gueltig.** Dieser Abschnitt ist am 2026-08-31 zurueckgezogen worden.
+> SPEC-3 25 fuehrt den Entscheidungsstrom als *"Future-only -- jetzt nur Bauplan"*; die
+> Zweiteilung war damit nicht gedeckt. Er bleibt als Beschreibung dessen stehen, was
+> entfernt wurde, und was der Rueckbau kostet -- siehe Abschnitt 51.
+>
+> **Was an seine Stelle tritt:** `render.vorgangsfakten()` -- eine gemeinsame Liste.
+> Ziele zuerst, dann die Felder der Modellentscheidung, dann Grund, Entscheider, Modell.
+> Die Information bleibt vollstaendig; nur die Trennung ist weg.
+
+### Der zurueckgezogene Entwurf
 
 Zwei Haelften nebeneinander, im schmalen Fenster untereinander.
 
@@ -1073,7 +1091,7 @@ naechstgroesseren.
 
 | Stufe | Breite | Verhalten |
 |---|---|---|
-| **Weit** | > 70rem (ca. 1120px) | Tafelbreite fuer Tabellen, Bereichstafeln zweispaltig, Vertrauensnaht nebeneinander |
+| **Weit** | > 70rem (ca. 1120px) | Tafelbreite fuer Tabellen, Bereichstafeln zweispaltig |
 | **Standard** | 46-70rem | Eine Spalte, Tabellen vollstaendig, Naht nebeneinander bis 46rem |
 | **Schmal** | < 46rem (ca. 736px) | Tabellen werden zu Bloecken (`data-kopf` vor jedem Wert), Naht untereinander, Faktenlisten einspaltig |
 
@@ -1213,7 +1231,7 @@ dem, was freie Wahl ist.
 | **DD-24** | Die Rueckfrage nennt die Wirkung, nicht die Aktion | B18 | folgt aus der Vorgabe | 33 |
 | **DD-25** | Umleitung nach jeder veraendernden Anfrage bleibt | CURRENT, `app.py` | Bestand bestaetigt | 33 |
 | **DD-26** | Stoppschalter erstes Element im Dokument, ohne Maus und ohne Farbe erreichbar | B5 | folgt aus der Vorgabe | 37 |
-| **DD-27** | Die Vertrauensnaht ist das Signaturelement; kodiert ueber Linienart und Schrift, nicht ueber Farbe | B14, SPEC-3 25 (Future-only) | freie Wahl, von SPEC-3 positiv bewertet | 23 |
+| **DD-27** | ~~Die Vertrauensnaht ist das Signaturelement~~ **ZURUECKGEZOGEN 2026-08-31.** SPEC-3 25 fuehrt den Entscheidungsstrom als Bauplan; die Zweiteilung ist entfernt. Die Vorgangskarte zeigt eine gemeinsame Faktenliste | SPEC-3 25 | zurueckgebaut, siehe 51 | 23 |
 | **DD-28** | Systemband mit vier Tatsachen: Betrieb, Trockenlauf, Dienste, Zugangsdaten; Dateirechte gehoeren auf die Lage-Ansicht | B5, B17, B19, SPEC-3 12 | folgt aus der Vorgabe | 22 |
 | **DD-29** | Aktionszustand und Nachweisstand sind getrennte Achsen an getrennten Orten | B15, B16 | folgt aus der Vorgabe | 16 |
 | **DD-30** | Wortlaut nennt Tatsachen, nie Erfolge; Zustaende heissen wie im Code | B18 | folgt aus der Vorgabe | 34 |
@@ -1239,7 +1257,7 @@ SPEC-3 fuer spaeter beschreibt, und was dieses Dokument beisteuert.
 | Freigeben / Verwerfen | ja | -- | -- | Rueckfrageseite davor |
 | Protokollliste | ja | -- | -- | Zustandsmarken, Sichten als Links |
 | Protokoll-Einzelansicht | **nein** | -- | Teil von 12 (PLANNED) | Gliederung nach den acht Fragen (4.9) |
-| Vertrauensnaht | **nein** | -- | 25, Future-only | Signaturelement, K6 |
+| Vertrauensnaht | **nein** | -- | 25, Future-only | zurueckgebaut, siehe 51 |
 | Gatterleiter | **nein** | -- | -- | K5, macht 4.2 sichtbar |
 | Nachweisleiter / Dienste | **nein** (nur CLI) | -- | 12: "Integrations fehlt" | K3, Entwurf `06-dienste.html` |
 | Modelle / Anbieter | **nein** (nur CLI) | -- | 12: "fehlt" | Tafel auf Lage |
@@ -1379,7 +1397,8 @@ Gestaltungsarbeit, und Roadmap 6 (Control Plane) ist PLANNED.
 
 **Stufe 2 -- Sichtbarkeit der Kette** *(unabhaengig von neuen Bereichen)*
 
-8. Vertrauensnaht in der Vorgangskarte (K6, DD-27). Braucht keine neuen Daten:
+8. ~~Vertrauensnaht in der Vorgangskarte~~ **entfaellt** (Abschnitt 51). Der Hinweis bleibt
+   stehen, weil er die Datenlage richtig beschreibt:
    `fields` und `targets` liegen getrennt in `approvals` vor.
 9. Gatterleiter in der Vorgangskarte (K5). Braucht `granted_level`,
    `required_level` und `reason` -- alles bereits im Protokolldetail.
@@ -1464,7 +1483,7 @@ eingegangen ist. **CURRENT**, mit Tests belegt.
 | Stufe gewaehrt / verlangt (DD-16) | umgesetzt | `render.stufe`, `app.lage` | verlangte Stufe sichtbar, `voice` ohne verlangte Stufe |
 | Zustandsmarken im Protokoll (DD-14, DD-07) | umgesetzt | `render.zustandsmarke` | Marke nur fuer Zustaende, nicht fuer vorgeschlagene Aktionen |
 | Gatterleiter (K5, DD-17) | umgesetzt | `core.Gate.preview`, `render.gatterleiter` | fuenf Sprossen, Stoppschalter haelt trotz Freigabe, Trockenlauf haelt |
-| Vertrauensnaht (K6, DD-27) | umgesetzt | `render.naht` | Ziel steht rechts, Entwurfstext ausserhalb beider Haelften |
+| ~~Vertrauensnaht~~ | **zurueckgebaut 2026-08-31** | `render.vorgangsfakten` | gemeinsame Liste, Ziele zuerst; Entwurfstext ausserhalb |
 | Zaehler mit Bezug und Balken (Abschnitt 21, DD-33) | umgesetzt | `render.zaehler` | keine Inline-Stile im erzeugten HTML |
 | Zwei Spurbreiten (DD-03) | umgesetzt | `render.seite(weit=...)` | -- |
 | Helle Fassung (DD-11) | umgesetzt | `web/style.py` | -- |
@@ -1585,7 +1604,7 @@ nirgends auftaucht, zur Regel wird.
 
 | # | Abweichung | SPEC-3 sagt | Bewertung |
 |---|---|---|---|
-| **A-1** | **Die Vertrauensnaht wurde gebaut** | Abschnitt 25 fuehrt den Entscheidungsstrom unter *"Future-only -- weiterhin interessant, jetzt nur Bauplan"* | **Vorgriff.** "Jetzt nur Bauplan" liest sich wie PLANNED, und die goldene Regel verbietet, daraus etwas entstehen zu lassen |
+| **A-1** | ~~Die Vertrauensnaht wurde gebaut~~ | Abschnitt 25 fuehrt den Entscheidungsstrom unter *"Future-only -- jetzt nur Bauplan"* | **ERLEDIGT 2026-08-31** durch Teilrueckbau. Siehe Abschnitt 51 |
 | **A-2** | Ein Akzent **plus zwei Funktionssignale** | SPEC-1 §7: "eine einzige Akzentfarbe" | zulaessig -- SPEC-1 ist HISTORICAL. Begruendet aus SPEC-3 3.4: mit einer Farbe fuer Identitaet *und* offene Vorgaenge laesst sich "ein Fehler darf nie wie ein Erfolg aussehen" nicht erfuellen |
 | **A-3** | "Zustand" heisst "Lage" | Abschnitt 12 nennt die Ansicht "Zustand" | kosmetisch; im Nachtrag als Aenderung 3 erfasst |
 | **A-4** | Die Naht nennt **keine Herkunft je Ziel** | SPEC-3 verlangt sie nicht -- **dieses Dokument** verlangt sie in Abschnitt 23 | Abweichung des Designs von sich selbst. Nicht erfunden, offen als ODS-7 |
@@ -1611,3 +1630,64 @@ CURRENT statt Future-only), und die Testzahlen in 1, 3.4, 13 und 28.
 (16), die offenen Befunde (17 -- **SEC-1 und SEC-2 bleiben unveraendert offen**), die
 technischen Schulden (18), die Zukunftsarchitektur (19-20), die Roadmap (21) und die
 Abnahmekriterien (26).
+
+---
+
+## 51. Rueckbau der Vertrauensnaht (Weg A-teil)
+
+**Entscheidung des Nutzers am 2026-08-31.** Von den vier Wegen -- Vollrueckbau,
+Teilrueckbau, SPEC-3 anpassen, Abweichung akzeptieren -- wurde **A-teil** gewaehlt:
+die Zweiteilung entfaellt, die zusaetzliche Information bleibt. **SPEC-3 wurde nicht
+geaendert.**
+
+### 51.1 Was entfernt wurde
+
+| Datei | Was | Umfang |
+|---|---|---|
+| `jarvis/interfaces/web/render.py` | `naht()` und `_halb()` ersetzt durch `vorgangsfakten()` | -48 / +38 Zeilen |
+| `jarvis/interfaces/web/render.py` | Parameter `satz=` an `fakten()` -- er hatte nur einen Nutzer | entfernt |
+| `jarvis/interfaces/web/style.py` | `.naht`, `.naht-halb`, `.naht-kopf`, `.facts.satz`, Umbruchregel | 7 Regeln |
+| `tests/test_web.py` | zwei Tests umgeschrieben statt geloescht | siehe 51.3 |
+
+### 51.2 Was bleibt
+
+`vorgangsfakten()` baut **eine** Liste, in dieser Reihenfolge:
+
+1. Ziele aus `Decision.targets`, in der Reihenfolge von `BEKANNTE_ZIELE`
+2. weitere Ziele, alphabetisch
+3. Felder aus `Decision.fields` -- **die Information, die vor der Naht nirgends sichtbar war**
+4. Grund, Entschieden von, Modell
+
+`body` bleibt aussen vor und steht als Zitat darunter. Die Gatterleiter, die Stufenanzeige
+und die Zustandsmarken sind unberuehrt -- keines dieser Elemente haengt an der Naht
+(gemessen: 0 Referenzen).
+
+### 51.3 Die Tests
+
+Beide Tests wurden **umgeschrieben, nicht geloescht** -- sie pruefen jetzt das Gegenteil:
+
+| Test | Prueft |
+|---|---|
+| `test_vorgang_zeigt_ziele_und_modellfelder_in_einer_liste` | dass "Modell entschied", "Code berechnete" und `class="naht` **nicht** vorkommen; dass Ziele und Modellfelder in derselben `dl.facts` stehen; dass die Ziele zuerst kommen |
+| `test_entwurfstext_steht_ausserhalb_der_faktenliste` | dass der Entwurfstext nicht in die Faktenliste rutscht |
+
+Der erste Test faengt einen Rueckfall: wer die Zweiteilung wieder einbaut, laesst ihn
+scheitern.
+
+### 51.4 Was der Rueckbau kostet
+
+Ehrlich benannt, weil es die Folge einer bewussten Entscheidung ist:
+
+* **B14 ist nicht mehr sichtbar.** Die Trennung von `fields` und `targets` ist im Code
+  vierfach abgesichert (SPEC-3 3.2 P1), aber die Oberflaeche zeigt sie nicht mehr. In der
+  Abdeckungskarte steht B14 jetzt unter *mittelbar* statt *sichtbar*: 18 statt 19.
+* **DD-08 greift nicht mehr innerhalb der Faktenliste.** Dort stehen alle Werte in
+  Maschinenschrift, auch die des Modells. Die Schriftregel gilt weiter fuer die Oberflaeche
+  als Ganzes, traegt aber die Vertrauensgrenze nicht mehr.
+* **DD-27 ist zurueckgezogen**, K6 entfaellt aus dem Bausteinkatalog, Abschnitt 23 ist als
+  nicht mehr gueltig gekennzeichnet.
+
+### 51.5 Was er einbringt
+
+Kein Element der Oberflaeche geht ueber das hinaus, was SPEC-3 3.0 vorsieht. Das war der
+Zweck, und er ist erreicht.

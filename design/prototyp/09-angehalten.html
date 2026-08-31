@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS -- Angehalten (Entwurf)</title>
+<link rel="stylesheet" href="jarvis-prototyp.css">
+</head>
+<body>
+
+<div class="entwurfsband">
+  <span class="entwurfsmarke">Entwurf</span>
+  <span>Ein angehaltenes System soll man ohne Lesen erkennen. Das Band wechselt die Farbe, die Freigabe verschwindet nicht &mdash; sie sagt, warum sie nichts bewirkt.</span>
+</div>
+
+<div class="systemband angehalten">
+  <div class="systemband-inhalt">
+    <span class="marke">Angehalten</span>
+    <span class="tatsache"><span class="tatsache-name">Grund</span><span class="tatsache-wert">ueber das Dashboard, 07:12</span></span>
+    <span class="tatsache"><span class="tatsache-name">Wirkung</span><span class="tatsache-wert">jede ausgehende Aktion blockiert</span></span>
+    <form method="post" action="/weiter"><button type="submit">Freigeben</button></form>
+  </div>
+</div>
+
+<div class="spur">
+<header><h1>JARVIS</h1></header>
+<nav>
+  <a href="01-lage.html">Lage</a>
+  <a href="#" class="an">Entscheidungen <span class="zaehler">3</span></a>
+  <a href="05-briefing.html">Briefing</a>
+  <a href="03-protokoll.html">Protokoll</a>
+</nav>
+
+<h2>Anstehende Entscheidungen</h2>
+
+<p class="meldung warnung">Der Stoppschalter ist gesetzt. Verwerfen geht weiter, Freigeben wird vom Gatter abgewiesen &mdash; eine Freigabe ersetzt die Autonomiestufe, nicht den Stoppschalter.</p>
+
+<div class="vorgang">
+  <div class="vorgang-kopf">
+    <span class="vorgang-skill">mail_send</span>
+    <span class="vorgang-aktion">Entwurf versenden</span>
+    <span class="marke offen">Offen</span>
+    <span class="vorgang-zeit">2026-08-31 08:12</span>
+  </div>
+  <div class="vorgang-koerper">
+    <p class="vorgang-satz">Antwort an Anna Berger auf &bdquo;Angebot Rahmenvertrag&ldquo;.</p>
+    <div class="gatter">
+      <div class="gatter-sprosse"><span class="gatter-nr">1</span><span class="gatter-name">Faehigkeit aktiv</span><span class="gatter-wert">ja</span><span class="marke erfolg">Weiter</span></div>
+      <div class="gatter-sprosse entschieden"><span class="gatter-nr">2</span><span class="gatter-name">Stoppschalter</span><span class="gatter-wert">gesetzt: ueber das Dashboard</span><span class="marke blockiert">Blockiert</span></div>
+      <div class="gatter-sprosse uebersprungen"><span class="gatter-nr">3</span><span class="gatter-name">Stufe / Freigabe</span><span class="gatter-wert">nicht ausgewertet</span><span class="marke">&mdash;</span></div>
+      <div class="gatter-sprosse uebersprungen"><span class="gatter-nr">4</span><span class="gatter-name">Obergrenze</span><span class="gatter-wert">nichts verbraucht</span><span class="marke">&mdash;</span></div>
+      <div class="gatter-sprosse uebersprungen"><span class="gatter-nr">5</span><span class="gatter-name">Ausfuehrung</span><span class="gatter-wert">nicht erreicht</span><span class="marke">&mdash;</span></div>
+    </div>
+  </div>
+  <div class="handlungen">
+    <span class="hinweis-knapp">Solange der Stoppschalter gesetzt ist, bewirkt Freigeben nichts.</span>
+    <form method="post" action="/entscheidungen/41/verwerfen"><button type="submit">Verwerfen</button></form>
+  </div>
+</div>
+
+<footer>Loopback, Einzelplatz. Der Stoppschalter wirkt ohne Datenbank und faellt geschlossen aus.</footer>
+</div>
+</body>
+</html>

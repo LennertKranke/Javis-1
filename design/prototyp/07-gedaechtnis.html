@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS -- Gedaechtnis (Entwurf, PLANNED)</title>
+<link rel="stylesheet" href="jarvis-prototyp.css">
+</head>
+<body>
+
+<div class="entwurfsband">
+  <span class="entwurfsmarke">Entwurf</span>
+  <span class="marke reserviert">Planned</span>
+  <span>Im Dashboard fehlt dieser Bereich (SPEC-3 12). Die Spalte Herkunft haengt an OD-2 und ist heute nicht entschieden.</span>
+</div>
+
+<div class="systemband">
+  <div class="systemband-inhalt">
+    <span class="marke">Betrieb</span>
+    <span class="tatsache"><span class="tatsache-name">Trockenlauf</span><span class="tatsache-wert hebt">an</span></span>
+    <span class="tatsache"><span class="tatsache-name">Dienste</span><span class="tatsache-wert">Mock</span></span>
+    <form method="post" action="/stop"><button type="submit" class="folgenreich">Anhalten</button></form>
+  </div>
+</div>
+
+<div class="spur spur-weit">
+<header><h1>JARVIS</h1></header>
+<nav>
+  <a href="01-lage.html" class="an">Lage</a>
+  <a href="02-entscheidungen.html">Entscheidungen <span class="zaehler">3</span></a>
+  <a href="05-briefing.html">Briefing</a>
+  <a href="03-protokoll.html">Protokoll</a>
+</nav>
+
+<h2>Gedaechtnis</h2>
+<dl class="fakten">
+  <dt>Tatsachen</dt><dd>38 / 500  <span class="balken" style="vertical-align:middle"><span style="width:8%"></span></span></dd>
+  <dt>Verdraengung</dt><dd>unwichtigste zuerst, bei gleichem Gewicht die aelteste</dd>
+  <dt>Schreibende Quellen</dt><dd>nur der Nutzer</dd>
+</dl>
+
+<h3>Langzeit</h3>
+<table class="umbrechend">
+<thead><tr><th>Schluessel</th><th>Wert</th><th>Kategorie</th><th>Herkunft</th><th>Gewicht</th><th>Zuletzt</th><th></th></tr></thead>
+<tbody>
+<tr>
+  <td data-kopf="Schluessel" class="masch">arbeitgeber</td>
+  <td data-kopf="Wert">Nordwerk GmbH</td>
+  <td data-kopf="Kategorie" class="gedaempft">person</td>
+  <td data-kopf="Herkunft"><span class="marke">vom Nutzer</span></td>
+  <td data-kopf="Gewicht" class="masch">8</td>
+  <td data-kopf="Zuletzt" class="masch gedaempft">2026-07-02</td>
+  <td data-kopf=""><form method="post" action="/gedaechtnis/arbeitgeber/vergessen"><button type="submit">Vergessen</button></form></td>
+</tr>
+<tr>
+  <td data-kopf="Schluessel" class="masch">anrede_stil</td>
+  <td data-kopf="Wert">knapp, kein Konjunktiv</td>
+  <td data-kopf="Kategorie" class="gedaempft">praeferenz</td>
+  <td data-kopf="Herkunft"><span class="marke">vom Nutzer</span></td>
+  <td data-kopf="Gewicht" class="masch">6</td>
+  <td data-kopf="Zuletzt" class="masch gedaempft">2026-08-14</td>
+  <td data-kopf=""><form method="post" action="/gedaechtnis/anrede_stil/vergessen"><button type="submit">Vergessen</button></form></td>
+</tr>
+<tr>
+  <td data-kopf="Schluessel" class="masch">zugang_vpn</td>
+  <td data-kopf="Wert" class="gedaempft">&mdash; Wert wird nicht angezeigt</td>
+  <td data-kopf="Kategorie" class="gedaempft">zugang</td>
+  <td data-kopf="Herkunft"><span class="marke">vom Nutzer</span></td>
+  <td data-kopf="Gewicht" class="masch">9</td>
+  <td data-kopf="Zuletzt" class="masch gedaempft">2026-05-20</td>
+  <td data-kopf=""><form method="post" action="/gedaechtnis/zugang_vpn/vergessen"><button type="submit">Vergessen</button></form></td>
+</tr>
+</tbody>
+</table>
+
+<h3>Kurzzeitkontext</h3>
+<dl class="fakten">
+  <dt>mail</dt><dd>5 Eintraege, Fenster 8</dd>
+  <dt>briefing</dt><dd>3 Eintraege, Fenster 8</dd>
+</dl>
+<div class="handlungen" style="border:1px solid var(--linie)">
+  <span class="hinweis-knapp">Leeren loescht das Fenster, nicht das Langzeitgedaechtnis.</span>
+  <form method="post" action="/gedaechtnis/kontext/leeren"><button type="submit">Kontext leeren</button></form>
+</div>
+
+<p class="meldung warnung">Herkunft steht hier durchgaengig auf &bdquo;vom Nutzer&ldquo;, weil heute nur der Nutzer schreibt. Eine Herkunftsklasse als Feld gibt es nicht &mdash; SPEC-3 9.2 fuehrt sie als fehlend, OD-2 ist offen.</p>
+
+<footer>Loopback, Einzelplatz. Loeschen wirkt sofort und steht im Protokoll.</footer>
+</div>
+</body>
+</html>

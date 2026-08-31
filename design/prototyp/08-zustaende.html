@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS -- Zustaende und Bausteine (Entwurf)</title>
+<link rel="stylesheet" href="jarvis-prototyp.css">
+</head>
+<body>
+
+<div class="entwurfsband">
+  <span class="entwurfsmarke">Entwurf</span>
+  <span>Musterblatt. Drei der neun Zustaende existieren im System nicht &mdash; sie stehen hier mit gepunktetem Rahmen und duerfen in der Oberflaeche nicht erscheinen.</span>
+</div>
+
+<div class="spur spur-weit">
+<header><h1>JARVIS</h1></header>
+
+<h2>1 &mdash; Aktionszustaende</h2>
+<table class="umbrechend">
+<thead><tr><th>Marke</th><th>Konzeptioneller Zustand</th><th>Woher im Code</th><th>Vorhanden</th><th>Wortlaut in der Oberflaeche</th></tr></thead>
+<tbody>
+<tr><td data-kopf="Marke"><span class="marke erfolg">Ausgefuehrt</span></td><td data-kopf="Zustand">SUCCESS</td><td data-kopf="Code" class="masch">Result.performed</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Gesendet an anna.berger@example.com&ldquo;</td></tr>
+<tr><td data-kopf="Marke"><span class="marke offen">Offen</span></td><td data-kopf="Zustand">PENDING</td><td data-kopf="Code" class="masch">approvals.state = pending</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Wartet auf dich&ldquo;</td></tr>
+<tr><td data-kopf="Marke"><span class="marke blockiert">Blockiert</span></td><td data-kopf="Zustand">BLOCKED</td><td data-kopf="Code" class="masch">Disposition.BLOCKED</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Obergrenze erreicht: 10/10 am Tag&ldquo;</td></tr>
+<tr><td data-kopf="Marke"><span class="marke verworfen">Verworfen</span></td><td data-kopf="Zustand">REJECTED</td><td data-kopf="Code" class="masch">approvals.state = rejected</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Verworfen. Es ist nichts geschehen.&ldquo;</td></tr>
+<tr><td data-kopf="Marke"><span class="marke fehler">Fehlgeschlagen</span></td><td data-kopf="Zustand">FAILED</td><td data-kopf="Code" class="masch">Result.performed = False</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Anbieter nicht erreichbar: connection refused&ldquo;</td></tr>
+<tr><td data-kopf="Marke"><span class="marke trocken">Dry Run</span></td><td data-kopf="Zustand">DRY_RUN</td><td data-kopf="Code" class="masch">Disposition.DRY_RUN</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Trockenlauf global aktiv. Nichts ist hinausgegangen.&ldquo;</td></tr>
+<tr><td data-kopf="Marke"><span class="marke reserviert">Unverified</span></td><td data-kopf="Zustand">UNVERIFIED</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" style="color:var(--signal-warnung)">nein</td><td data-kopf="Wortlaut">gehoert auf die Nachweisachse, nicht an eine Aktion</td></tr>
+<tr><td data-kopf="Marke"><span class="marke reserviert">Offline</span></td><td data-kopf="Zustand">OFFLINE</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" style="color:var(--signal-warnung)">nein</td><td data-kopf="Wortlaut">erscheint heute als Fehlgeschlagen mit Fehlertext</td></tr>
+<tr><td data-kopf="Marke"><span class="marke reserviert">Cancelled</span></td><td data-kopf="Zustand">CANCELLED</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" style="color:var(--signal-warnung)">nein</td><td data-kopf="Wortlaut">Verwerfen fuehrt heute zu Verworfen</td></tr>
+</tbody>
+</table>
+
+<p class="meldung warnung">Die drei letzten Marken sind reserviert, nicht verfuegbar. Sie in die Oberflaeche zu nehmen, waere ein Zustand, den das System nicht kennt &mdash; und damit eine Aussage, die staerker ist als der Nachweis (SPEC-3 27).</p>
+
+<h3>Reserviert fuer die Zustandsmaschine (OD-1, offen)</h3>
+<p style="font-size:0.86rem;color:var(--text-zweit)">SPEC-3 nennt unter SEC-2 die Kette <span class="masch">PENDING &rarr; CLAIMED &rarr; EXECUTING &rarr; SUCCEEDED | FAILED | CANCELLED</span> als Konzept und laesst die genaue Maschine ausdruecklich offen. Das Design haelt zwei Marken frei und legt sie nicht fest:</p>
+<p><span class="marke reserviert">Beansprucht</span> <span class="marke reserviert">Laeuft</span></p>
+
+<h2>2 &mdash; Nachweisachse</h2>
+<p style="font-size:0.86rem;color:var(--text-zweit)">Unabhaengig vom Aktionszustand. Eine Aktion kann erfolgreich sein und der Dienst trotzdem nie live verifiziert.</p>
+<dl class="fakten">
+  <dt>alle Stufen</dt><dd><span class="nachweis"><span class="leiter"><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span></span><span class="nachweis-text">built, tested, mocked, live, platform</span></span></dd>
+  <dt>heutiger Bestfall</dt><dd><span class="nachweis"><span class="leiter"><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse leer"></span><span class="sprosse leer"></span></span><span class="nachweis-text nie">live: nie</span></span></dd>
+  <dt>Modelle heute</dt><dd><span class="nachweis"><span class="leiter"><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse leer"></span><span class="sprosse leer"></span><span class="sprosse leer"></span></span><span class="nachweis-text nie">live: nie</span></span></dd>
+</dl>
+
+<h2>3 &mdash; Autonomiestufe</h2>
+<table class="umbrechend">
+<thead><tr><th>Anzeige</th><th>Bedeutung</th></tr></thead>
+<tbody>
+<tr><td data-kopf="Anzeige"><span class="stufe"><span class="stufe-zahl">0</span><span class="stufe-von">/ 0</span></span> <span class="stufe-name">Schattenbetrieb</span></td><td data-kopf="Bedeutung">gewaehrt reicht fuer verlangt &mdash; die Faehigkeit handelt selbst</td></tr>
+<tr><td data-kopf="Anzeige"><span class="stufe reicht-nicht"><span class="stufe-zahl">0</span><span class="stufe-von">/ 1</span></span> <span class="stufe-name">verlangt Allowlist</span></td><td data-kopf="Bedeutung">gewaehrt reicht nicht &mdash; jeder Vorgang wartet auf Freigabe</td></tr>
+<tr><td data-kopf="Anzeige"><span class="stufe"><span class="stufe-zahl">2</span><span class="stufe-von">/ 1</span></span> <span class="stufe-name">Freigegebene Kategorien</span></td><td data-kopf="Bedeutung">gewaehrt liegt darueber &mdash; handelt ohne Rueckfrage</td></tr>
+</tbody>
+</table>
+<p class="meldung">Nie nur eine der beiden Zahlen zeigen. Die Verwechslung von gewaehrter und verlangter Stufe hat im Audit eine Faehigkeit auf Stufe 0 handeln lassen (SPEC-3 6.1).</p>
+
+<h2>4 &mdash; Gatterleiter</h2>
+<div class="gatter">
+  <div class="gatter-sprosse"><span class="gatter-nr">1</span><span class="gatter-name">Faehigkeit aktiv</span><span class="gatter-wert">sonst blockiert</span><span class="marke erfolg">Weiter</span></div>
+  <div class="gatter-sprosse entschieden"><span class="gatter-nr">2</span><span class="gatter-name">Stoppschalter</span><span class="gatter-wert">gesetzt: &bdquo;ueber das Dashboard&ldquo;</span><span class="marke blockiert">Blockiert</span></div>
+  <div class="gatter-sprosse uebersprungen"><span class="gatter-nr">3</span><span class="gatter-name">Stufe / Freigabe</span><span class="gatter-wert">nicht ausgewertet</span><span class="marke">&mdash;</span></div>
+  <div class="gatter-sprosse uebersprungen"><span class="gatter-nr">4</span><span class="gatter-name">Obergrenze</span><span class="gatter-wert">nicht ausgewertet, nichts verbraucht</span><span class="marke">&mdash;</span></div>
+  <div class="gatter-sprosse uebersprungen"><span class="gatter-nr">5</span><span class="gatter-name">Ausfuehrung</span><span class="gatter-wert">nicht erreicht</span><span class="marke">&mdash;</span></div>
+</div>
+<p class="meldung">Die Reihenfolge ist die aus SPEC-3 4.2 und wird nie umsortiert. Dass der Stoppschalter vor der Obergrenze steht, ist sichtbar: ein angehaltenes System verbraucht kein Kontingent.</p>
+
+<h2>5 &mdash; Vertrauensnaht</h2>
+<div class="naht">
+  <div class="naht-halb modell">
+    <div class="naht-kopf">Modell entschied</div>
+    <p style="font-size:0.86rem;color:var(--text-zweit);margin-top:0">Gepunktete Linie, Prosa in Satzschrift, Fremdtext als Zitat. Alles hier ist abgeleitet und nie ein Ziel.</p>
+  </div>
+  <div class="naht-halb code">
+    <div class="naht-kopf">Code berechnete</div>
+    <p style="font-size:0.86rem;color:var(--text-zweit);margin-top:0">Durchgezogene Linie, Werte in Maschinenschrift, jeweils mit Herkunft. Nur hier stehen Ziele.</p>
+  </div>
+</div>
+
+<h2>6 &mdash; Schaltflaechen</h2>
+<div class="handlungen" style="border:1px solid var(--linie)">
+  <button type="button" class="haupt">Ruhiger Weg</button>
+  <button type="button">Neutral</button>
+  <button type="button" class="folgenreich">Verlaesst den Rechner</button>
+  <button type="button" disabled>Nicht moeglich</button>
+</div>
+<p class="meldung">Hervorgehoben ist der ruhige Weg, nicht der handelnde. Eine Schaltflaeche, die etwas ausloest, geht immer durch <span class="masch">execute_approval</span> &mdash; nie direkt an einen Dienst (SPEC-3 4.6, 12).</p>
+
+<h2>7 &mdash; Leere und Fehler</h2>
+<div class="tafeln">
+  <div class="tafel">
+    <div class="tafel-kopf"><span class="tafel-name">Leerer Zustand</span></div>
+    <p class="leer">Nichts anstehend. Was von selbst durchging, steht im Protokoll.
+      <span class="weg">jarvis mail poll</span></p>
+  </div>
+  <div class="tafel">
+    <div class="tafel-kopf"><span class="tafel-name">Fehlerzustand</span></div>
+    <p class="meldung fehler">Gmail war nicht erreichbar. Der Vorgang bleibt offen und ist unveraendert.</p>
+    <p style="font-size:0.82rem;color:var(--text-gedaempft);margin:0">Ein Fehler nennt: was scheiterte, was jetzt gilt, und was der naechste Schritt ist. Nie nur &bdquo;Fehler&ldquo;.</p>
+  </div>
+</div>
+
+<h2>8 &mdash; Symbole</h2>
+<p style="font-size:0.86rem;color:var(--text-zweit)">Inline-SVG, 16px-Raster, 1.5px Strich, <span class="masch">currentColor</span>. Keine Bilddatei, keine Symbolschrift &mdash; die Sicherheitsrichtlinie verbietet beides. Symbole stehen nie allein: jede Handlung traegt ihr Wort.</p>
+<div style="display:flex;gap:var(--r6);flex-wrap:wrap;color:var(--text-zweit);font-size:0.76rem;text-align:center">
+  <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="11" height="11"/></svg><br>halt</div>
+  <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M9 4l4 4-4 4"/></svg><br>weiter</div>
+  <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5l3.5 3.5L13 5"/></svg><br>erledigt</div>
+  <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg><br>verworfen</div>
+  <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5l2 1.5"/></svg><br>offen</div>
+  <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2.5l5.5 9.5h-11z"/><path d="M8 6.5v2.5"/></svg><br>achtung</div>
+  <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="6.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><br>gesperrt</div>
+  <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 5.5h11M2.5 8h11M2.5 10.5h7"/></svg><br>protokoll</div>
+</div>
+
+<footer>Musterblatt. Kein Produktionscode.</footer>
+</div>
+</body>
+</html>

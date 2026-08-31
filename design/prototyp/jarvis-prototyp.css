@@ -1,0 +1,620 @@
+/* =====================================================================
+   JARVIS Design System -- Prototyp-Stylesheet
+   =====================================================================
+
+   STATUS:  DESIGN-PROTOTYP. Kein Produktionscode.
+            Die produktive Fassung liegt in jarvis/interfaces/web/style.py
+            und wird von diesem Ordner NICHT veraendert.
+
+   Zweck:   Belegbare Referenz fuer das Design-System. Jede Entscheidung
+            hier ist in design/JARVIS-DESIGN-SYSTEM.md begruendet und mit
+            ihrer SPEC-3-Grundlage versehen.
+
+   Randbedingungen, die die Form bestimmen (alle CURRENT, SPEC-3 4.6):
+     - Content-Security-Policy: default-src 'none'; style-src 'self';
+       img-src 'none'  -> kein JavaScript, keine Bilddateien, keine
+       Webfonts, keine fremde Quelle. Symbole nur als Inline-SVG.
+     - Kein Build-Schritt (SPEC-3 25, Retained) -> handgeschriebenes CSS,
+       eine Datei, keine Praeprozessoren.
+     - Serverseitiges HTML, meta refresh -> kein Zustand im Client.
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   1  MARKEN (Tokens)
+   ---------------------------------------------------------------------
+   Namen sind deutsch, wie der uebrige Quelltext des Projekts.
+   Rollen, keine Farbnamen: --linie, nicht --grau-700.
+   --------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark light;
+
+  /* --- Flaechen: genau drei Tiefen, keine Schatten --------------- */
+  --grund:        #0B0D0F;   /* Seitengrund                          */
+  --flaeche:      #101417;   /* Baender, Karten, Tafeln              */
+  --flaeche-hoch: #151A1E;   /* hervorgehobene Zeile, Kopfzeile      */
+
+  /* --- Linien: die eigentliche Struktur -------------------------- */
+  --linie:        #1D2429;   /* Standardtrennung                     */
+  --linie-stark:  #2B353C;   /* Abschnittsgrenze, Rahmen             */
+
+  /* --- Schrift: drei Stufen, mehr braucht es nicht --------------- */
+  --text:         #D3D9DD;   /* Vordergrund                          */
+  --text-zweit:   #98A3AA;   /* zweite Ebene, Beschriftungen         */
+  --text-gedaempft: #6C777E; /* dritte Ebene, Herkunft, Zeitangaben  */
+
+  /* --- Akzent: genau einer. Identitaet und "hier bist du gefragt" -*/
+  --akzent:       #67B8C7;
+  --akzent-matt:  #2E4A50;   /* Akzent auf Flaeche, nicht als Text   */
+
+  /* --- Funktionssignale: nur auf Zustandsmarken, nie als Flaeche --
+     Erfolg traegt bewusst KEINE Farbe. Abweichung braucht sie,
+     der Normalfall nicht. Siehe SPEC-3 3.4 (Reliability MUST:
+     ein Fehler darf nie wie ein Erfolg aussehen).                   */
+  --signal-fehler:   #D9705E;
+  --signal-warnung:  #D9A441;
+
+  /* --- Raster: 4px-Basis ----------------------------------------- */
+  --r1: 4px;  --r2: 8px;  --r3: 12px; --r4: 16px;
+  --r6: 24px; --r8: 32px; --r12: 48px; --r16: 64px;
+
+  /* --- Breiten --------------------------------------------------- */
+  --lesebreite:  60rem;   /* Text, Vorgaenge, Briefing               */
+  --tafelbreite: 96rem;   /* dichte Tabellen im weiten Fenster       */
+
+  /* --- Schrift --------------------------------------------------- */
+  --satz: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui,
+          "Segoe UI", sans-serif;
+  --masch: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  /* --- Kanten ---------------------------------------------------- */
+  --kante: 0;   /* keine Rundung: die Geometrie traegt Bedeutung     */
+}
+
+/* Helle Fassung. Kein Umschalter -- ohne JavaScript folgt die Seite
+   der Systemeinstellung. Auf macOS ist genau das das erwartete
+   Verhalten (DESIGN, siehe DD-11). */
+@media (prefers-color-scheme: light) {
+  :root {
+    --grund:        #F7F8F9;
+    --flaeche:      #FFFFFF;
+    --flaeche-hoch: #F1F3F4;
+    --linie:        #DFE4E7;
+    --linie-stark:  #C3CBD0;
+    --text:         #14181B;
+    --text-zweit:   #4A555C;
+    --text-gedaempft: #6C777E;
+    --akzent:       #1F6E7C;
+    --akzent-matt:  #CFE6EB;
+    --signal-fehler:  #A8331F;
+    --signal-warnung: #8A6108;
+  }
+}
+
+
+/* ---------------------------------------------------------------------
+   2  GRUNDLAGE
+   --------------------------------------------------------------------- */
+
+* { box-sizing: border-box; }
+
+html { background: var(--grund); }
+
+body {
+  margin: 0;
+  padding: 0 0 var(--r16);
+  background: var(--grund);
+  color: var(--text);
+  font: 15px/1.55 var(--satz);
+  -webkit-font-smoothing: antialiased;
+}
+
+.spur { max-width: var(--lesebreite); margin: 0 auto; padding: 0 var(--r6); }
+.spur-weit { max-width: var(--tafelbreite); }
+
+/* Alles, was eine Maschine gerechnet hat, steht in Maschinenschrift.
+   Alles, was ein Mensch als Satz liest, steht in Satzschrift.
+   Diese Regel traegt die Vertrauensnaht bis in die Typografie. */
+.masch, td.masch, .zahl, .kennung {
+  font-family: var(--masch);
+  font-variant-numeric: tabular-nums;
+}
+
+a { color: var(--akzent); }
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--akzent);
+  outline-offset: 2px;
+}
+
+/* Es gibt keine Bewegung im System. Der Eintrag steht hier, damit
+   spaetere Ergaenzungen die Zusage nicht versehentlich brechen. */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+
+/* ---------------------------------------------------------------------
+   3  SYSTEMBAND
+   ---------------------------------------------------------------------
+   Auf jeder Ansicht, ganz oben, drei Tatsachen und ein Schalter:
+     Betrieb / ANGEHALTEN        (SPEC-3 4.2, Stoppschalter)
+     Trockenlauf an / LIVE       (SPEC-3 22, Trockenlaufpflicht)
+     Dienste Mock / Live         (SPEC-3 11, Mock ist kein Nachweis)
+
+   Auffaellig ist LIVE, nicht der Trockenlauf: der Trockenlauf ist der
+   sichere Zustand. Angezeigt wird, was Aufmerksamkeit verdient.
+   --------------------------------------------------------------------- */
+
+.systemband {
+  background: var(--flaeche);
+  border-bottom: 1px solid var(--linie);
+}
+.systemband-inhalt {
+  max-width: var(--tafelbreite);
+  margin: 0 auto;
+  padding: var(--r2) var(--r6);
+  display: flex;
+  align-items: center;
+  gap: var(--r4);
+  flex-wrap: wrap;
+}
+.systemband form { margin: 0 0 0 auto; }
+
+/* Angehalten: das Band selbst wechselt die Farbe. Ein System, das
+   nicht handelt, soll man ohne Lesen erkennen. */
+.systemband.angehalten {
+  background: var(--signal-warnung);
+  border-bottom-color: var(--signal-warnung);
+}
+.systemband.angehalten .tatsache,
+.systemband.angehalten .tatsache-wert,
+.systemband.angehalten .tatsache-name { color: var(--grund); }
+.systemband.angehalten .marke { border-color: var(--grund); color: var(--grund); }
+.systemband.angehalten button { color: var(--grund); border-color: var(--grund); }
+
+.tatsache { display: flex; align-items: baseline; gap: var(--r1); font-size: 0.8rem; }
+.tatsache-name { color: var(--text-gedaempft); }
+.tatsache-wert { font-family: var(--masch); color: var(--text-zweit); }
+.tatsache-wert.hebt { color: var(--text); }
+
+
+/* ---------------------------------------------------------------------
+   4  KOPF UND NAVIGATION
+   ---------------------------------------------------------------------
+   Vier Bereiche, dauerhaft. Alles Weitere ist ein Unterbereich von
+   "Lage" und bekommt keinen eigenen Navigationspunkt -- sonst waechst
+   die Leiste mit jeder Faehigkeit (SPEC-3 12: acht von fuenfzehn
+   Bereichen fehlen, vier davon brauchen Faehigkeiten, die es nicht gibt).
+   --------------------------------------------------------------------- */
+
+header { padding: var(--r8) 0 var(--r2); }
+
+h1 {
+  font-family: var(--masch);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  color: var(--akzent);
+  margin: 0;
+}
+
+h2 {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-gedaempft);
+  margin: var(--r8) 0 var(--r3);
+  padding-bottom: var(--r1);
+  border-bottom: 1px solid var(--linie);
+}
+h3 {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-zweit);
+  margin: var(--r6) 0 var(--r2);
+}
+
+nav {
+  display: flex;
+  gap: var(--r6);
+  padding-top: var(--r3);
+  border-bottom: 1px solid var(--linie-stark);
+}
+nav a {
+  color: var(--text-zweit);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding-bottom: var(--r2);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+nav a:hover { color: var(--text); }
+nav a.an { color: var(--akzent); border-bottom-color: var(--akzent); }
+nav .zaehler {
+  font-family: var(--masch);
+  font-size: 0.76rem;
+  color: var(--akzent);
+  padding-left: var(--r1);
+}
+
+
+/* ---------------------------------------------------------------------
+   5  ZUSTANDSMARKE
+   ---------------------------------------------------------------------
+   Nie Farbe allein: Wort + Rahmen + optionales Muster. Die Marke muss
+   in Graustufen und bei Farbfehlsichtigkeit lesbar bleiben, weil
+   SPEC-3 3.4 verlangt, dass ein Fehler nicht wie ein Erfolg aussieht.
+   --------------------------------------------------------------------- */
+
+.marke {
+  display: inline-block;
+  font-family: var(--masch);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid var(--linie-stark);
+  color: var(--text-zweit);
+  white-space: nowrap;
+}
+
+/* Vorhandene Aktionszustaende (SPEC-3 5.2) */
+.marke.erfolg    { color: var(--text); border-color: var(--linie-stark); }
+.marke.offen     { color: var(--akzent); border-color: var(--akzent); }
+.marke.blockiert { color: var(--signal-warnung); border-color: var(--signal-warnung); }
+.marke.verworfen { color: var(--text-gedaempft); border-style: dashed; }
+.marke.fehler    { color: var(--signal-fehler); border-color: var(--signal-fehler); }
+.marke.trocken   {
+  color: var(--text-zweit);
+  border-color: var(--linie-stark);
+  background: repeating-linear-gradient(
+    135deg, transparent 0 3px, var(--flaeche-hoch) 3px 6px);
+}
+
+/* Nicht vorhandene Zustaende (SPEC-3 5.2: UNVERIFIED, OFFLINE,
+   CANCELLED sind KEINE Systemzustaende). Nur fuer Entwurfsblaetter --
+   in der Oberflaeche darf keine dieser Marken erscheinen, solange der
+   Zustand nicht existiert. */
+.marke.reserviert {
+  color: var(--text-gedaempft);
+  border-style: dotted;
+  opacity: 0.75;
+}
+
+
+/* ---------------------------------------------------------------------
+   6  NACHWEISLEITER
+   ---------------------------------------------------------------------
+   Zweite, unabhaengige Achse (SPEC-3 Nachweisstufen, 11, 14).
+   Fuenf Sprossen: BUILT, TESTED, MOCKED, LIVE VERIFIED, PLATFORM
+   VERIFIED. Gefuellt = erreicht. Der Nachweisstand ist KEIN
+   Aktionszustand und wird deshalb nie wie einer dargestellt.
+   --------------------------------------------------------------------- */
+
+.nachweis { display: inline-flex; align-items: center; gap: var(--r2); }
+.leiter { display: inline-flex; gap: 2px; }
+.sprosse {
+  width: 14px; height: 8px;
+  border: 1px solid var(--linie-stark);
+}
+.sprosse.voll { background: var(--text-zweit); border-color: var(--text-zweit); }
+.sprosse.leer { background: transparent; }
+.nachweis-text {
+  font-family: var(--masch);
+  font-size: 0.72rem;
+  color: var(--text-gedaempft);
+}
+.nachweis-text.nie { color: var(--signal-warnung); }
+
+
+/* ---------------------------------------------------------------------
+   7  AUTONOMIESTUFE
+   ---------------------------------------------------------------------
+   Immer als Paar: gewaehrt gegen verlangt (SPEC-3 4.3, 6.1). Genau an
+   dieser Verwechslung ist der Research-Fehler entstanden -- die
+   Oberflaeche zeigt deshalb nie nur eine der beiden Zahlen.
+   --------------------------------------------------------------------- */
+
+.stufe { display: inline-flex; align-items: baseline; gap: var(--r1); font-family: var(--masch); font-size: 0.8rem; }
+.stufe-zahl { color: var(--text); }
+.stufe-von  { color: var(--text-gedaempft); }
+.stufe-name { font-family: var(--satz); font-size: 0.8rem; color: var(--text-zweit); }
+.stufe.reicht-nicht .stufe-zahl { color: var(--signal-warnung); }
+
+
+/* ---------------------------------------------------------------------
+   8  GATTERLEITER
+   ---------------------------------------------------------------------
+   Die Reihenfolge aus SPEC-3 4.2, sichtbar gemacht:
+     abgeschaltet -> Stoppschalter -> Stufe/Freigabe -> Obergrenze -> ACT
+   Die Leiter zeigt, welche Sprosse entschieden hat. Sie belegt
+   ausserdem, dass eine Freigabe nur die Stufe ersetzt.
+   --------------------------------------------------------------------- */
+
+.gatter { border: 1px solid var(--linie); background: var(--flaeche); }
+.gatter-sprosse {
+  display: grid;
+  grid-template-columns: 1.4rem 12rem 1fr auto;
+  gap: var(--r3);
+  align-items: baseline;
+  padding: var(--r2) var(--r3);
+  border-bottom: 1px solid var(--linie);
+  font-size: 0.82rem;
+}
+.gatter-sprosse:last-child { border-bottom: 0; }
+.gatter-nr { font-family: var(--masch); color: var(--text-gedaempft); font-size: 0.72rem; }
+.gatter-name { color: var(--text-zweit); }
+.gatter-wert { color: var(--text-gedaempft); }
+.gatter-sprosse.entschieden { background: var(--flaeche-hoch); }
+.gatter-sprosse.entschieden .gatter-name { color: var(--text); }
+.gatter-sprosse.uebersprungen { opacity: 0.5; }
+
+
+/* ---------------------------------------------------------------------
+   9  VERTRAUENSNAHT
+   ---------------------------------------------------------------------
+   Das Signaturelement. Es macht die Grenze aus SPEC-3 4.1 und P1
+   sichtbar: was das Modell entschied, und was der Code gerechnet hat.
+
+   Kodiert wird die Grenze durch Linienart und Position, NICHT durch
+   Farbe -- gepunktet = aus Fremdtext abgeleitet, durchgezogen = vom
+   Code aus vertrauenswuerdiger Quelle berechnet.
+   --------------------------------------------------------------------- */
+
+.naht { display: grid; grid-template-columns: 1fr 1fr; gap: var(--r6); }
+.naht-halb { min-width: 0; }
+.naht-kopf {
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-gedaempft);
+  padding-bottom: var(--r1);
+  margin-bottom: var(--r2);
+}
+.naht-halb.modell    { border-left: 2px dotted var(--linie-stark); padding-left: var(--r3); }
+.naht-halb.code      { border-left: 2px solid var(--linie-stark);  padding-left: var(--r3); }
+.naht-halb.modell .naht-kopf::after { content: "  unvertrauenswuerdige Herkunft"; color: var(--text-gedaempft); text-transform: none; letter-spacing: 0; }
+
+@media (max-width: 46rem) {
+  .naht { grid-template-columns: 1fr; gap: var(--r4); }
+}
+
+
+/* ---------------------------------------------------------------------
+   10  FAKTEN, TABELLEN, ZAEHLER
+   --------------------------------------------------------------------- */
+
+.fakten { display: grid; grid-template-columns: 11rem 1fr; gap: var(--r1) var(--r4); margin: 0; }
+.fakten dt { color: var(--text-gedaempft); font-size: 0.84rem; }
+.fakten dd { margin: 0; font-family: var(--masch); font-size: 0.84rem; word-break: break-word; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-gedaempft);
+  padding: 0 var(--r4) var(--r2) 0;
+  border-bottom: 1px solid var(--linie-stark);
+  white-space: nowrap;
+}
+td {
+  padding: var(--r2) var(--r4) var(--r2) 0;
+  border-bottom: 1px solid var(--linie);
+  vertical-align: top;
+}
+tr:hover td { background: var(--flaeche); }
+td.gedaempft { color: var(--text-gedaempft); }
+
+/* Eine Zahl ohne Bezug ist keine Auskunft. Zaehler stehen deshalb
+   immer als benutzt/Grenze, mit einem Balken dahinter. */
+.zaehler { display: inline-flex; align-items: center; gap: var(--r2); font-family: var(--masch); font-size: 0.78rem; }
+.balken { width: 4rem; height: 6px; border: 1px solid var(--linie-stark); }
+.balken span { display: block; height: 100%; background: var(--text-gedaempft); }
+.balken.voll span { background: var(--signal-warnung); }
+
+
+/* ---------------------------------------------------------------------
+   11  VORGANGSKARTE
+   --------------------------------------------------------------------- */
+
+.vorgang { border: 1px solid var(--linie); background: var(--flaeche); margin-bottom: var(--r3); }
+.vorgang-kopf {
+  display: flex; align-items: baseline; gap: var(--r3);
+  padding: var(--r3) var(--r4);
+  border-bottom: 1px solid var(--linie);
+  background: var(--flaeche-hoch);
+}
+.vorgang-skill { font-family: var(--masch); font-size: 0.78rem; color: var(--akzent); letter-spacing: 0.06em; }
+.vorgang-aktion { color: var(--text-zweit); font-size: 0.84rem; }
+.vorgang-zeit { margin-left: auto; color: var(--text-gedaempft); font-size: 0.76rem; font-family: var(--masch); }
+.vorgang-koerper { padding: var(--r4); }
+.vorgang-satz { margin: 0 0 var(--r4); font-size: 0.95rem; }
+
+/* Fremdtext -- Entwurfstext, Betreff. Immer als Zitat gekennzeichnet,
+   nie als Aussage der Oberflaeche (SPEC-3 3.2 P3). */
+.fremdtext {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-zweit);
+  font-size: 0.88rem;
+  border-left: 2px dotted var(--linie-stark);
+  padding: var(--r1) 0 var(--r1) var(--r3);
+  margin: var(--r3) 0;
+}
+
+.handlungen {
+  display: flex; gap: var(--r2); align-items: center;
+  padding: var(--r3) var(--r4);
+  border-top: 1px solid var(--linie);
+  background: var(--flaeche-hoch);
+}
+.handlungen form { margin: 0; }
+.handlungen .hinweis-knapp { color: var(--text-gedaempft); font-size: 0.8rem; }
+
+
+/* ---------------------------------------------------------------------
+   12  SCHALTFLAECHEN
+   ---------------------------------------------------------------------
+   Genau eine Handlung je Zone darf hervorgehoben sein. Die
+   hervorgehobene ist nicht immer die freigebende: bei einer Aktion,
+   die den Rechner verlaesst, ist der ruhige Weg der voreingestellte.
+   --------------------------------------------------------------------- */
+
+button {
+  font: inherit;
+  font-size: 0.84rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--linie-stark);
+  border-radius: var(--kante);
+  padding: var(--r1) var(--r3);
+  cursor: pointer;
+}
+button:hover { border-color: var(--text-gedaempft); }
+button.haupt { color: var(--akzent); border-color: var(--akzent); }
+button.haupt:hover { background: var(--akzent); color: var(--grund); }
+button.folgenreich { color: var(--signal-warnung); border-color: var(--signal-warnung); }
+button.folgenreich:hover { background: var(--signal-warnung); color: var(--grund); }
+button[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+
+/* ---------------------------------------------------------------------
+   13  MELDUNGEN, LEERE ZUSTAENDE, BESTAETIGUNG
+   --------------------------------------------------------------------- */
+
+.meldung {
+  border-left: 2px solid var(--akzent);
+  padding: var(--r2) 0 var(--r2) var(--r3);
+  color: var(--text-zweit);
+  font-size: 0.88rem;
+  margin: var(--r4) 0;
+}
+.meldung.warnung { border-left-color: var(--signal-warnung); }
+.meldung.fehler  { border-left-color: var(--signal-fehler); }
+
+.leer { color: var(--text-gedaempft); font-size: 0.9rem; padding: var(--r6) 0; }
+.leer .weg { display: block; margin-top: var(--r2); font-family: var(--masch); font-size: 0.82rem; color: var(--text-zweit); }
+
+/* Die Rueckfrage vor einer folgenreichen Aktion ist eine eigene Seite,
+   kein Dialog: ohne JavaScript gibt es keinen Dialog, und eine Seite
+   ist ohnehin ehrlicher -- sie kann zeigen, WAS genau hinausgeht. */
+.rueckfrage {
+  border: 1px solid var(--signal-warnung);
+  background: var(--flaeche);
+  padding: var(--r6);
+  margin: var(--r6) 0;
+}
+.rueckfrage h2 { margin-top: 0; border-bottom: 0; color: var(--signal-warnung); }
+.rueckfrage .folge { font-size: 0.95rem; margin: 0 0 var(--r4); }
+
+.briefing {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  border-left: 2px solid var(--akzent);
+  padding: var(--r1) 0 var(--r1) var(--r4);
+  margin: var(--r4) 0;
+}
+
+footer {
+  color: var(--text-gedaempft);
+  font-size: 0.76rem;
+  padding-top: var(--r12);
+  margin-top: var(--r8);
+  border-top: 1px solid var(--linie);
+}
+
+
+/* ---------------------------------------------------------------------
+   14  BEREICHSTAFEL (Lage als Verteiler)
+   --------------------------------------------------------------------- */
+
+.tafeln { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--r4); }
+.tafel { border: 1px solid var(--linie); background: var(--flaeche); padding: var(--r4); }
+.tafel-kopf { display: flex; align-items: baseline; gap: var(--r2); margin-bottom: var(--r3); }
+.tafel-name { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-gedaempft); }
+.tafel-mehr { margin-left: auto; font-size: 0.78rem; }
+
+/* Kennzeichnung von Entwurfsblaettern. In der Oberflaeche gibt es
+   dieses Element nicht -- es traegt nur die Mockups. */
+.entwurfsmarke {
+  font-family: var(--masch);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--grund);
+  background: var(--signal-warnung);
+  padding: 2px 8px;
+}
+.entwurfsband {
+  background: var(--flaeche-hoch);
+  border-bottom: 1px solid var(--linie-stark);
+  padding: var(--r2) var(--r6);
+  font-size: 0.8rem;
+  color: var(--text-zweit);
+  display: flex; gap: var(--r3); align-items: center; flex-wrap: wrap;
+}
+
+
+/* ---------------------------------------------------------------------
+   15  GROESSENVERHALTEN
+   ---------------------------------------------------------------------
+   Drei Stufen. Ohne JavaScript gibt es keine Umschaltung, also muss
+   jede Stufe fuer sich vollstaendig sein.
+     weit     > 70rem   zwei Spalten, Tabellen vollstaendig
+     standard 46-70rem  eine Spalte, Tabellen vollstaendig
+     schmal   < 46rem   eine Spalte, Tabellen werden zu Fakten
+   --------------------------------------------------------------------- */
+
+@media (max-width: 70rem) {
+  .tafeln { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 46rem) {
+  .spur { padding: 0 var(--r4); }
+  .fakten { grid-template-columns: 1fr; gap: 0 0; }
+  .fakten dt { margin-top: var(--r2); }
+  .gatter-sprosse { grid-template-columns: 1.4rem 1fr; row-gap: var(--r1); }
+  .gatter-wert { grid-column: 2; }
+  .systemband-inhalt { gap: var(--r2); }
+  .vorgang-kopf { flex-wrap: wrap; }
+  .vorgang-zeit { margin-left: 0; width: 100%; }
+
+  /* Tabellen im schmalen Fenster: jede Zeile wird ein Block. Die
+     Kopfzeile wandert per data-kopf vor den Wert. */
+  table.umbrechend thead { display: none; }
+  table.umbrechend tr {
+    display: block;
+    border-bottom: 1px solid var(--linie-stark);
+    padding: var(--r2) 0;
+  }
+  table.umbrechend td {
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: var(--r3);
+    border: 0;
+    padding: 1px 0;
+  }
+  table.umbrechend td::before {
+    content: attr(data-kopf);
+    color: var(--text-gedaempft);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+}
+
+/* Drucken und Ablegen: ein Protokollauszug soll sich als Beleg
+   ausgeben lassen. Farbe wird zu Linie. */
+@media print {
+  body { background: #fff; color: #000; }
+  .systemband, nav, .handlungen { display: none; }
+  .marke { border-color: #000; color: #000; }
+}

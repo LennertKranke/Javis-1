@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS -- Lage (Entwurf)</title>
+<link rel="stylesheet" href="jarvis-prototyp.css">
+</head>
+<body>
+
+<div class="entwurfsband">
+  <span class="entwurfsmarke">Entwurf</span>
+  <span>Designentwurf, kein Produktionscode. Bereiche mit der Marke PLANNED existieren heute nicht (SPEC-3 12).</span>
+</div>
+
+<div class="systemband">
+  <div class="systemband-inhalt">
+    <span class="marke">Betrieb</span>
+    <span class="tatsache"><span class="tatsache-name">Trockenlauf</span><span class="tatsache-wert hebt">an</span></span>
+    <span class="tatsache"><span class="tatsache-name">Dienste</span><span class="tatsache-wert">Mock</span></span>
+    <span class="tatsache"><span class="tatsache-name">Zugangsdaten</span><span class="tatsache-wert">Keychain</span></span>
+    <form method="post" action="/stop"><button type="submit" class="folgenreich">Anhalten</button></form>
+  </div>
+</div>
+
+<div class="spur spur-weit">
+<header><h1>JARVIS</h1></header>
+<nav>
+  <a href="/" class="an">Lage</a>
+  <a href="/entscheidungen">Entscheidungen <span class="zaehler">3</span></a>
+  <a href="/briefing">Briefing</a>
+  <a href="/protokoll">Protokoll</a>
+</nav>
+
+<h2>Lage</h2>
+<dl class="fakten">
+  <dt>Offene Entscheidungen</dt><dd>3</dd>
+  <dt>Protokoll</dt><dd>1 284 Eintraege</dd>
+  <dt>Kette</dt><dd>intakt</dd>
+  <dt>Letzter Durchlauf</dt><dd>2026-08-31 08:12  mail</dd>
+  <dt>Ablage</dt><dd>0700 / 0600, nichts offen</dd>
+</dl>
+
+<h2>Faehigkeiten</h2>
+<table class="umbrechend">
+<thead>
+<tr><th>Faehigkeit</th><th>Stufe gewaehrt / verlangt</th><th>Erreicht Dritte</th><th>Aktiv</th><th>Kontingent</th><th>Letzter Lauf</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td data-kopf="Faehigkeit" class="masch">mail</td>
+  <td data-kopf="Stufe"><span class="stufe"><span class="stufe-zahl">0</span><span class="stufe-von">/ 0</span></span> <span class="stufe-name">Schattenbetrieb</span></td>
+  <td data-kopf="Erreicht Dritte" class="gedaempft">nein</td>
+  <td data-kopf="Aktiv">ja</td>
+  <td data-kopf="Kontingent"><span class="zaehler">12/60 <span class="balken"><span style="width:20%"></span></span> Stunde</span></td>
+  <td data-kopf="Letzter Lauf" class="masch gedaempft">08:12</td>
+</tr>
+<tr>
+  <td data-kopf="Faehigkeit" class="masch">mail_reply</td>
+  <td data-kopf="Stufe"><span class="stufe"><span class="stufe-zahl">0</span><span class="stufe-von">/ 0</span></span> <span class="stufe-name">Schattenbetrieb</span></td>
+  <td data-kopf="Erreicht Dritte" class="gedaempft">nein</td>
+  <td data-kopf="Aktiv">ja</td>
+  <td data-kopf="Kontingent"><span class="zaehler">4/20 <span class="balken"><span style="width:20%"></span></span> Tag</span></td>
+  <td data-kopf="Letzter Lauf" class="masch gedaempft">08:12</td>
+</tr>
+<tr>
+  <td data-kopf="Faehigkeit" class="masch">mail_send</td>
+  <td data-kopf="Stufe"><span class="stufe reicht-nicht"><span class="stufe-zahl">0</span><span class="stufe-von">/ 1</span></span> <span class="stufe-name">verlangt Allowlist</span></td>
+  <td data-kopf="Erreicht Dritte">ja</td>
+  <td data-kopf="Aktiv">ja</td>
+  <td data-kopf="Kontingent"><span class="zaehler">0/5 <span class="balken"><span style="width:0%"></span></span> Tag</span></td>
+  <td data-kopf="Letzter Lauf" class="masch gedaempft">--</td>
+</tr>
+<tr>
+  <td data-kopf="Faehigkeit" class="masch">calendar</td>
+  <td data-kopf="Stufe"><span class="stufe"><span class="stufe-zahl">0</span><span class="stufe-von">/ 0</span></span> <span class="stufe-name">Schattenbetrieb</span></td>
+  <td data-kopf="Erreicht Dritte" class="gedaempft">nein</td>
+  <td data-kopf="Aktiv">ja</td>
+  <td data-kopf="Kontingent"><span class="zaehler">6/60 <span class="balken"><span style="width:10%"></span></span> Stunde</span></td>
+  <td data-kopf="Letzter Lauf" class="masch gedaempft">08:12</td>
+</tr>
+<tr>
+  <td data-kopf="Faehigkeit" class="masch">briefing</td>
+  <td data-kopf="Stufe"><span class="stufe"><span class="stufe-zahl">0</span><span class="stufe-von">/ 0</span></span> <span class="stufe-name">Schattenbetrieb</span></td>
+  <td data-kopf="Erreicht Dritte" class="gedaempft">nein</td>
+  <td data-kopf="Aktiv">ja</td>
+  <td data-kopf="Kontingent"><span class="zaehler">1/3 <span class="balken"><span style="width:33%"></span></span> Tag</span></td>
+  <td data-kopf="Letzter Lauf" class="masch gedaempft">06:30</td>
+</tr>
+<tr>
+  <td data-kopf="Faehigkeit" class="masch">research</td>
+  <td data-kopf="Stufe"><span class="stufe reicht-nicht"><span class="stufe-zahl">0</span><span class="stufe-von">/ 1</span></span> <span class="stufe-name">verlangt Allowlist</span></td>
+  <td data-kopf="Erreicht Dritte">ja</td>
+  <td data-kopf="Aktiv">ja</td>
+  <td data-kopf="Kontingent"><span class="zaehler">0/10 <span class="balken"><span style="width:0%"></span></span> Tag</span></td>
+  <td data-kopf="Letzter Lauf" class="masch gedaempft">--</td>
+</tr>
+</tbody>
+</table>
+
+<h2>Bereiche</h2>
+<div class="tafeln">
+
+  <div class="tafel">
+    <div class="tafel-kopf">
+      <span class="tafel-name">Dienste</span>
+      <span class="marke reserviert">Planned</span>
+      <a class="tafel-mehr" href="06-dienste.html">Nachweisstand</a>
+    </div>
+    <dl class="fakten">
+      <dt>Gmail</dt><dd><span class="nachweis"><span class="leiter"><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse leer"></span><span class="sprosse leer"></span></span><span class="nachweis-text nie">live: nie</span></span></dd>
+      <dt>Kalender</dt><dd><span class="nachweis"><span class="leiter"><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse leer"></span><span class="sprosse leer"></span></span><span class="nachweis-text nie">live: nie</span></span></dd>
+      <dt>Anthropic</dt><dd><span class="nachweis"><span class="leiter"><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse leer"></span><span class="sprosse leer"></span><span class="sprosse leer"></span></span><span class="nachweis-text nie">live: nie</span></span></dd>
+    </dl>
+  </div>
+
+  <div class="tafel">
+    <div class="tafel-kopf">
+      <span class="tafel-name">Modelle</span>
+      <span class="marke reserviert">Planned</span>
+    </div>
+    <dl class="fakten">
+      <dt>classify</dt><dd>anthropic &rarr; ollama &rarr; trocken</dd>
+      <dt>compose</dt><dd>anthropic &rarr; trocken</dd>
+      <dt>Trennung</dt><dd>subprocess</dd>
+      <dt>Vertraulich</dt><dd>nur lokale Anbieter</dd>
+    </dl>
+  </div>
+
+  <div class="tafel">
+    <div class="tafel-kopf">
+      <span class="tafel-name">Gedaechtnis</span>
+      <span class="marke reserviert">Planned</span>
+      <a class="tafel-mehr" href="07-gedaechtnis.html">Ansehen</a>
+    </div>
+    <dl class="fakten">
+      <dt>Tatsachen</dt><dd>38 / 500</dd>
+      <dt>Kurzzeitkontext</dt><dd>8 Eintraege, 2 Bereiche</dd>
+      <dt>Quellen</dt><dd>nur Nutzer</dd>
+    </dl>
+  </div>
+
+  <div class="tafel">
+    <div class="tafel-kopf">
+      <span class="tafel-name">Fehler</span>
+      <span class="marke reserviert">Planned</span>
+    </div>
+    <p class="leer" style="padding:0">Keine fehlgeschlagene Aktion in den letzten 7 Tagen.</p>
+  </div>
+
+</div>
+
+<footer>Loopback, Einzelplatz. Durchlaeufe startet die Kommandozeile.</footer>
+</div>
+</body>
+</html>

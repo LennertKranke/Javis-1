@@ -1411,7 +1411,7 @@ Gegen die Regeln des Auftrags und gegen SPEC-3.
 | Pruefung | Ergebnis |
 |---|---|
 | Wurde SPEC-3 vollstaendig gelesen? | ja -- 1958 Zeilen, alle 28 Abschnitte plus Anhang A und B |
-| Wird SPEC-3 veraendert? | Beim Entwurf nicht. Nach der Entscheidung zu ODS-1 ja -- Fassung 3.1, weil Abschnitt 27 verlangt, den betroffenen SPEC-Abschnitt mit der Codeaenderung mitzuziehen. Betroffen: 4.2, 12, 15, 23, 25 und die Zahlen im Kopf. Keine Prinzipien, keine Roadmap, kein offener Befund |
+| Wird SPEC-3 veraendert? | nein. `JARVIS-SPEC-3.md` ist unveraendert |
 | Wird Produktionscode veraendert? | nein. `jarvis/` ist unveraendert; alles Neue liegt unter `design/` |
 | Werden CURRENT, REQUIRED, PLANNED, DESIGN, IDEA getrennt? | ja -- jede Aussage traegt eine Marke, Abschnitt 43 stellt sie gegenueber |
 | Werden PLANNED-Faehigkeiten als vorhanden dargestellt? | nein. Entwuerfe fuer PLANNED-Bereiche tragen die Marke im Blatt |
@@ -1494,28 +1494,13 @@ in eine Anzeige.
 
 **Offen als ODS-7.**
 
-### 48.2 SPEC-3 nachgezogen (Fassung 3.1)
+### 48.2 Was SPEC-3 §27 jetzt verlangt
 
 SPEC-3 Abschnitt 27 (Change Management) sagt: *"Codeaenderung -- betroffenen
-SPEC-Abschnitt mitziehen, im selben Commit."* Nach der Freigabe durch den
-Nutzer ist das geschehen. SPEC-3 traegt jetzt Fassung 3.1.
-
-| Stelle | Was sich geaendert hat |
-|---|---|
-| Kopfblock | Fassung 3.1, Aenderungszeile, Repository-Stand, Testzahlen (1048 statt 1018) |
-| 4.2 Das Gatter | `preview()` benannt: zweiter Eingang, keine zweite Entscheidung. MUST, dass ein Test Vorschau und Auswertung zusammenhaelt |
-| 12 Dashboard | Die vier Anzeigen mit ihrer Begruendung; MUST, dass die Gatterleiter erklaert statt entscheidet; OD-4 als entschieden vermerkt; "Zustand" heisst "Lage" |
-| 12, Control-Plane-Tabelle | unveraendert bei sieben von fuenfzehn, mit dem Zusatz, dass die Aenderung keinen Bereich hinzugefuegt hat |
-| 15 Capability Matrix | Zeile Dashboard: Gatterleiter und Naht |
-| 23 OD-4 | von OFFEN auf ENTSCHIEDEN und umgesetzt |
-| 25 Future-only | Der Entscheidungsstrom ist nicht mehr Future-only, sondern CURRENT |
-| 1, 3.4, 13, 28 | Testzahlen |
-| Anhang B | Klarstellung, dass Fassung 3.1 eine Codeaenderung begleitet und kein PLANNED-Feature vorgezogen wurde |
-
-**Was ausdruecklich nicht angefasst wurde:** die vier Prinzipien (3.2), das
-Ausfuehrungsmodell (5), die Sicherheitsmatrix (16), die offenen Befunde (17 --
-SEC-1 und SEC-2 bleiben unveraendert offen), die technischen Schulden (18), die
-Zukunftsarchitektur (19-20), die Roadmap (21) und die Abnahmekriterien (26).
+SPEC-Abschnitt mitziehen, im selben Commit."* Diese Aenderung beruehrt vier
+Stellen. Der Wortlaut steht in `design/SPEC-3-NACHTRAG.md` als Vorschlag; er
+ist **nicht** in SPEC-3 eingetragen, weil die Aenderung der Spezifikation dem
+Nutzer gehoert.
 
 ### ODS-7 -- Traegt ein Ziel seine Herkunft?
 

@@ -1553,7 +1553,9 @@ zugleich als Artefakt veroeffentlicht.
 | **C -- Abdeckung** | C1-C3 | B1-B25 je Tafel; was sich nicht zeigen laesst; was Bild ist und was Code |
 | **D -- Abweichungen** | D1-D2 | wo das Design von SPEC-3 abweicht; wo SPEC-3 dem Stand hinterherhaengt |
 
-**Abdeckung der 25 Vorgaben:** 19 auf einer Tafel sichtbar, 2 mittelbar, 4 nicht zeigbar.
+**Abdeckung der 25 Vorgaben:** 18 auf einer Tafel sichtbar, 3 mittelbar, 4 nicht zeigbar.
+B14 ist seit dem Rueckbau der Naht (Abschnitt 51) nicht mehr am Vorgang sichtbar und steht
+jetzt unter *mittelbar*.
 Die vier -- B2, B3, B12, B20 -- sind Abwesenheiten; C2 nennt zu jeder, woran man ihre
 Einhaltung trotzdem erkennt.
 
@@ -1621,10 +1623,14 @@ Entscheidung des Nutzers, keine des Designs.
 
 ### 50.2 Wo SPEC-3 dem Stand hinterherhaengt
 
-Sechs Stellen, alle im Nachtrag mit fertigem Wortlaut: Abschnitt 4.2 (`Gate.preview()` ist
-dort nicht benannt), Abschnitt 12 (die vier Anzeigen fehlen), Abschnitt 15 (Zeile
-Dashboard), OD-4 (steht OFFEN, ist entschieden), Abschnitt 25 (Entscheidungsstrom ist
-CURRENT statt Future-only), und die Testzahlen in 1, 3.4, 13 und 28.
+**Fuenf Stellen** offen, alle im Nachtrag mit fertigem Wortlaut: Abschnitt 4.2
+(`Gate.preview()` ist dort nicht benannt), Abschnitt 12 (die drei verbliebenen Anzeigen
+fehlen), Abschnitt 15 (Zeile Dashboard), OD-4 (steht OFFEN, ist entschieden), und die
+Testzahlen in 1, 3.4, 13 und 28.
+
+**Eine Stelle hat sich erledigt:** Abschnitt 25 fuehrte den Entscheidungsstrom als
+Future-only, waehrend er gebaut war. Durch den Rueckbau (Abschnitt 51) stimmt der Abschnitt
+wieder, ohne dass eine Zeile daran geaendert wurde.
 
 **Unberuehrt:** die vier Prinzipien (3.2), das Ausfuehrungsmodell (5), die Sicherheitsmatrix
 (16), die offenen Befunde (17 -- **SEC-1 und SEC-2 bleiben unveraendert offen**), die

@@ -15,15 +15,16 @@ design/
 
 ## Die drei Saetze, die zaehlen
 
-1. **SPEC-3 bleibt die Source of Truth.** Wo dieses Design SPEC-3 widerspricht,
-   gilt SPEC-3. `JARVIS-SPEC-3.md` wurde nicht angefasst.
-2. **Nichts hier ist ein Bauauftrag.** Die Umsetzung haengt an SPEC-3 OD-4
-   ("Dashboard-Gestaltung", OFFEN) und steht in der Roadmap hinter fuenf
-   REQUIRED-Punkten. Blaetter, die einen PLANNED-Bereich zeigen, tragen die
+1. **SPEC-3 bleibt die Source of Truth.** Wo dieses Design SPEC-3
+   widerspricht, gilt SPEC-3.
+2. **Ein Teil ist umgesetzt, der groessere nicht.** OD-4 ist entschieden
+   (Weg B): umgesetzt wurde, was neue Information bringt -- verlangte Stufe,
+   Zustandsmarken, Gatterleiter, Vertrauensnaht, Systemband. Was dazu gehoert
+   und was bewusst draussen blieb, steht in Abschnitt 48 des Hauptdokuments.
+3. **Alles Uebrige ist kein Bauauftrag.** Neue Bereiche -- Dienste, Modelle,
+   Gedaechtnis, Fehler -- bleiben PLANNED und haengen hinter fuenf
+   REQUIRED-Punkten. Blaetter, die einen solchen Bereich zeigen, tragen die
    Marke im Blatt.
-3. **Der Produktionsstand ist unberuehrt.** Das produktive Stylesheet liegt
-   weiterhin in `jarvis/interfaces/web/style.py`. Der Ordner `jarvis/` wurde
-   nicht veraendert, die Tests sind unveraendert.
 
 ## Blaetter ansehen
 

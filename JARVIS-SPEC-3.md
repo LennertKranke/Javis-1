@@ -3,10 +3,15 @@
 ```
 Document:              JARVIS-SPEC-3
 Status:                CURRENT SOURCE OF TRUTH
-Version:               3.0
-Created:               2026-08-30
-Repository state:      commit 0b7b9b7, Arbeitsbaum sauber
-Test state:            1017 von 1018 pytest gruen, ruff check und format sauber
+Version:               3.1
+Created:               2026-08-30  (Fassung 3.0, Stand commit 0b7b9b7)
+Changed:               2026-08-31  (Fassung 3.1) -- OD-4 entschieden und
+                       umgesetzt. Inhaltlich betroffen: 4.2, 12, 15, 23, 25,
+                       Anhang B. Nur Zahlen: 1, 3.4, 13, 28. Keine Prinzipien,
+                       keine Roadmap, kein offener Befund beruehrt; SEC-1 und
+                       SEC-2 bleiben unveraendert offen
+Repository state:      commit b17edf0, Arbeitsbaum sauber
+Test state:            1047 von 1048 pytest gruen, ruff check und format sauber
                        Ein Test ist zeitabhaengig und faellt taeglich fuer rund
                        zwei Stunden aus -- siehe KI-8. Kein Codefehler
 Based on:              aktueller Repository-Code und tatsaechlich ausgefuehrte Tests
@@ -81,7 +86,7 @@ lokalen Dashboard, in dem sich Entscheidungen freigeben lassen.
 **Was tatsaechlich steht.** Der Kern (Konfiguration, Datenbank, Protokoll mit
 Hash-Kette, Ratenbegrenzung, Stoppschalter, Normalisierung, Gatter, Freigaben)
 ist vollstaendig und in den sicherheitskritischen Teilen belastbar getestet:
-15 882 Zeilen Quellcode, 12 062 Zeilen Tests, 1018 Tests -- davon 1017 zu jeder
+16 517 Zeilen Quellcode, 12 337 Zeilen Tests, 1048 Tests -- davon 1047 zu jeder
 Tageszeit gruen, einer zeitabhaengig (KI-8). Sechs Faehigkeiten nach einem
 einheitlichen Vertrag. Drei Bedienwege: CLI, Dashboard,
 Sprache.
@@ -340,7 +345,7 @@ Funktionsanforderungen sind.
 | **Maintainability** | Eine neue Faehigkeit **SHOULD** ohne Eingriff in den Kern integrierbar sein | erfuellt; Einschraenkung: `core/config.py` waechst mit jeder Faehigkeit (TD-4) |
 | **Privacy** | Daten **MUST** nur dort verarbeitet und gespeichert werden, wo es noetig ist | erfuellt: keine Mailinhalte in der Ablage, Vertraulichkeitssperre, 0700/0600 |
 | **Portability** | macOS ist Zielplattform und **MUST** beruecksichtigt werden | Plattformweichen vorhanden, **nichts davon auf macOS gemessen** (Abschnitt 14) |
-| **Testability** | Sicherheitskritische Funktionen **MUST** automatisiert pruefbar sein | erfuellt: 1018 Tests, Sicherheitseigenschaften einzeln getestet und gegen Mutation geprueft |
+| **Testability** | Sicherheitskritische Funktionen **MUST** automatisiert pruefbar sein | erfuellt: 1048 Tests, Sicherheitseigenschaften einzeln getestet und gegen Mutation geprueft |
 
 Diese Liste ist kein Wunschzettel: wo eine Eigenschaft heute nicht erfuellt ist,
 steht der Verweis auf den Befund, der sie offen haelt.
@@ -384,6 +389,18 @@ Stoppschalter, **nicht** den Ein-Aus-Schalter, **nicht** die Obergrenze und
 
 **Gemessen:** Bei aktivem Trockenlauf bleibt ein freigegebener Vorgang offen,
 mit Vermerk "Trockenlauf global aktiv".
+
+**Zwei Eingaenge, eine Entscheidung.** `evaluate()` beantwortet "darf gehandelt
+werden" und schreibt dabei ins Protokoll und verbraucht Kontingent.
+`preview()` beantwortet ausschliesslich "woran haengt es gerade" -- fuer die
+Anzeige (Abschnitt 12). Es schreibt nichts, verbraucht nichts und erlaubt
+nichts.
+
+**MUST:** Die Vorschau darf nie etwas anderes sagen als die Auswertung. Weil
+sie die Reihenfolge ein zweites Mal abbildet, haelt ein Test beide ueber alle
+Lagen gegeneinander -- abgeschaltet, Stoppschalter, Stufe, Freigabe,
+Trockenlauf, Obergrenze. Ohne diesen Test waere die zweite Fassung eine
+Einladung zum Auseinanderdriften.
 
 ### 4.3 Autonomiestufen
 
@@ -824,7 +841,7 @@ innerhalb eines Prozesses laeuft die Kette vollstaendig.
 
 ## 12. Dashboard
 
-**CURRENT.** Lokale Instrumententafel: Zustand, Briefing, anstehende
+**CURRENT.** Lokale Instrumententafel: Lage, Briefing, anstehende
 Entscheidungen, Protokoll. Freigabe und Verwerfen per Klick, Stoppschalter auf
 jeder Ansicht. Serverseitiges HTML, kein JavaScript, ein handgeschriebenes
 Stylesheet.
@@ -832,11 +849,28 @@ Stylesheet.
 Im Trockenlauf zeigt es die Vorgaenge, blendet die Freigabe-Schaltflaeche aus und
 sagt warum: "Trockenlauf ist an. Verwerfen geht, Freigeben bewirkt nichts."
 
+**Vier Anzeigen tragen mehr als Gestaltung** -- CURRENT seit der Umsetzung von
+OD-4:
+
+| Anzeige | Was sie sichtbar macht |
+|---|---|
+| **Stufe gewaehrt / verlangt** | Die Faehigkeitstabelle zeigt beide Zahlen. Nur die gewaehrte zu zeigen konnte den Fehlertyp aus 6.1 nicht anzeigen: `0 >= 0` ist wahr |
+| **Zustandsmarke** | Ein Protokollergebnis erscheint als Wort mit Form, nicht als Farbe allein. Nur bekannte Ergebnisse bekommen eine Marke; die vom Modell vorgeschlagene Aktion eines `decision`-Eintrags ist kein Zustand und bleibt Text |
+| **Gatterleiter** | Die fuenf Sprossen aus 4.2 in ihrer Reihenfolge, mit der haltenden markiert. Sie zeigt am Vorgang, dass eine Freigabe nur Sprosse 3 ersetzt -- Stoppschalter, Obergrenze und Trockenlauf gelten weiter |
+| **Vertrauensnaht** | `Decision.fields` links, `Decision.targets` rechts, getrennt ueber Linienart und Schriftart statt ueber Farbe. Macht P1 (3.2) am Vorgang pruefbar: ein Ziel links waere sofort zu sehen |
+
+**MUST:** Die Gatterleiter ist eine **Erklaerung, keine Entscheidung**. Sie
+kommt aus `Gate.preview()`, das die Reihenfolge lesend abbildet: kein
+Protokolleintrag, kein verbrauchtes Kontingent (4.2).
+
 **Abweichung von SPEC-2 (HISTORICAL).** SPEC-2 §7 gibt Farbwerte, IBM-Plex-Schriften,
-SSE und ein zweigeteiltes Stromelement vor. Umgesetzt sind andere Farbwerte,
-Systemschriften und `meta refresh`. Das ist **bewusst offen** und keine Schuld:
-SPEC-2 ist nicht mehr verbindlich. Ob angeglichen wird, ist eine offene
-Entscheidung (OD-4).
+SSE und ein zweigeteiltes Stromelement vor. Angeglichen wurde **nicht** an
+SPEC-2, sondern an ein eigenes Designsystem
+(`design/JARVIS-DESIGN-SYSTEM.md`): Systemschriften, eigene Farbrollen,
+`meta refresh`. Das zweigeteilte Stromelement ist als Vertrauensnaht
+uebernommen, weil es die Vertrauensgrenze sichtbar macht -- es ist die einzige
+Gestaltungsidee aus SPEC-2 §7, die uebernommen wurde (Abschnitt 25). Damit ist
+OD-4 entschieden.
 
 **MUST:** Das Dashboard ist niemals die Sicherheitsinstanz (§4.6).
 
@@ -864,10 +898,11 @@ entfernt ist.
 | Tasks | **fehlt**, weil es keine Tasks gibt (PLANNED) |
 | Automations | **fehlt**, weil es keine Automationen gibt (PLANNED) |
 
-Sieben von fuenfzehn. Die fehlenden acht sind kein Versaeumnis, sondern
-unentschieden: ob das Dashboard zur Control Plane ausgebaut wird und in welcher
-Form, ist OD-4. Vier der acht setzen ausserdem Faehigkeiten voraus, die es nicht
-gibt.
+Sieben von fuenfzehn -- **unveraendert nach OD-4**. Die Entscheidung hat
+vorhandene Bereiche mehr sagen lassen, aber keinen hinzugefuegt. Die fehlenden
+acht sind kein Versaeumnis: ob das Dashboard zur Control Plane ausgebaut wird,
+ist weiterhin offen und steht als Roadmap-Punkt 6 auf PLANNED. Vier der acht
+setzen ausserdem Faehigkeiten voraus, die es nicht gibt.
 
 **MUST NOT:** Ein Ausbau darf keinen zweiten Aktionsweg schaffen. Jede
 Schaltflaeche, die etwas ausloest, geht durch `execute_approval` und damit durch
@@ -877,8 +912,8 @@ dasselbe Gatter -- nicht direkt an einen Dienst.
 
 ## 13. Testing
 
-**CURRENT:** 1018 Tests, Laufzeit rund 16 s. Verhaeltnis Testcode zu Quellcode
-0,76 : 1. **1017 davon laufen zu jeder Tageszeit gruen**; einer ist zeitabhaengig
+**CURRENT:** 1048 Tests, Laufzeit rund 18 s. Verhaeltnis Testcode zu Quellcode
+0,75 : 1. **1047 davon laufen zu jeder Tageszeit gruen**; einer ist zeitabhaengig
 und faellt taeglich in einem Zwei-Stunden-Fenster aus (KI-8). Das ist ein Fehler
 im Test, nicht im Code -- aber er entwertet jede pauschale "alle gruen"-Aussage.
 
@@ -957,7 +992,7 @@ Ausschliesslich anhand des Repository- und Auditstandes gefuellt.
 | Briefing | CURRENT | ja | ja | -- | NO | Stufe 0, Fassung ohne Modell als Rueckfall |
 | Recherche | CURRENT | ja | ja | **NO** | NO | Stufe 1, **keine Netzquelle** |
 | CLI | CURRENT | ja | -- | -- | NO | 17 Befehle |
-| Dashboard | CURRENT | ja | -- | -- | NO | Token, Origin, CSP, kein JS |
+| Dashboard | CURRENT | ja | -- | -- | NO | Token, Origin, CSP, kein JS; Gatterleiter und Naht seit OD-4 |
 | Sprache | CURRENT | ja | Ersatz | **NO** | NO | Bedienweise, keine Faehigkeit, kein `act`-Pfad |
 | Daemon | CURRENT | ja | -- | -- | NO | `flock`, Fehlertoleranz je Tick; Plist nie geladen |
 | Gedaechtnis, Kontext | CURRENT | ja | -- | -- | NO | 500 Tatsachen, begrenzter Kontext |
@@ -1590,9 +1625,14 @@ Status:   OFFEN
 ```
 Frage:    Wird das Dashboard an die Designfassung aus SPEC-2 angeglichen,
           oder wird die heutige Umsetzung die verbindliche?
-Empfehlung: Erst entscheiden, wenn das Dashboard zur Control Plane ausgebaut
-          wird. Eine Angleichung jetzt waere Aufwand ohne Funktionsgewinn.
-Status:   OFFEN
+Entscheidung: Keines von beidem. Ein eigenes Designsystem, abgeleitet aus
+          dieser Spezifikation, liegt in design/JARVIS-DESIGN-SYSTEM.md.
+          Umgesetzt wurde davon nur, was neue Information bringt: verlangte
+          Stufe, Zustandsmarken, Gatterleiter, Vertrauensnaht, Systemband
+          (Abschnitt 12). Keine neuen Bereiche -- der Ausbau zur Control
+          Plane bleibt PLANNED und haengt weiter hinter den fuenf
+          REQUIRED-Punkten.
+Status:   ENTSCHIEDEN und umgesetzt
 ```
 
 ### OD-5 — Zielhost-Allowlist fuer den Modellprozess
@@ -1669,11 +1709,14 @@ vorhandene `JARVIS-SPEC.md` ist SPEC-1 und ebenfalls historisch.
 
 ### Future-only — weiterhin interessant, jetzt nur Bauplan
 
-* Die Designfassung des Dashboards aus SPEC-2 §7. Sie bleibt eine gute Vorlage
-  fuer die kuenftige Control Plane, ist aber kein Abnahmekriterium (OD-4).
+* Die Designfassung des Dashboards aus SPEC-2 §7. Sie war eine Vorlage und ist
+  kein Abnahmekriterium geworden: OD-4 hat sich fuer ein eigenes Designsystem
+  entschieden (`design/JARVIS-DESIGN-SYSTEM.md`), nicht fuer eine Angleichung.
 * Der Entscheidungsstrom als Signaturelement (SPEC-2 §7.5) -- die Zweiteilung "was das
-  Modell entschied / was der Code tat" macht die Vertrauensgrenze sichtbar und
-  bleibt eine starke Idee.
+  Modell entschied / was der Code tat" macht die Vertrauensgrenze sichtbar. Das
+  war die einzige gestalterische Idee, die aus SPEC-2 uebernommen wurde: sie
+  steht seit OD-4 als Vertrauensnaht am Vorgang (Abschnitt 12) und ist damit
+  nicht mehr Future-only, sondern **CURRENT**.
 
 ---
 
@@ -1767,7 +1810,7 @@ Fuer eine neue Sitzung ohne bisherigen Verlauf.
 
 JARVIS ist ein persoenlicher Assistent fuer macOS, der Mail und Kalender liest,
 einordnet, Antworten entwirft und ein Briefing erzeugt. Der Kern ist fertig und
-getestet (1018 Tests), sechs Faehigkeiten laufen nach einem einheitlichen
+getestet (1048 Tests), sechs Faehigkeiten laufen nach einem einheitlichen
 Vertrag. **Kein externer Dienst wurde je erreicht, und nichts lief je auf
 macOS.** Zwei bestaetigte Sicherheitsluecken im Freigabeweg sind offen (SEC-1,
 SEC-2) und stehen ganz oben auf der Roadmap. Alles unter PLANNED und IDEA ist
@@ -1777,7 +1820,7 @@ ausdruecklich **nicht** zu bauen.
 
 ```sh
 uv sync
-uv run pytest -q                              # 1018 Tests, siehe KI-8
+uv run pytest -q                              # 1048 Tests, siehe KI-8
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe
@@ -1942,7 +1985,7 @@ verdecken. Beide Pruefungen sind noetig, und sie pruefen Verschiedenes.
 | Sind PLANNED-Features nicht zur Implementierung freigegeben? | ja -- Abschnitt 20, Spalte "Implement Now?" durchgehend NO |
 | Ist die zukuenftige Architektur ausreichend beschrieben? | ja -- Abschnitt 19 mit acht Steckbriefen nach vollem Schema |
 | Voice, Tasks, Files, Documents, Research, Home Automation, Proaktivitaet? | ja -- alle in 19.5; Research als REQUIRED, weil die Faehigkeit existiert |
-| Gibt es Phantom-Implementierungen? | nein -- weder die Spec-Erstellung noch die Nachtragsrunde hat Code geaendert |
+| Gibt es Phantom-Implementierungen? | nein -- die Spec-Erstellung und die Nachtragsrunde haben keinen Code geaendert. Fassung 3.1 begleitet eine Codeaenderung (OD-4), die ausschliesslich vorhandene Anzeigen betrifft: keine neue Faehigkeit, kein Stub, keine Tabelle, kein vorgezogenes PLANNED-Feature |
 | Ist das Execution-/Authorization-Modell klar? | ja -- Abschnitt 5, beide Wege symmetrisch |
 | Ist die Approval-Architektur klar? | ja -- 5.1, mit beiden offenen Luecken |
 | Ist der Stop Switch geschuetzt? | ja -- 4.2, gemessen |

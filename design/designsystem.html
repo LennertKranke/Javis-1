@@ -1,0 +1,1812 @@
+<title>JARVIS Design System</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* ============================================================
+   JARVIS Design System -- Blaetterwerk
+   ============================================================
+   Zwei Ebenen, und sie sind absichtlich verschieden gesetzt:
+
+   PRAESENTATION  IBM Plex -- die Schrift, die SPEC-2 vorschrieb und
+                  die SPEC-3 aus der Verbindlichkeit entlassen hat.
+   SPECIMEN       Systemschrift -- das, was das neue Design waehlt.
+
+   Der Unterschied ist die Aussage: was man liest, ist das Blatt;
+   was im Rahmen steht, ist JARVIS.
+
+   Diese Datei ist in sich geschlossen. Kein externes Stylesheet,
+   keine Bilddatei -- sie laesst sich lokal direkt oeffnen.
+   ============================================================ */
+
+:root {
+  --papier:#EDF0F1; --karte:#FFFFFF; --ink:#0F1519; --ink2:#4C5A61;
+  --ink3:#76848B; --rule:#CBD5D9; --rule2:#E2E8EA;
+  --akzent:#1A6270; --stempel:#8A6108; --alarm:#A8331F;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papier:#0A0C0E; --karte:#12161A; --ink:#DCE2E5; --ink2:#8E9AA1;
+    --ink3:#6B767C; --rule:#222A30; --rule2:#1A2126;
+    --akzent:#6FC0CE; --stempel:#D9A441; --alarm:#D9705E;
+  }
+}
+:root[data-theme="dark"] {
+  --papier:#0A0C0E; --karte:#12161A; --ink:#DCE2E5; --ink2:#8E9AA1;
+  --ink3:#6B767C; --rule:#222A30; --rule2:#1A2126;
+  --akzent:#6FC0CE; --stempel:#D9A441; --alarm:#D9705E;
+}
+
+* { box-sizing:border-box; }
+body {
+  background:var(--papier); color:var(--ink);
+  font-family:var(--serif); font-size:17px; line-height:1.6; margin:0;
+}
+::selection { background:var(--akzent); color:var(--papier); }
+a { color:var(--akzent); }
+:focus-visible { outline:2px solid var(--akzent); outline-offset:3px; }
+@media (prefers-reduced-motion: reduce) { * { animation:none!important; transition:none!important; } }
+
+.blatt { max-width:1200px; margin:0 auto; padding:0 28px 120px; }
+
+/* --- Kopf -------------------------------------------------- */
+.kopf { padding:60px 0 32px; border-bottom:2px solid var(--ink); }
+.kennung {
+  font-family:var(--mono); font-size:11px; font-weight:500;
+  letter-spacing:.22em; text-transform:uppercase; color:var(--ink3);
+  display:flex; gap:20px; flex-wrap:wrap; margin-bottom:24px;
+}
+h1 {
+  font-family:var(--mono); font-weight:600; font-size:clamp(30px,5.2vw,52px);
+  letter-spacing:-.01em; line-height:1.05; margin:0 0 18px; text-wrap:balance;
+}
+h1 .zart { color:var(--ink3); font-weight:400; }
+.vorspann { font-size:19px; max-width:62ch; margin:0; color:var(--ink2); }
+.vorspann strong { color:var(--ink); font-weight:600; }
+
+.warnleiste {
+  margin:28px 0 0; padding:14px 18px;
+  border:1px solid var(--stempel); border-left-width:4px; background:var(--karte);
+  font-family:var(--mono); font-size:13px; line-height:1.55; color:var(--ink2);
+}
+.warnleiste b { color:var(--stempel); font-weight:600; }
+
+/* --- Inhaltsverzeichnis ------------------------------------ */
+.inhalt {
+  margin:36px 0 0; padding:22px 0 0; border-top:1px solid var(--rule);
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:26px;
+}
+@media (max-width:800px){ .inhalt{ grid-template-columns:1fr; gap:18px; } }
+.inhalt h4 {
+  font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.2em;
+  text-transform:uppercase; color:var(--akzent); margin:0 0 10px;
+}
+.inhalt ol { margin:0; padding-left:20px; font-size:14px; line-height:1.75; }
+.inhalt a { text-decoration:none; }
+.inhalt a:hover { text-decoration:underline; }
+
+/* --- Teile und Abschnitte ---------------------------------- */
+.teil { padding-top:72px; }
+.teil-kopf { border-top:2px solid var(--ink); padding-top:14px; margin-bottom:8px; }
+.teil-nr {
+  font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.24em;
+  text-transform:uppercase; color:var(--akzent);
+}
+.teil-titel { font-family:var(--mono); font-weight:600; font-size:clamp(22px,3.4vw,32px); margin:6px 0 12px; }
+.teil-vorspann { font-size:17px; color:var(--ink2); max-width:64ch; margin:0; }
+
+/* --- Tafel ------------------------------------------------- */
+.tafel { margin:44px 0 0; }
+.tafel-kopf {
+  display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  font-family:var(--mono); font-size:11px; font-weight:500;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--ink3);
+  padding-bottom:9px; border-bottom:1px solid var(--rule);
+}
+.tafel-nr { color:var(--ink); font-weight:600; }
+.tafel-name { color:var(--ink2); letter-spacing:.08em; }
+.stempel {
+  font-family:var(--mono); font-size:10px; font-weight:600;
+  letter-spacing:.16em; text-transform:uppercase;
+  border:1px solid var(--stempel); color:var(--stempel); padding:1px 7px; white-space:nowrap;
+}
+.stempel.neutral { border-color:var(--ink3); color:var(--ink3); }
+.grundlage { margin-left:auto; color:var(--ink3); text-transform:none; letter-spacing:.04em; }
+.bild { border:1px solid var(--rule); background:#0B0D0F; padding:22px; overflow-x:auto; margin-top:14px; }
+.bild.papierweiss { background:#F7F8F9; }
+.bild.blank { background:transparent; border-color:var(--rule2); }
+.unterschrift {
+  font-size:14.5px; color:var(--ink2); margin:12px 0 0; max-width:72ch;
+  border-left:2px solid var(--rule); padding-left:14px;
+}
+.unterschrift b { color:var(--ink); font-weight:600; }
+.unterschrift + .unterschrift { margin-top:8px; }
+
+h3 { font-family:var(--mono); font-weight:600; font-size:14px; letter-spacing:.02em; margin:30px 0 8px; }
+p { max-width:68ch; }
+.zwei { display:grid; grid-template-columns:1fr 1fr; gap:30px; }
+@media (max-width:820px){ .zwei{ grid-template-columns:1fr; gap:20px; } }
+
+/* --- Tabellen im Blatt ------------------------------------- */
+.rollbar { overflow-x:auto; }
+.btab { width:100%; border-collapse:collapse; font-size:14px; margin-top:16px; }
+.btab th {
+  font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink3); text-align:left;
+  padding:0 16px 8px 0; border-bottom:1px solid var(--ink);
+}
+.btab td { padding:9px 16px 9px 0; border-bottom:1px solid var(--rule2); vertical-align:top; }
+.btab td.m, .btab .m { font-family:var(--mono); font-size:12.5px; }
+.btab td.warn { color:var(--stempel); font-family:var(--mono); font-size:12.5px; }
+.btab td.ja { color:var(--akzent); font-family:var(--mono); font-size:12.5px; }
+
+.liste { max-width:68ch; padding-left:20px; }
+.liste li { margin-bottom:8px; }
+
+.fuss {
+  margin-top:80px; padding-top:24px; border-top:2px solid var(--ink);
+  font-family:var(--mono); font-size:12px; color:var(--ink3); line-height:1.75;
+}
+.fuss b { color:var(--ink2); font-weight:500; }
+
+/* ============================================================
+   SPECIMEN-EBENE -- die JARVIS-Welt.
+   .j  = dunkle Fassung (Standard)
+   .j.hell = helle Fassung
+   Alle Werte explizit, keiner geerbt: ein Specimen zeigt seine
+   eigene Welt, nicht die des Blattes.
+   ============================================================ */
+.j {
+  --grund:#0B0D0F; --flaeche:#101417; --hoch:#151A1E;
+  --linie:#1D2429; --linie2:#2B353C;
+  --t:#D3D9DD; --t2:#98A3AA; --t3:#6C777E;
+  --akz:#67B8C7; --warn:#D9A441; --fehl:#D9705E;
+  --satz:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
+  --masch:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-family:var(--satz); font-size:14px; line-height:1.55;
+  color:var(--t); background:var(--grund);
+}
+.j.hell {
+  --grund:#F7F8F9; --flaeche:#FFFFFF; --hoch:#F1F3F4;
+  --linie:#DFE4E7; --linie2:#C3CBD0;
+  --t:#14181B; --t2:#4A555C; --t3:#6C777E;
+  --akz:#1F6E7C; --warn:#8A6108; --fehl:#A8331F;
+}
+.j .m { font-family:var(--masch); font-variant-numeric:tabular-nums; }
+.j .dim { color:var(--t3); }
+.j p { max-width:none; }
+
+/* Systemband */
+.j .band {
+  display:flex; align-items:center; gap:15px; flex-wrap:wrap;
+  background:var(--flaeche); border:1px solid var(--linie); padding:9px 14px;
+}
+.j .band.halt { background:var(--warn); border-color:var(--warn); }
+.j .band.halt .mk, .j .band.halt .tt, .j .band.halt .tv, .j .band.halt .kn {
+  color:#0B0D0F; border-color:#0B0D0F;
+}
+.j .tt { color:var(--t3); font-size:12px; }
+.j .tv { font-family:var(--masch); font-size:12px; color:var(--t2); }
+.j .tv.hebt { color:var(--t); }
+.j .tv.gefahr { color:var(--warn); }
+.j .schub { margin-left:auto; }
+
+/* Navigation und Kopf */
+.j .nav {
+  display:flex; gap:22px; border-bottom:1px solid var(--linie2);
+  padding:10px 0 0; margin:14px 0 0; font-size:13px;
+}
+.j .nav span { color:var(--t2); padding-bottom:8px; border-bottom:2px solid transparent; }
+.j .nav span.an { color:var(--akz); border-bottom-color:var(--akz); margin-bottom:-1px; }
+.j .nav i { font-style:normal; font-family:var(--masch); font-size:11px; color:var(--akz); }
+.j .titel { font-family:var(--masch); font-size:15px; letter-spacing:.22em; color:var(--akz); margin:16px 0 0; }
+.j h4 {
+  font-size:10px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--t3); margin:22px 0 8px; padding-bottom:3px; border-bottom:1px solid var(--linie);
+}
+.j h5 { font-size:12.5px; font-weight:600; color:var(--t2); margin:16px 0 6px; }
+
+/* Marken */
+.j .mk {
+  display:inline-block; font-family:var(--masch); font-size:10px;
+  letter-spacing:.12em; text-transform:uppercase; padding:1px 6px;
+  border:1px solid var(--linie2); color:var(--t2); white-space:nowrap;
+}
+.j .mk.erf { color:var(--t); }
+.j .mk.off { color:var(--akz); border-color:var(--akz); }
+.j .mk.blk { color:var(--warn); border-color:var(--warn); }
+.j .mk.vrw { color:var(--t3); border-style:dashed; }
+.j .mk.feh { color:var(--fehl); border-color:var(--fehl); }
+.j .mk.tro { color:var(--t2); background:repeating-linear-gradient(135deg,transparent 0 3px,#151A1E 3px 6px); }
+.j.hell .mk.tro { background:repeating-linear-gradient(135deg,transparent 0 3px,#E8ECEE 3px 6px); }
+.j .mk.res { color:var(--t3); border-style:dotted; }
+
+/* Schaltflaechen */
+.j .kn {
+  font:inherit; font-size:12px; color:var(--t); background:transparent;
+  border:1px solid var(--linie2); padding:3px 11px; cursor:default;
+}
+.j .kn.akz { color:var(--akz); border-color:var(--akz); }
+.j .kn.warn { color:var(--warn); border-color:var(--warn); }
+.j .kn[disabled] { opacity:.45; }
+
+/* Tabellen und Fakten */
+.j table { width:100%; border-collapse:collapse; font-size:12.5px; }
+.j th {
+  text-align:left; font-weight:600; font-size:10px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--t3); padding:0 14px 6px 0;
+  border-bottom:1px solid var(--linie2); white-space:nowrap;
+}
+.j td { padding:6px 14px 6px 0; border-bottom:1px solid var(--linie); vertical-align:top; }
+.j dl.fk { display:grid; grid-template-columns:9.5rem 1fr; gap:3px 16px; margin:0; }
+.j dl.fk dt { color:var(--t3); font-size:12px; }
+.j dl.fk dd { margin:0; font-family:var(--masch); font-size:12px; word-break:break-word; }
+.j dl.fk.satz dd { font-family:var(--satz); }
+
+/* Vertrauensnaht */
+.j .naht { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin:10px 0; }
+.j .halb { min-width:0; padding-left:13px; }
+.j .halb.mod { border-left:2px dotted var(--linie2); }
+.j .halb.cod { border-left:2px solid var(--linie2); }
+.j .nk { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--t3); margin-bottom:8px; }
+.j .zitat {
+  border-left:2px dotted var(--linie2); padding:2px 0 2px 12px;
+  color:var(--t2); font-size:12.5px; margin:12px 0 0; white-space:pre-wrap;
+}
+@media (max-width:640px){ .j .naht{ grid-template-columns:1fr; } }
+
+/* Gatterleiter */
+.j .gatter { border:1px solid var(--linie); background:var(--flaeche); }
+.j .sp {
+  display:grid; grid-template-columns:1.3rem 10.5rem 1fr auto; gap:12px;
+  align-items:baseline; padding:7px 12px; border-bottom:1px solid var(--linie); font-size:12.5px;
+}
+.j .sp:last-child { border-bottom:0; }
+.j .sp .nr { font-family:var(--masch); font-size:11px; color:var(--t3); }
+.j .sp .nm { color:var(--t2); }
+.j .sp .wt { color:var(--t3); }
+.j .sp.hit { background:var(--hoch); }
+.j .sp.hit .nm { color:var(--t); }
+.j .sp.aus { opacity:.5; }
+@media (max-width:640px){
+  .j .sp { grid-template-columns:1.3rem 1fr auto; }
+  .j .sp .wt { grid-column:2/4; }
+}
+
+/* Vorgangskarte */
+.j .karte { border:1px solid var(--linie); background:var(--flaeche); margin-bottom:12px; }
+.j .karte-kopf {
+  display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  padding:10px 14px; border-bottom:1px solid var(--linie); background:var(--hoch);
+}
+.j .skill { font-family:var(--masch); font-size:12px; color:var(--akz); letter-spacing:.06em; }
+.j .karte-koerper { padding:14px; }
+.j .karte-fuss {
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  padding:10px 14px; border-top:1px solid var(--linie); background:var(--hoch);
+  font-size:12px; color:var(--t3);
+}
+.j .zeit { margin-left:auto; font-family:var(--masch); font-size:11px; color:var(--t3); }
+
+/* Nachweisleiter */
+.j .leiter { display:inline-flex; gap:2px; vertical-align:middle; }
+.j .leiter i { width:13px; height:8px; border:1px solid var(--linie2); display:block; }
+.j .leiter i.v { background:var(--t2); border-color:var(--t2); }
+.j .nt { font-family:var(--masch); font-size:11px; color:var(--t3); margin-left:8px; }
+.j .nt.nie { color:var(--warn); }
+
+/* Stufe und Zaehler */
+.j .stufe { font-family:var(--masch); font-size:12px; white-space:nowrap; }
+.j .stufe .g { color:var(--t); }
+.j .stufe .v { color:var(--t3); }
+.j .stufe.kurz .g { color:var(--warn); }
+.j .balken { display:inline-block; width:52px; height:6px; border:1px solid var(--linie2); vertical-align:middle; }
+.j .balken i { display:block; height:100%; background:var(--t3); }
+
+/* Meldungen, Leere, Rueckfrage */
+.j .note { border-left:2px solid var(--akz); padding:4px 0 4px 13px; color:var(--t2); font-size:12.5px; margin:12px 0; }
+.j .note.warn { border-left-color:var(--warn); }
+.j .note.fehl { border-left-color:var(--fehl); }
+.j .leer { color:var(--t3); font-size:13px; padding:20px 0; }
+.j .rueck { border:1px solid var(--warn); background:var(--flaeche); padding:18px; }
+.j .rueck-titel { font-family:var(--masch); font-size:14px; color:var(--warn); letter-spacing:.04em; margin-bottom:12px; }
+.j .brief {
+  white-space:pre-wrap; font:inherit; border-left:2px solid var(--akz);
+  padding:2px 0 2px 14px; margin:12px 0; color:var(--t2); font-size:13px;
+}
+.j .fuss-z { color:var(--t3); font-size:11.5px; padding-top:20px; margin-top:16px; border-top:1px solid var(--linie); }
+</style>
+
+<div class="blatt">
+
+<header class="kopf">
+  <div class="kennung">
+    <span>Blätterwerk</span>
+    <span>Grundlage: JARVIS-SPEC-3</span>
+    <span>19 Tafeln</span>
+    <span>2026-08-31</span>
+  </div>
+  <h1>JARVIS<br><span class="zart">Design System</span></h1>
+  <p class="vorspann">
+    Ein Gestaltungssystem für einen Assistenten, der im Namen seines Nutzers handelt.
+    <strong>Teil A</strong> zeigt die Grundlagen — Farbe, Schrift, Form, Raster, Hierarchie,
+    beide Fassungen, drei Größenstufen. <strong>Teil B</strong> zeigt zwölf Oberflächen als
+    ganze Screens. <strong>Teil C</strong> hält nach, welche der 25 bindenden SPEC-3-Vorgaben
+    auf welcher Tafel zu sehen ist — und welche sich nicht zeigen lassen.
+  </p>
+  <div class="warnleiste">
+    <b>Was hier Bild ist und was Code.</b> Sieben der zwölf Oberflächen sind heute umgesetzt.
+    Fünf sind Entwurf: die Rückfrageseite und der Protokolleintrag warten auf Roadmap-Punkte,
+    Dienste, Gedächtnis und Meldungen sind PLANNED. Jede trägt ihre Marke.
+    <b>Keine davon wurde gebaut</b>, und dieses Blatt ist kein Auftrag dazu.
+    <span class="m">jarvis/</span> und <span class="m">JARVIS-SPEC-3.md</span> sind unberührt.
+  </div>
+
+  <nav class="inhalt">
+    <div>
+      <h4>Teil A — Grundlagen</h4>
+      <ol>
+        <li><a href="#g1">Farbwelt</a></li>
+        <li><a href="#g2">Typografie</a></li>
+        <li><a href="#g3">Formen</a></li>
+        <li><a href="#g4">Raster und Abstände</a></li>
+        <li><a href="#g5">Hierarchie</a></li>
+        <li><a href="#g6">Helle und dunkle Fassung</a></li>
+        <li><a href="#g7">Größenstufen</a></li>
+      </ol>
+    </div>
+    <div>
+      <h4>Teil B — Oberflächen</h4>
+      <ol>
+        <li><a href="#o1">Lage</a></li>
+        <li><a href="#o2">Entscheidungen</a></li>
+        <li><a href="#o3">Rückfrage</a></li>
+        <li><a href="#o4">Angehalten</a></li>
+        <li><a href="#o5">Protokoll</a></li>
+        <li><a href="#o6">Protokolleintrag</a></li>
+        <li><a href="#o7">Briefing</a></li>
+        <li><a href="#o8">Dienste</a></li>
+        <li><a href="#o9">Gedächtnis</a></li>
+        <li><a href="#o10">Sprache</a></li>
+        <li><a href="#o11">Meldungen</a></li>
+        <li><a href="#o12">Musterblatt</a></li>
+      </ol>
+    </div>
+    <div>
+      <h4>Teil C — Abdeckung</h4>
+      <ol>
+        <li><a href="#c1">B1–B25, Tafel für Tafel</a></li>
+        <li><a href="#c2">Was sich nicht zeigen lässt</a></li>
+      </ol>
+    </div>
+  </nav>
+</header>
+
+<!-- ================================================================
+     TEIL A — GRUNDLAGEN
+     ================================================================ -->
+<section class="teil">
+  <div class="teil-kopf">
+    <div class="teil-nr">Teil A</div>
+    <div class="teil-titel">Grundlagen</div>
+  </div>
+  <p class="teil-vorspann">
+    SPEC-3 schreibt kein Bild vor. Abschnitt 27 nennt „welches Schriftbild" ausdrücklich unter
+    dem, was <em>bewusst nicht</em> festgeschrieben ist. Diese sieben Tafeln sind deshalb
+    Designentscheidungen — aber keine freien: die Sicherheitsrichtlinie nimmt Skript, Bilder
+    und Webfonts weg, und aus dieser Grenze entsteht der Stil.
+  </p>
+
+  <!-- G1 FARBWELT -->
+  <div class="tafel" id="g1">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">G1</span><span class="tafel-name">Farbwelt</span>
+      <span class="stempel neutral">Design</span>
+      <span class="grundlage">Grundlage: 3.4 Reliability · 27</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <h5>Flächen — genau drei Tiefen, keine Schatten</h5>
+        <table style="margin-bottom:18px">
+          <tr>
+            <td style="width:70px"><div style="height:34px;background:#0B0D0F;border:1px solid #2B353C"></div></td>
+            <td class="m">--grund</td><td class="m dim">#0B0D0F</td><td class="dim">Seitengrund</td>
+          </tr>
+          <tr>
+            <td><div style="height:34px;background:#101417;border:1px solid #2B353C"></div></td>
+            <td class="m">--flaeche</td><td class="m dim">#101417</td><td class="dim">Bänder, Karten, Tafeln</td>
+          </tr>
+          <tr>
+            <td><div style="height:34px;background:#151A1E;border:1px solid #2B353C"></div></td>
+            <td class="m">--flaeche-hoch</td><td class="m dim">#151A1E</td><td class="dim">Kopfzeile, hervorgehobene Zeile</td>
+          </tr>
+        </table>
+
+        <h5>Linien — die eigentliche Struktur</h5>
+        <table style="margin-bottom:18px">
+          <tr>
+            <td style="width:70px"><div style="height:34px;background:#1D2429"></div></td>
+            <td class="m">--linie</td><td class="m dim">#1D2429</td><td class="dim">Standardtrennung</td>
+          </tr>
+          <tr>
+            <td><div style="height:34px;background:#2B353C"></div></td>
+            <td class="m">--linie-stark</td><td class="m dim">#2B353C</td><td class="dim">Abschnittsgrenze, Rahmen, Marken</td>
+          </tr>
+        </table>
+
+        <h5>Schrift — drei Stufen, mehr braucht es nicht</h5>
+        <table style="margin-bottom:18px">
+          <tr>
+            <td style="width:70px"><div style="height:34px;background:#D3D9DD"></div></td>
+            <td class="m">--text</td><td class="m dim">#D3D9DD</td><td class="dim">Vordergrund</td>
+          </tr>
+          <tr>
+            <td><div style="height:34px;background:#98A3AA"></div></td>
+            <td class="m">--text-zweit</td><td class="m dim">#98A3AA</td><td class="dim">Beschriftungen, zweite Ebene</td>
+          </tr>
+          <tr>
+            <td><div style="height:34px;background:#6C777E"></div></td>
+            <td class="m">--text-gedaempft</td><td class="m dim">#6C777E</td><td class="dim">Herkunft, Zeit, dritte Ebene</td>
+          </tr>
+        </table>
+
+        <h5>Ein Akzent, zwei Funktionssignale — und kein Erfolgsgrün</h5>
+        <table>
+          <tr>
+            <td style="width:70px"><div style="height:34px;background:#67B8C7"></div></td>
+            <td class="m">--akzent</td><td class="m dim">#67B8C7</td>
+            <td class="dim">Identität, und: hier bist du gefragt</td>
+          </tr>
+          <tr>
+            <td><div style="height:34px;background:#D9A441"></div></td>
+            <td class="m">--signal-warnung</td><td class="m dim">#D9A441</td>
+            <td class="dim">angehalten, blockiert, Mock, Trockenlauf AUS</td>
+          </tr>
+          <tr>
+            <td><div style="height:34px;background:#D9705E"></div></td>
+            <td class="m">--signal-fehler</td><td class="m dim">#D9705E</td>
+            <td class="dim">fehlgeschlagen</td>
+          </tr>
+          <tr>
+            <td><div style="height:34px;border:1px dashed #2B353C"></div></td>
+            <td class="m dim">— kein Grün —</td><td class="m dim">—</td>
+            <td class="dim">Erfolg ist der Normalfall und bleibt neutral</td>
+          </tr>
+        </table>
+
+        <h4>Die drei Regeln</h4>
+        <dl class="fk satz" style="grid-template-columns:15rem 1fr">
+          <dt>Erfolg trägt keine Farbe</dt>
+          <dd>Farbe bekommt nur, was Aufmerksamkeit verdient. Eine Tafel mit fünfzehn grünen Haken macht den einen roten schwerer auffindbar, nicht leichter.</dd>
+          <dt>Farbe nie allein</dt>
+          <dd>Jede farbige Aussage trägt zusätzlich ein Wort und eine Form. Sonst hängt „ein Fehler darf nie wie ein Erfolg aussehen" an der Farbwahrnehmung des Betrachters.</dd>
+          <dt>Auffällig ist der unsichere Zustand</dt>
+          <dd>Nicht „Trockenlauf an", sondern „Trockenlauf AUS" — denn dann verlässt echte Post den Rechner.</dd>
+        </dl>
+      </div>
+    </div>
+    <p class="unterschrift">Die Familie stammt aus dem heutigen Stylesheet und wurde zu Rollen
+    geordnet, nicht ersetzt: SPEC-3 OD-4 hält fest, dass eine Angleichung ohne Funktionsgewinn
+    nur Aufwand wäre. <b>Neu ist die Regel dahinter</b>, und sie folgt aus SPEC-3 3.4 — ein
+    Fehler darf nie wie ein Erfolg aussehen.</p>
+  </div>
+
+  <!-- G2 TYPOGRAFIE -->
+  <div class="tafel" id="g2">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">G2</span><span class="tafel-name">Typografie</span>
+      <span class="stempel neutral">Design</span>
+      <span class="grundlage">Grundlage: 3.2 P1 · 4.1 · 27</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <h5>Die Regel</h5>
+        <div style="font-family:var(--satz);font-size:17px;color:var(--t);margin-bottom:4px">
+          Alles, was ein Mensch als Satz liest, steht in Satzschrift.</div>
+        <div class="m" style="font-size:16px;color:var(--t);margin-bottom:18px">
+          Alles, was eine Maschine gerechnet hat, steht in Maschinenschrift.</div>
+
+        <h5>Satzschrift — Systemschrift, keine geladene Datei</h5>
+        <div style="font-family:var(--satz);color:var(--t2);font-size:12px;margin-bottom:6px">
+          -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif</div>
+        <div style="font-family:var(--satz);font-size:19px;color:var(--t)">
+          Antwort an Anna Berger auf „Angebot Rahmenvertrag"</div>
+        <div style="font-family:var(--satz);font-size:15px;color:var(--t2);margin-top:4px">
+          Rückfrage zu einem laufenden Vorgang, keine Frist genannt.</div>
+
+        <h5 style="margin-top:22px">Maschinenschrift — Kennungen, Zahlen, Zustände, Ziele</h5>
+        <div class="m" style="color:var(--t2);font-size:12px;margin-bottom:6px">
+          ui-monospace, SFMono-Regular, Menlo, monospace</div>
+        <div class="m" style="font-size:15px;color:var(--t)">anna.berger@example.com</div>
+        <div class="m" style="font-size:15px;color:var(--t)">sha256:4c1e…9b02 &nbsp; 0 / 1 &nbsp; 12/60</div>
+
+        <h4>Größenskala</h4>
+        <table>
+          <tr><td style="width:12rem"><span class="m" style="font-size:1.05rem;letter-spacing:.22em;color:var(--akz)">JARVIS</span></td>
+              <td class="m dim">1.05rem · Maschine · 0.22em</td><td class="dim">Identität, nur ein Wort</td></tr>
+          <tr><td><span style="font-size:.72rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)">Abschnitt</span></td>
+              <td class="m dim">0.72rem · Versalien · 0.14em</td><td class="dim">Trennt, ohne Gewicht zu nehmen</td></tr>
+          <tr><td><span style="font-size:.86rem;font-weight:600;color:var(--t2)">Untertitel</span></td>
+              <td class="m dim">0.86rem · halbfett</td><td class="dim">Innerhalb einer Karte</td></tr>
+          <tr><td><span style="font-size:.95rem">Fließtext einer Zusammenfassung</span></td>
+              <td class="m dim">0.95rem</td><td class="dim">Vorgangssatz, Briefing</td></tr>
+          <tr><td><span style="font-size:.84rem">Tabelle und Fakten</span></td>
+              <td class="m dim">0.84rem</td><td class="dim">Dichte</td></tr>
+          <tr><td><span class="mk">Marke</span></td>
+              <td class="m dim">0.68rem · Versalien · 0.12em</td><td class="dim">Muss klein sein, sonst schreit sie</td></tr>
+        </table>
+
+        <div class="note">Grundzeile 15px / 1.55. Zahlen mit <span class="m">tabular-nums</span>: in
+        einer Tafel, die sich alle 30 Sekunden neu lädt, sollen Ziffern nicht springen.
+        Keine Kursive, kein Fett im Fließtext — ausgezeichnet wird über Marke, Linie und Position.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Die Schriftregel trägt die Vertrauensgrenze bis in die Typografie:
+    ein Empfänger steht in Maschinenschrift, eine Modellbegründung in Satzschrift — auch wenn
+    beide in derselben Faktenliste stehen. <b>Ein Ziel steht nie in Satzschrift.</b></p>
+    <p class="unterschrift">Nur Systemschriften, weil <span class="m">default-src 'none'</span>
+    keine geladene Schrift zulässt. Auf der Zielplattform ist das ohnehin die richtige Wahl.</p>
+  </div>
+
+  <!-- G3 FORMEN -->
+  <div class="tafel" id="g3">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">G3</span><span class="tafel-name">Formen</span>
+      <span class="stempel neutral">Design</span>
+      <span class="grundlage">Grundlage: 3.2 P1 · 3.4</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <h5>Linienart als Bedeutungsträger</h5>
+        <table>
+          <tr>
+            <td style="width:120px"><div style="height:0;border-top:2px solid #2B353C"></div></td>
+            <td class="m">durchgezogen</td>
+            <td class="dim">vom Code berechnet, vertrauenswürdig</td>
+          </tr>
+          <tr>
+            <td><div style="height:0;border-top:2px dotted #2B353C"></div></td>
+            <td class="m">gepunktet</td>
+            <td class="dim">aus Fremdtext oder Modell abgeleitet</td>
+          </tr>
+          <tr>
+            <td><div style="height:0;border-top:2px dashed #2B353C"></div></td>
+            <td class="m">gestrichelt</td>
+            <td class="dim">verworfen, ungültig</td>
+          </tr>
+          <tr>
+            <td><div style="height:10px;background:repeating-linear-gradient(135deg,transparent 0 3px,#2B353C 3px 6px)"></div></td>
+            <td class="m">schraffiert</td>
+            <td class="dim">Trockenlauf — etwas geschah, nichts ging hinaus</td>
+          </tr>
+        </table>
+
+        <h4>Radius 0, ausnahmslos</h4>
+        <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+          <span class="mk erf">Ausgefuehrt</span>
+          <span class="mk off">Offen</span>
+          <span class="mk blk">Blockiert</span>
+          <span class="mk vrw">Verworfen</span>
+          <span class="mk feh">Fehlgeschlagen</span>
+          <span class="mk tro">Dry Run</span>
+          <span class="mk res">Reserviert</span>
+        </div>
+        <div class="note">Die Geometrie trägt Bedeutung — die Naht, die Leiter, die Marke.
+        Runde Ecken weichen genau die Kanten auf, die lesbar bleiben sollen.
+        Keine Schatten, keine Verläufe: Tiefe kommt aus drei Flächenwerten.</div>
+
+        <h4>Marken tragen Wort, Rahmen und erst dann Farbe</h4>
+        <div style="filter:grayscale(1);display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+          <span class="mk erf">Ausgefuehrt</span>
+          <span class="mk off">Offen</span>
+          <span class="mk blk">Blockiert</span>
+          <span class="mk vrw">Verworfen</span>
+          <span class="mk feh">Fehlgeschlagen</span>
+          <span class="mk tro">Dry Run</span>
+          <span class="mk res">Reserviert</span>
+        </div>
+        <div class="note warn">Dieselbe Reihe in Graustufen. <b>Vier der sieben bleiben ohne
+        Farbe unterscheidbar</b> — verworfen (gestrichelt), Dry Run (schraffiert), reserviert
+        (gepunktet), und alle übrigen durch ihr Wort. Ohne diese Eigenschaft hinge SPEC-3 3.4
+        an der Farbwahrnehmung des Betrachters.</div>
+      </div>
+    </div>
+    <p class="unterschrift">1px-Linien sind das einzige Strukturmittel.
+    <span class="m">--linie</span> trennt innerhalb eines Bereichs,
+    <span class="m">--linie-stark</span> grenzt Bereiche ab.</p>
+  </div>
+
+  <!-- G4 RASTER -->
+  <div class="tafel" id="g4">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">G4</span><span class="tafel-name">Raster und Abstände</span>
+      <span class="stempel neutral">Design</span>
+      <span class="grundlage">Grundlage: 4.9 (acht Fragen brauchen Platz)</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <h5>4px-Basis, acht Werte — mehr erzeugt nur Uneinheitlichkeit</h5>
+        <table>
+          <tr><td style="width:200px"><div style="height:12px;width:4px;background:#67B8C7"></div></td><td class="m">4</td><td class="dim">innerhalb einer Faktenzeile</td></tr>
+          <tr><td><div style="height:12px;width:8px;background:#67B8C7"></div></td><td class="m">8</td><td class="dim">zwischen Marke und Text</td></tr>
+          <tr><td><div style="height:12px;width:12px;background:#67B8C7"></div></td><td class="m">12</td><td class="dim">Zeilenabstand in der Leiter</td></tr>
+          <tr><td><div style="height:12px;width:16px;background:#67B8C7"></div></td><td class="m">16</td><td class="dim">Innenabstand einer Karte</td></tr>
+          <tr><td><div style="height:12px;width:24px;background:#67B8C7"></div></td><td class="m">24</td><td class="dim">Spurrand</td></tr>
+          <tr><td><div style="height:12px;width:32px;background:#67B8C7"></div></td><td class="m">32</td><td class="dim">zwischen Abschnitten</td></tr>
+          <tr><td><div style="height:12px;width:48px;background:#67B8C7"></div></td><td class="m">48</td><td class="dim">vor dem Fuß</td></tr>
+          <tr><td><div style="height:12px;width:64px;background:#67B8C7"></div></td><td class="m">64</td><td class="dim">Seitenende</td></tr>
+        </table>
+
+        <h4>Zwei Spurbreiten statt einer</h4>
+        <div style="border:1px solid var(--linie2);padding:10px;margin-bottom:8px">
+          <div style="max-width:60%;border:1px dashed var(--linie2);padding:8px 10px;font-size:12px;color:var(--t2)">
+            <span class="m" style="color:var(--t)">60rem</span> &nbsp; Lesebreite — Vorgänge, Briefing, alles mit Prosa
+          </div>
+        </div>
+        <div style="border:1px solid var(--linie2);padding:10px">
+          <div style="border:1px dashed var(--linie2);padding:8px 10px;font-size:12px;color:var(--t2)">
+            <span class="m" style="color:var(--t)">96rem</span> &nbsp; Tafelbreite — Lage, Protokoll, Dienste: dichte Tabellen im weiten Fenster
+          </div>
+        </div>
+        <div class="note">60rem für alles war zu eng: die Protokolltabelle mit sechs Spalten
+        bricht dann in einem Fenster um, das eigentlich Platz hätte. Prosa dagegen wird über
+        60rem hinaus schlechter lesbar.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Die Skala ist absichtlich kurz. Wer aus acht Werten wählen muss,
+    wählt konsistent; wer aus dreißig wählen kann, wählt jedes Mal anders.</p>
+  </div>
+
+  <!-- G5 HIERARCHIE -->
+  <div class="tafel" id="g5">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">G5</span><span class="tafel-name">Hierarchie</span>
+      <span class="stempel neutral">Design</span>
+      <span class="grundlage">Grundlage: 12 · 4.9</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <h5>Drei Ebenen, überall dieselbe Reihenfolge</h5>
+        <div style="border:1px solid var(--warn);padding:8px 12px;margin-bottom:6px;font-size:12.5px">
+          <span class="m" style="color:var(--warn)">1 &nbsp; SYSTEMBAND</span>
+          <span class="dim"> &mdash; was gerade für das ganze System gilt. Immer sichtbar.</span>
+        </div>
+        <div style="border:1px solid var(--akz);padding:8px 12px;margin-bottom:6px;font-size:12.5px">
+          <span class="m" style="color:var(--akz)">2 &nbsp; BEREICH</span>
+          <span class="dim"> &mdash; wo bin ich. Navigation plus Bereichstitel.</span>
+        </div>
+        <div style="border:1px solid var(--linie2);padding:8px 12px;font-size:12.5px">
+          <span class="m">3 &nbsp; GEGENSTAND</span>
+          <span class="dim"> &mdash; ein Vorgang, ein Eintrag, eine Fähigkeit.</span>
+        </div>
+
+        <h4>Die Reihenfolge auf jeder Seite</h4>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;align-items:baseline;font-size:13px">
+          <span class="m" style="color:var(--warn)">Abweichung</span>
+          <span class="dim">Kette gebrochen, offene Dateirechte, fehlgeschlagene Aktionen. Nur wenn vorhanden.</span>
+          <span class="m" style="color:var(--akz)">Arbeit</span>
+          <span class="dim">Was auf eine Entscheidung wartet.</span>
+          <span class="m">Bestand</span>
+          <span class="dim">Die vollständigen Tabellen.</span>
+        </div>
+        <div class="note">Die Aufmerksamkeit gehört den Abweichungen. Wo Dichte und Ruhe
+        streiten, gewinnt Ruhe.</div>
+
+        <h4>Drei Tiefen je Gegenstand, nicht mehr</h4>
+        <div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap">
+          <div style="flex:1;min-width:150px;border:1px solid var(--linie2);padding:10px">
+            <div class="m" style="font-size:11px;color:var(--t3);margin-bottom:6px">1 — ZEILE</div>
+            <div style="font-size:12px;color:var(--t2)">In einer Liste. Ein Satz plus Zustandsmarke.</div>
+          </div>
+          <div style="flex:1;min-width:150px;border:1px solid var(--linie2);padding:10px">
+            <div class="m" style="font-size:11px;color:var(--t3);margin-bottom:6px">2 — KARTE</div>
+            <div style="font-size:12px;color:var(--t2)">Mit Naht, Gatter und Handlungszone.</div>
+          </div>
+          <div style="flex:1;min-width:150px;border:1px solid var(--linie2);padding:10px">
+            <div class="m" style="font-size:11px;color:var(--t3);margin-bottom:6px">3 — VOLLANSICHT</div>
+            <div style="font-size:12px;color:var(--t2)">Alle acht Fragen aus 4.9.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="unterschrift">Mehr als drei Tiefen heißt: man findet nichts wieder. Und die
+    Zusammenfassung ist immer <b>ein Satz, kein Stichwort</b> — „Antwort an Anna Berger auf
+    ‚Angebot Rahmenvertrag'" statt <span class="m">mail_send: Draft_a91f</span>.</p>
+  </div>
+
+  <!-- G6 HELL UND DUNKEL -->
+  <div class="tafel" id="g6">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">G6</span><span class="tafel-name">Helle und dunkle Fassung</span>
+      <span class="stempel neutral">Design · SHOULD</span>
+      <span class="grundlage">Grundlage: 4.6 (kein JavaScript)</span>
+    </div>
+    <div class="zwei" style="margin-top:14px">
+      <div>
+        <div class="tafel-kopf" style="border:0;padding-bottom:6px"><span class="tafel-name">Dunkel — Vorgabe</span></div>
+        <div class="bild">
+          <div class="j">
+            <div class="band">
+              <span class="mk">Betrieb</span>
+              <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+              <span class="schub"></span>
+              <button class="kn warn" type="button">Anhalten</button>
+            </div>
+            <div class="karte" style="margin-top:12px">
+              <div class="karte-kopf">
+                <span class="skill">mail_send</span>
+                <span class="mk off">Offen</span>
+                <span class="zeit">08:12</span>
+              </div>
+              <div class="karte-koerper">
+                <dl class="fk" style="grid-template-columns:7rem 1fr">
+                  <dt>Empfaenger</dt><dd>anna.berger@example.com</dd>
+                  <dt>Entwurf</dt><dd>Draft_a91f</dd>
+                </dl>
+                <div class="note warn">Trockenlauf ist an. Freigeben bewirkt nichts.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="tafel-kopf" style="border:0;padding-bottom:6px"><span class="tafel-name">Hell — dieselben Rollen</span></div>
+        <div class="bild papierweiss">
+          <div class="j hell">
+            <div class="band">
+              <span class="mk">Betrieb</span>
+              <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+              <span class="schub"></span>
+              <button class="kn warn" type="button">Anhalten</button>
+            </div>
+            <div class="karte" style="margin-top:12px">
+              <div class="karte-kopf">
+                <span class="skill">mail_send</span>
+                <span class="mk off">Offen</span>
+                <span class="zeit">08:12</span>
+              </div>
+              <div class="karte-koerper">
+                <dl class="fk" style="grid-template-columns:7rem 1fr">
+                  <dt>Empfaenger</dt><dd>anna.berger@example.com</dd>
+                  <dt>Entwurf</dt><dd>Draft_a91f</dd>
+                </dl>
+                <div class="note warn">Trockenlauf ist an. Freigeben bewirkt nichts.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="unterschrift"><b>Kein Umschalter.</b> Ohne JavaScript bräuchte er eine Route und
+    ein Cookie — neue Funktion für eine reine Anzeigefrage. Die Seite folgt
+    <span class="m">prefers-color-scheme</span>; auf macOS ist genau das das erwartete
+    Verhalten.</p>
+    <p class="unterschrift">Die helle Fassung ist kein Aufhellen der dunklen: die Signale
+    werden dunkler und gesättigter, weil sie sonst auf Weiß nicht tragen. Die Rollen bleiben
+    identisch. <b>Verbindlichkeit SHOULD</b> — muss gekürzt werden, bleibt die dunkle.</p>
+  </div>
+
+  <!-- G7 GROESSENSTUFEN -->
+  <div class="tafel" id="g7">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">G7</span><span class="tafel-name">Größenstufen</span>
+      <span class="stempel neutral">Design</span>
+      <span class="grundlage">Grundlage: 4.6 · 14 macOS</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <h5>Weit &nbsp;<span class="dim" style="font-weight:400">— über 70rem, etwa 1120px. Tafelbreite, Tabellen vollständig, Naht nebeneinander</span></h5>
+        <table style="margin-bottom:22px">
+          <thead><tr><th>Faehigkeit</th><th>Stufe</th><th>Erreicht Dritte</th><th>Aktiv</th><th>Kontingent</th></tr></thead>
+          <tbody>
+            <tr><td class="m">mail</td><td><span class="stufe"><span class="g">0</span> <span class="v">/ 0</span></span></td><td class="dim">nein</td><td>ja</td><td class="m dim">12/60 <span class="balken"><i style="width:20%"></i></span> Stunde</td></tr>
+            <tr><td class="m">mail_send</td><td><span class="stufe kurz"><span class="g">0</span> <span class="v">/ 1</span></span></td><td>ja</td><td>ja</td><td class="m dim">0/5 <span class="balken"><i style="width:0"></i></span> Tag</td></tr>
+          </tbody>
+        </table>
+
+        <h5>Standard &nbsp;<span class="dim" style="font-weight:400">— 46 bis 70rem. Eine Spalte, Tabellen weiter vollständig</span></h5>
+        <div style="max-width:520px;border:1px dashed var(--linie2);padding:12px;margin-bottom:22px">
+          <table>
+            <thead><tr><th>Faehigkeit</th><th>Stufe</th><th>Kontingent</th></tr></thead>
+            <tbody>
+              <tr><td class="m">mail</td><td><span class="stufe"><span class="g">0</span> <span class="v">/ 0</span></span></td><td class="m dim">12/60 Stunde</td></tr>
+              <tr><td class="m">mail_send</td><td><span class="stufe kurz"><span class="g">0</span> <span class="v">/ 1</span></span></td><td class="m dim">0/5 Tag</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h5>Schmal &nbsp;<span class="dim" style="font-weight:400">— unter 46rem, etwa 736px. Jede Tabellenzeile wird ein Block</span></h5>
+        <div style="max-width:330px;border:1px dashed var(--linie2);padding:12px">
+          <div style="border-bottom:1px solid var(--linie2);padding-bottom:8px;margin-bottom:8px">
+            <div style="display:grid;grid-template-columns:7rem 1fr;gap:2px 10px;font-size:12px">
+              <span class="m" style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">Faehigkeit</span><span class="m">mail_send</span>
+              <span class="m" style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">Stufe</span><span><span class="stufe kurz"><span class="g">0</span> <span class="v">/ 1</span></span></span>
+              <span class="m" style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">Dritte</span><span>ja</span>
+              <span class="m" style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)">Kontingent</span><span class="m dim">0/5 Tag</span>
+            </div>
+          </div>
+          <div style="font-size:11.5px;color:var(--t3)">Die Kopfzeile wandert per
+          <span class="m">data-kopf</span> vor den Wert.</div>
+        </div>
+
+        <div class="note">Zielfenster <span class="m">1100 × 760</span> — passt auf ein
+        13-Zoll-MacBook ohne Vollbild. Kleinste sinnvolle Breite <span class="m">380px</span>:
+        ein schmales Fenster am Bildschirmrand, in dem Systemband, offene Entscheidungen und
+        Stoppschalter lesbar bleiben. <b>Kein Telefon</b> — das Dashboard bindet an Loopback
+        und ist von außen nicht erreichbar.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Ohne JavaScript gibt es keine Umschaltung. Jede Stufe muss deshalb
+    <b>für sich vollständig</b> sein, nicht eine gekürzte Fassung der nächstgrößeren.</p>
+  </div>
+
+</section>
+
+<!-- ================================================================
+     TEIL B — OBERFLAECHEN
+     ================================================================ -->
+<section class="teil">
+  <div class="teil-kopf">
+    <div class="teil-nr">Teil B</div>
+    <div class="teil-titel">Oberflächen</div>
+  </div>
+  <p class="teil-vorspann">
+    Zwölf Screens, jeder ganz und im eigenen Rahmen. Die Navigation bleibt bei vier Punkten —
+    SPEC-3 12 nennt fünfzehn Bereiche einer Control Plane, acht fehlen, vier davon setzen
+    Fähigkeiten voraus, die es nicht gibt. Eine Leiste mit fünfzehn Einträgen wäre ein
+    Versprechen ohne Deckung. Stattdessen ist <em>Lage</em> der Verteiler.
+  </p>
+
+  <!-- O1 LAGE -->
+  <div class="tafel" id="o1">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O1</span><span class="tafel-name">Lage</span>
+      <span class="stempel neutral">umgesetzt</span>
+      <span class="grundlage">zeigt B5 · B8 · B17 · B19</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span><span class="tt">Dienste</span> <span class="tv gefahr">Mock</span></span>
+          <span><span class="tt">Zugangsdaten</span> <span class="tv">Keychain</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span class="an">Lage</span>
+          <span>Entscheidungen <i>3</i></span>
+          <span>Briefing</span>
+          <span>Protokoll</span>
+        </div>
+
+        <h4>Lage</h4>
+        <dl class="fk">
+          <dt>Offene Entscheidungen</dt><dd>3</dd>
+          <dt>Protokoll</dt><dd>1 284 Eintraege</dd>
+          <dt>Kette</dt><dd>intakt</dd>
+          <dt>Letzter Durchlauf</dt><dd>2026-08-31 08:12  mail</dd>
+          <dt>Ablage</dt><dd>0700 / 0600, nichts offen</dd>
+        </dl>
+
+        <h4>Faehigkeiten</h4>
+        <div class="rollbar"><table>
+          <thead><tr><th>Faehigkeit</th><th>Stufe gewaehrt / verlangt</th><th>Erreicht Dritte</th><th>Aktiv</th><th>Kontingent</th></tr></thead>
+          <tbody>
+            <tr><td class="m">briefing</td><td><span class="stufe"><span class="g">0</span> <span class="v">/ 0</span></span> <span class="dim">Schattenbetrieb</span></td><td class="dim">nein</td><td>ja</td><td class="m dim">1/3 <span class="balken"><i style="width:35%"></i></span> Tag</td></tr>
+            <tr><td class="m">calendar</td><td><span class="stufe"><span class="g">0</span> <span class="v">/ 0</span></span> <span class="dim">Schattenbetrieb</span></td><td class="dim">nein</td><td>ja</td><td class="m dim">6/60 <span class="balken"><i style="width:10%"></i></span> Stunde</td></tr>
+            <tr><td class="m">mail</td><td><span class="stufe"><span class="g">0</span> <span class="v">/ 0</span></span> <span class="dim">Schattenbetrieb</span></td><td class="dim">nein</td><td>ja</td><td class="m dim">12/60 <span class="balken"><i style="width:20%"></i></span> Stunde</td></tr>
+            <tr><td class="m">mail_reply</td><td><span class="stufe"><span class="g">0</span> <span class="v">/ 0</span></span> <span class="dim">Schattenbetrieb</span></td><td class="dim">nein</td><td>ja</td><td class="m dim">4/20 <span class="balken"><i style="width:20%"></i></span> Tag</td></tr>
+            <tr><td class="m">mail_send</td><td><span class="stufe kurz"><span class="g">0</span> <span class="v">/ 1</span></span> <span class="dim">verlangt Allowlist</span></td><td>ja</td><td>ja</td><td class="m dim">0/5 <span class="balken"><i style="width:0"></i></span> Tag</td></tr>
+            <tr><td class="m">research</td><td><span class="stufe kurz"><span class="g">0</span> <span class="v">/ 1</span></span> <span class="dim">verlangt Allowlist</span></td><td>ja</td><td>ja</td><td class="m dim">0/10 <span class="balken"><i style="width:0"></i></span> Tag</td></tr>
+            <tr><td class="m">voice</td><td><span class="stufe"><span class="g">0</span> <span class="v">/ --</span></span> <span class="dim">Bedienweise</span></td><td class="dim">nein</td><td>ja</td><td class="m dim">--</td></tr>
+          </tbody>
+        </table></div>
+        <div class="fuss-z">Loopback, Einzelplatz. Durchlaeufe startet die Kommandozeile.</div>
+      </div>
+    </div>
+    <p class="unterschrift"><b>Zwei Zahlen statt einer.</b> Die alte Tafel zeigte nur die
+    gewährte Stufe. Damit war der Fehlertyp aus SPEC-3 6.1 unsichtbar: <span class="m">research</span>
+    stand auf <span class="m">autonomy_level = 0</span> und handelte auf Stufe 0, weil
+    <span class="m">0 &ge; 0</span> wahr ist. Nebeneinander fällt die Lücke auf.</p>
+    <p class="unterschrift"><span class="m">voice</span> zeigt <span class="m">/ --</span>: eine
+    Bedienweise ohne <span class="m">act</span>-Pfad hat keine verlangte Stufe. Auch das ist
+    eine Auskunft.</p>
+  </div>
+
+  <!-- O2 ENTSCHEIDUNGEN -->
+  <div class="tafel" id="o2">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O2</span><span class="tafel-name">Entscheidungen</span>
+      <span class="stempel neutral">umgesetzt</span>
+      <span class="grundlage">zeigt B6 · B7 · B13 · B14 · B19</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span><span class="tt">Dienste</span> <span class="tv gefahr">Mock</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span>Lage</span>
+          <span class="an">Entscheidungen <i>3</i></span>
+          <span>Briefing</span>
+          <span>Protokoll</span>
+        </div>
+
+        <h4>Anstehende Entscheidungen</h4>
+        <div class="note warn">Trockenlauf ist an. Verwerfen geht, Freigeben bewirkt nichts &mdash;
+          dry_run in der Konfiguration auf false setzen.</div>
+
+        <div class="karte">
+          <div class="karte-kopf">
+            <span class="skill">mail_send</span>
+            <span class="dim" style="font-size:12.5px">Entwurf versenden</span>
+            <span class="mk off">Offen</span>
+            <span class="zeit">2026-08-31 08:12</span>
+          </div>
+          <div class="karte-koerper">
+            <p style="margin:0 0 14px;font-size:14.5px">Antwort an Anna Berger auf „Angebot Rahmenvertrag".</p>
+            <div class="naht">
+              <div class="halb mod">
+                <div class="nk">Modell entschied</div>
+                <dl class="fk satz" style="grid-template-columns:7rem 1fr">
+                  <dt>category</dt><dd>geschaeftlich</dd>
+                  <dt>urgency</dt><dd>normal</dd>
+                  <dt>Begruendung</dt><dd>Rueckfrage zu einem laufenden Vorgang</dd>
+                  <dt>Entschieden von</dt><dd>model</dd>
+                  <dt>Modell</dt><dd>claude-opus-5</dd>
+                </dl>
+              </div>
+              <div class="halb cod">
+                <div class="nk">Code berechnete</div>
+                <dl class="fk" style="grid-template-columns:7rem 1fr">
+                  <dt>Empfaenger</dt><dd>anna.berger@example.com</dd>
+                  <dt>Betreff</dt><dd>Re: Angebot Rahmenvertrag</dd>
+                  <dt>Entwurf</dt><dd>Draft_a91f</dd>
+                </dl>
+              </div>
+            </div>
+            <h5>Entwurfstext</h5>
+            <div class="zitat">Guten Tag, vielen Dank fuer die Unterlagen. Ich melde mich bis
+Freitag mit einer Rueckmeldung zum Rahmenvertrag.</div>
+
+            <h5>Wenn du jetzt freigibst</h5>
+            <div class="gatter">
+              <div class="sp"><span class="nr">1</span><span class="nm">Faehigkeit aktiv</span><span class="wt">ja</span><span class="mk erf">Weiter</span></div>
+              <div class="sp"><span class="nr">2</span><span class="nm">Stoppschalter</span><span class="wt">nicht gesetzt</span><span class="mk erf">Weiter</span></div>
+              <div class="sp"><span class="nr">3</span><span class="nm">Stufe / Freigabe</span><span class="wt">von Hand freigegeben -- gewaehrt 0, verlangt 1</span><span class="mk erf">Weiter</span></div>
+              <div class="sp"><span class="nr">4</span><span class="nm">Obergrenze</span><span class="wt">0/5 day</span><span class="mk erf">Weiter</span></div>
+              <div class="sp hit"><span class="nr">5</span><span class="nm">Ausfuehrung</span><span class="wt">Trockenlauf global aktiv</span><span class="mk tro">Haelt</span></div>
+            </div>
+          </div>
+          <div class="karte-fuss">
+            <span>Freigabe wirkt erst ohne Trockenlauf.</span>
+            <span class="schub"></span>
+            <button class="kn" type="button">Verwerfen</button>
+          </div>
+        </div>
+
+        <div class="karte">
+          <div class="karte-kopf">
+            <span class="skill">calendar</span>
+            <span class="dim" style="font-size:12.5px">Konflikt vermerken</span>
+            <span class="mk off">Offen</span>
+            <span class="zeit">2026-08-31 08:12</span>
+          </div>
+          <div class="karte-koerper">
+            <p style="margin:0;font-size:14.5px">Zwei Termine ueberschneiden sich am 02.09. zwischen 14:00 und 14:30.</p>
+          </div>
+          <div class="karte-fuss">
+            <span>Freigabe wirkt erst ohne Trockenlauf.</span>
+            <span class="schub"></span>
+            <button class="kn" type="button">Verwerfen</button>
+          </div>
+        </div>
+        <div class="fuss-z">Loopback, Einzelplatz. Durchlaeufe startet die Kommandozeile.</div>
+      </div>
+    </div>
+    <p class="unterschrift"><b>Die Vertrauensnaht.</b> Links steht ausschließlich, was aus
+    <span class="m">Decision.fields</span> kommt; rechts ausschließlich
+    <span class="m">Decision.targets</span>. Kodiert über Linienart und Schriftart, nicht über
+    Farbe — so hält die Grenze in Graustufen und bei Farbfehlsichtigkeit. <b>Ein Ziel links
+    wäre sofort als Fehler zu sehen.</b></p>
+    <p class="unterschrift"><b>Die Gatterleiter</b> zeigt hier den entscheidenden Fall: die
+    Freigabe wirkt an Sprosse 3 — und Sprosse 5 hält trotzdem. Genau das verlangt SPEC-3 4.2.
+    Der Entwurfstext steht außerhalb beider Hälften: er liegt zwar in
+    <span class="m">targets</span>, ist aber vom Modell geschriebene Prosa, kein berechnetes Ziel.</p>
+  </div>
+
+  <!-- O3 RUECKFRAGE -->
+  <div class="tafel" id="o3">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O3</span><span class="tafel-name">Rückfrage vor einer Aktion nach außen</span>
+      <span class="stempel">Entwurf — nicht gebaut</span>
+      <span class="grundlage">zeigt B7 · B18</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv gefahr">AUS &mdash; Aktionen gehen hinaus</span></span>
+          <span><span class="tt">Dienste</span> <span class="tv">Live</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span>Lage</span>
+          <span class="an">Entscheidungen <i>3</i></span>
+          <span>Briefing</span>
+          <span>Protokoll</span>
+        </div>
+
+        <div style="margin-top:20px"></div>
+        <div class="rueck">
+          <div class="rueck-titel">Diese Freigabe verlaesst den Rechner</div>
+          <p style="margin:0 0 16px;font-size:14.5px">Eine E-Mail geht an
+            <span class="m">anna.berger@example.com</span>. Danach laesst sie sich nicht zurueckholen.</p>
+          <dl class="fk">
+            <dt>Faehigkeit</dt><dd>mail_send</dd>
+            <dt>Betreff</dt><dd>Re: Angebot Rahmenvertrag</dd>
+            <dt>Entwurf</dt><dd>Draft_a91f</dd>
+            <dt>Fingerabdruck</dt><dd>sha256:4c1e…9b02  unveraendert seit dem Entwurf</dd>
+            <dt>Kontingent danach</dt><dd>1/5 am Tag</dd>
+          </dl>
+          <div class="zitat">Guten Tag, vielen Dank fuer die Unterlagen. Ich melde mich bis
+Freitag mit einer Rueckmeldung zum Rahmenvertrag.</div>
+          <div class="note">Die Freigabe ersetzt nur die Autonomiestufe. Stoppschalter,
+            Trockenlauf, Ein-Aus-Schalter und Obergrenze gelten weiter.</div>
+          <div style="display:flex;gap:10px;margin-top:16px">
+            <button class="kn warn" type="button">Ja, senden</button>
+            <button class="kn akz" type="button">Zurueck, nichts tun</button>
+          </div>
+        </div>
+        <div class="fuss-z">Loopback, Einzelplatz. Durchlaeufe startet die Kommandozeile.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Ohne JavaScript gibt es keinen Dialog — kein Mangel: eine eigene
+    Seite kann zeigen, <em>was genau</em> hinausgeht. Ein Dialogfenster könnte das nicht.</p>
+    <p class="unterschrift"><b>Hervorgehoben ist der ruhige Weg</b>, nicht der handelnde.
+    Bewusst gegen die Gewohnheit: die Gewohnheit optimiert auf Abschluss, hier wird auf
+    Umkehrbarkeit optimiert. Und die Rückfrage nennt die <em>Wirkung</em>, nicht die Aktion —
+    nicht „Vorgang 41 freigeben?".</p>
+    <p class="unterschrift"><b>Nicht gebaut, mit Grund:</b> sie wird erst gebraucht, wenn
+    <span class="m">dry_run = false</span> je vorkommt — also nach Roadmap-Punkt 2, der ersten
+    echten Verbindung. Vorher wäre sie eine Rückfrage vor einer Handlung, die nichts bewirkt.</p>
+  </div>
+
+  <!-- O4 ANGEHALTEN -->
+  <div class="tafel" id="o4">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O4</span><span class="tafel-name">Angehalten</span>
+      <span class="stempel neutral">umgesetzt</span>
+      <span class="grundlage">zeigt B5 · B6 · B7</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band halt">
+          <span class="mk">Angehalten</span>
+          <span><span class="tt">Grund</span> <span class="tv">ueber das Dashboard, 07:12</span></span>
+          <span><span class="tt">Wirkung</span> <span class="tv">jede ausgehende Aktion blockiert</span></span>
+          <span class="schub"></span>
+          <button class="kn" type="button">Freigeben</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span>Lage</span>
+          <span class="an">Entscheidungen <i>3</i></span>
+          <span>Briefing</span>
+          <span>Protokoll</span>
+        </div>
+
+        <h4>Anstehende Entscheidungen</h4>
+        <div class="karte">
+          <div class="karte-kopf">
+            <span class="skill">mail_send</span>
+            <span class="dim" style="font-size:12.5px">Entwurf versenden</span>
+            <span class="mk off">Offen</span>
+            <span class="zeit">2026-08-31 08:12</span>
+          </div>
+          <div class="karte-koerper">
+            <p style="margin:0 0 14px;font-size:14.5px">Antwort an Anna Berger auf „Angebot Rahmenvertrag".</p>
+            <h5>Wenn du jetzt freigibst</h5>
+            <div class="gatter">
+              <div class="sp"><span class="nr">1</span><span class="nm">Faehigkeit aktiv</span><span class="wt">ja</span><span class="mk erf">Weiter</span></div>
+              <div class="sp hit"><span class="nr">2</span><span class="nm">Stoppschalter</span><span class="wt">gesetzt: ueber das Dashboard</span><span class="mk blk">Blockiert</span></div>
+              <div class="sp aus"><span class="nr">3</span><span class="nm">Stufe / Freigabe</span><span class="wt">nicht ausgewertet</span><span class="mk">--</span></div>
+              <div class="sp aus"><span class="nr">4</span><span class="nm">Obergrenze</span><span class="wt">nicht ausgewertet</span><span class="mk">--</span></div>
+              <div class="sp aus"><span class="nr">5</span><span class="nm">Ausfuehrung</span><span class="wt">nicht ausgewertet</span><span class="mk">--</span></div>
+            </div>
+          </div>
+          <div class="karte-fuss">
+            <span>Solange der Stoppschalter gesetzt ist, bewirkt Freigeben nichts.</span>
+            <span class="schub"></span>
+            <button class="kn" type="button">Verwerfen</button>
+          </div>
+        </div>
+        <div class="fuss-z">Der Stoppschalter wirkt ohne Datenbank und faellt geschlossen aus.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Ein angehaltenes System ist der einzige Zustand, den man <b>ohne
+    Lesen</b> erkennen soll — also färbt sich das ganze Band, nicht nur eine Marke.</p>
+    <p class="unterschrift">Die Leiter macht hier zwei Dinge sichtbar: dass Sprosse 2 hält,
+    obwohl freigegeben würde — und dass die Sprossen darunter <b>„nicht ausgewertet"</b> sagen,
+    nicht „bestanden". Der Unterschied ist der ganze Sinn der Anzeige. Nebenbei zeigt sie, warum
+    der Stoppschalter vor der Obergrenze steht: ein angehaltenes System verbraucht kein
+    Kontingent.</p>
+    <p class="unterschrift"><b>Anhalten braucht nie eine Rückfrage, Fortsetzen immer.</b>
+    Dieselbe Asymmetrie, die SPEC-3 19.5 für die Sprachbedienung festhält.</p>
+  </div>
+
+  <!-- O5 PROTOKOLL -->
+  <div class="tafel" id="o5">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O5</span><span class="tafel-name">Protokoll</span>
+      <span class="stempel neutral">umgesetzt</span>
+      <span class="grundlage">zeigt B9 · B10 · B11 · B15</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span><span class="tt">Dienste</span> <span class="tv gefahr">Mock</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span>Lage</span>
+          <span>Entscheidungen <i>3</i></span>
+          <span>Briefing</span>
+          <span class="an">Protokoll</span>
+        </div>
+
+        <h4>Protokoll</h4>
+        <div class="rollbar"><table>
+          <thead><tr><th>Nr</th><th>Zeit (UTC)</th><th>Faehigkeit</th><th>Art</th><th>Ergebnis</th><th>Grund</th></tr></thead>
+          <tbody>
+            <tr><td class="m">1284</td><td class="m dim">2026-08-31 08:12:41</td><td class="m">mail_send</td><td class="dim">action</td><td><span class="mk tro">Dry Run</span></td><td>Trockenlauf global aktiv</td></tr>
+            <tr><td class="m">1283</td><td class="m dim">2026-08-31 08:12:40</td><td class="m">mail_send</td><td class="dim">decision</td><td><span class="dim">send</span></td><td>Rueckfrage zu einem laufenden Vorgang</td></tr>
+            <tr><td class="m">1282</td><td class="m dim">2026-08-31 08:11:02</td><td class="m">research</td><td class="dim">action</td><td><span class="mk blk">Blockiert</span></td><td>Obergrenze erreicht: 10/10 pro day</td></tr>
+            <tr><td class="m">1281</td><td class="m dim">2026-08-31 08:03:55</td><td class="m">mail</td><td class="dim">action</td><td><span class="mk erf">Ausgefuehrt</span></td><td>Label gesetzt: geschaeftlich</td></tr>
+            <tr><td class="m">1280</td><td class="m dim">2026-08-31 07:58:14</td><td class="m">calendar</td><td class="dim">action</td><td><span class="mk feh">Fehlgeschlagen</span></td><td>Anbieter nicht erreichbar: connection refused</td></tr>
+            <tr><td class="m">1279</td><td class="m dim">2026-08-31 07:40:09</td><td class="m">mail_reply</td><td class="dim">system</td><td><span class="mk vrw">Verworfen</span></td><td>im Dashboard verworfen</td></tr>
+            <tr><td class="m">1278</td><td class="m dim">2026-08-31 07:12:00</td><td class="m">core</td><td class="dim">system</td><td><span class="mk blk">Angehalten</span></td><td>ueber das Dashboard</td></tr>
+            <tr><td class="m">1277</td><td class="m dim">2026-08-31 06:30:04</td><td class="m">mail_send</td><td class="dim">action</td><td><span class="mk blk">Verweigert</span></td><td>Ziele stimmen nicht mehr: Entwurf geloescht</td></tr>
+          </tbody>
+        </table></div>
+        <div class="fuss-z">Kette intakt ueber 1 284 Eintraege. Auch abgelehnte Aktionen stehen hier.</div>
+      </div>
+    </div>
+    <p class="unterschrift"><b>Die T-Spalte ist weg.</b> Statt einer Abkürzung mit Legende steht
+    der Zustand als Wort mit Form da. Nur bekannte Ergebnisse bekommen eine Marke: Zeile 1283
+    trägt <span class="m">send</span> als schlichten Text, weil das die vom Modell
+    <em>vorgeschlagene Aktion</em> ist und kein Zustand. Eine Marke dafür wäre eine Aussage
+    ohne Deckung.</p>
+    <p class="unterschrift">Der Nachrichtentext steht nicht im Protokoll. Absender und Betreff
+    stehen darin, weil das Dashboard sie zum Einordnen braucht — SPEC-3 4.9 sagt genau das.</p>
+  </div>
+
+  <!-- O6 PROTOKOLLEINTRAG -->
+  <div class="tafel" id="o6">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O6</span><span class="tafel-name">Protokolleintrag — die acht Fragen</span>
+      <span class="stempel">Entwurf — nicht gebaut</span>
+      <span class="grundlage">zeigt B10 · B11 · B14</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span>Lage</span><span>Entscheidungen <i>3</i></span><span>Briefing</span><span class="an">Protokoll</span>
+        </div>
+
+        <h4>Eintrag 1284</h4>
+        <div class="karte-kopf" style="border:1px solid var(--linie)">
+          <span class="skill">mail_send</span>
+          <span class="dim" style="font-size:12.5px">Entwurf versenden</span>
+          <span class="mk tro">Dry Run</span>
+          <span class="zeit">2026-08-31 08:12:41 UTC</span>
+        </div>
+
+        <h5>1 &mdash; Was ist passiert?</h5>
+        <dl class="fk"><dt>Art</dt><dd>action</dd><dt>Ergebnis</dt><dd>dry_run</dd></dl>
+
+        <h5>2 &mdash; Warum ist es passiert?</h5>
+        <dl class="fk satz"><dt>Grund</dt><dd>Trockenlauf global aktiv</dd>
+          <dt>Begruendung</dt><dd>Rueckfrage zu einem laufenden Vorgang</dd></dl>
+
+        <h5>3 &mdash; Welche Komponente war beteiligt?</h5>
+        <dl class="fk"><dt>Faehigkeit</dt><dd>mail_send</dd>
+          <dt>Entschieden von</dt><dd>model</dd>
+          <dt>Modell</dt><dd>claude-opus-5 &middot; Trennung: subprocess</dd></dl>
+
+        <h5>4 &mdash; Welche Aktion wurde vorgeschlagen, und welche Ziele?</h5>
+        <div class="naht">
+          <div class="halb mod">
+            <div class="nk">Modell entschied</div>
+            <dl class="fk satz" style="grid-template-columns:7rem 1fr">
+              <dt>category</dt><dd>geschaeftlich</dd><dt>urgency</dt><dd>normal</dd>
+            </dl>
+          </div>
+          <div class="halb cod">
+            <div class="nk">Code berechnete</div>
+            <dl class="fk" style="grid-template-columns:7rem 1fr">
+              <dt>Empfaenger</dt><dd>anna.berger@example.com</dd>
+              <dt>Entwurf</dt><dd>Draft_a91f</dd>
+            </dl>
+          </div>
+        </div>
+
+        <h5>5 &mdash; Welche Regel hat gegriffen?</h5>
+        <div class="gatter">
+          <div class="sp"><span class="nr">1</span><span class="nm">Faehigkeit aktiv</span><span class="wt">ja</span><span class="mk erf">Weiter</span></div>
+          <div class="sp"><span class="nr">2</span><span class="nm">Stoppschalter</span><span class="wt">nicht gesetzt</span><span class="mk erf">Weiter</span></div>
+          <div class="sp"><span class="nr">3</span><span class="nm">Stufe / Freigabe</span><span class="wt">gewaehrt 0, verlangt 1</span><span class="mk tro">Haelt</span></div>
+          <div class="sp"><span class="nr">4</span><span class="nm">Obergrenze</span><span class="wt">0/5 day, nichts verbraucht</span><span class="mk erf">Weiter</span></div>
+          <div class="sp hit"><span class="nr">5</span><span class="nm">Ausfuehrung</span><span class="wt">Trockenlauf global aktiv</span><span class="mk tro">Haelt</span></div>
+        </div>
+
+        <h5>6, 7, 8 &mdash; Freigabe? Blockiert? Ergebnis?</h5>
+        <dl class="fk satz">
+          <dt>Freigabe</dt><dd>Vorgang 41, Zustand offen</dd>
+          <dt>Blockiert</dt><dd>nein &mdash; im Trockenlauf gehalten</dd>
+          <dt>Ergebnis</dt><dd>keine externe Wirkung</dd>
+          <dt>Kette</dt><dd>Vorgaenger 1283, Pruefsumme intakt</dd>
+        </dl>
+
+        <div class="note">Der Nachrichtentext steht nicht im Protokoll. Absender und Betreff
+          stehen darin, weil das Dashboard sie zum Einordnen braucht.</div>
+        <div class="fuss-z">Loopback, Einzelplatz.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Die Überschriften <b>sind</b> die acht Fragen aus SPEC-3 4.9, in
+    genau deren Reihenfolge. Das ist die direkteste Umsetzung von B10, die es gibt.</p>
+    <p class="unterschrift"><b>Nicht gebaut, mit Grund:</b> es wäre eine neue Route, und der
+    Routenschutz ist heute ein Dekorator, keine Middleware (TD-1). Eine neue Route ohne ihn
+    wäre still offen — also gehört TD-1 vorher geschlossen.</p>
+  </div>
+
+  <!-- O7 BRIEFING -->
+  <div class="tafel" id="o7">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O7</span><span class="tafel-name">Briefing</span>
+      <span class="stempel neutral">umgesetzt</span>
+      <span class="grundlage">zeigt B13 · B18</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span><span class="tt">Dienste</span> <span class="tv gefahr">Mock</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span>Lage</span><span>Entscheidungen <i>3</i></span><span class="an">Briefing</span><span>Protokoll</span>
+        </div>
+
+        <h4>Briefing</h4>
+        <dl class="fk">
+          <dt>Tag</dt><dd>2026-08-31</dd>
+          <dt>Stand</dt><dd>heute</dd>
+          <dt>Quelle</dt><dd>claude-opus-5</dd>
+          <dt>Erstellt</dt><dd>06:30:04</dd>
+        </dl>
+        <div class="brief">Drei Termine heute. Um 14:00 und 14:15 ueberschneiden sich Projektrunde
+und Zahnarzt -- eines von beiden muss weichen.
+
+Vierzehn neue Nachrichten, davon zwei geschaeftlich mit Antwortbedarf:
+Anna Berger zum Rahmenvertrag, T. Hoffmann zur Terminverschiebung.
+Fuer beide liegt ein Entwurf bereit.
+
+Nichts Ueberfaelliges.</div>
+        <div class="note">Erzeugt wird ein Briefing an der Kommandozeile:
+          <span class="m">jarvis briefing --neu</span></div>
+
+        <h4>Frueher</h4>
+        <table>
+          <thead><tr><th>Tag</th><th>Quelle</th><th>Anfang</th></tr></thead>
+          <tbody>
+            <tr><td class="m">2026-08-30</td><td class="dim">ohne Modell</td><td>Zwei Termine heute, keine Konflikte.</td></tr>
+            <tr><td class="m">2026-08-29</td><td class="dim">claude-opus-5</td><td>Ein Termin, neun neue Nachrichten.</td></tr>
+          </tbody>
+        </table>
+        <div class="fuss-z">Loopback, Einzelplatz. Durchlaeufe startet die Kommandozeile.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Die Angabe <b>Quelle</b> ist nicht Schmuck. Ein Briefing „ohne
+    Modell" ist der Rückfall aus <span class="m">briefing/skill.py</span>. Ob der Text vom
+    Modell oder aus dem Rückfall stammt, ändert, wie sehr man ihm glauben darf — also gehört
+    es sichtbar hin.</p>
+  </div>
+
+  <!-- O8 DIENSTE -->
+  <div class="tafel" id="o8">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O8</span><span class="tafel-name">Dienste — Nachweisstand</span>
+      <span class="stempel">PLANNED — nicht bauen</span>
+      <span class="grundlage">zeigt B16 · B17</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span><span class="tt">Dienste</span> <span class="tv gefahr">Mock</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span class="an">Lage</span><span>Entscheidungen <i>3</i></span><span>Briefing</span><span>Protokoll</span>
+        </div>
+
+        <h4>Dienste &mdash; Nachweisstand</h4>
+        <div class="note warn">Kein externer Dienst hat je mit JARVIS gesprochen, und keine
+          Zeile ist je auf macOS gelaufen. Der Mock-Modus ist aktiv: alles laeuft gegen Doppel.</div>
+
+        <div class="rollbar"><table>
+          <thead><tr><th>Dienst</th><th>Nachweis</th><th>Letzter echter Kontakt</th><th>Zweck</th></tr></thead>
+          <tbody>
+            <tr><td class="m">Gmail</td>
+              <td><span class="leiter"><i class="v"></i><i class="v"></i><i class="v"></i><i></i><i></i></span><span class="nt">built · tested · mocked</span></td>
+              <td><span class="mk res">nie</span></td><td class="dim">lesen, Label, Entwurf, senden</td></tr>
+            <tr><td class="m">Google Calendar</td>
+              <td><span class="leiter"><i class="v"></i><i class="v"></i><i class="v"></i><i></i><i></i></span><span class="nt">built · tested · mocked</span></td>
+              <td><span class="mk res">nie</span></td><td class="dim">Termine lesen</td></tr>
+            <tr><td class="m">Anthropic</td>
+              <td><span class="leiter"><i class="v"></i><i class="v"></i><i></i><i></i><i></i></span><span class="nt">built · tested</span></td>
+              <td><span class="mk res">nie</span></td><td class="dim">Einordnen, Entwerfen</td></tr>
+            <tr><td class="m">Ollama</td>
+              <td><span class="leiter"><i class="v"></i><i class="v"></i><i></i><i></i><i></i></span><span class="nt">built · tested</span></td>
+              <td><span class="mk res">nie</span></td><td class="dim">vertrauliche Aufgaben</td></tr>
+            <tr><td class="m">macOS Keychain</td>
+              <td><span class="leiter"><i class="v"></i><i class="v"></i><i></i><i></i><i></i></span><span class="nt">built · tested (simulierte Plattform)</span></td>
+              <td><span class="mk res">nie</span></td><td class="dim">einzige Quelle fuer Geheimnisse</td></tr>
+          </tbody>
+        </table></div>
+
+        <h5>Die Leiter</h5>
+        <div class="gatter">
+          <div class="sp"><span class="nr">1</span><span class="nm">BUILT</span><span class="wt">Der Adapter existiert</span><span class="mk erf">alle 5</span></div>
+          <div class="sp"><span class="nr">2</span><span class="nm">TESTED</span><span class="wt">Tests decken ihn ab, ohne Netz</span><span class="mk erf">alle 5</span></div>
+          <div class="sp"><span class="nr">3</span><span class="nm">MOCKED</span><span class="wt">Der ganze Weg laeuft gegen ein Laufzeit-Doppel</span><span class="mk">2 von 5</span></div>
+          <div class="sp hit"><span class="nr">4</span><span class="nm">LIVE VERIFIED</span><span class="wt">Mindestens ein erfolgreicher Aufruf gegen den echten Dienst</span><span class="mk blk">0 von 5</span></div>
+          <div class="sp"><span class="nr">5</span><span class="nm">PLATFORM VERIFIED</span><span class="wt">Auf macOS ausgefuehrt</span><span class="mk blk">nichts</span></div>
+        </div>
+        <div class="fuss-z">Nachweis schreibt nur ein echter Adapter nach einer echten Antwort.</div>
+      </div>
+    </div>
+    <p class="unterschrift"><b>„nie" steht als Wort da, nicht als leeres Feld.</b> Eine leere
+    Zelle liest sich wie „noch nicht erhoben"; <span class="m">nie</span> liest sich wie das,
+    was es ist. Kein Dienst bekommt eine Zusammenfassung wie „verbunden" — der Zustand ist die
+    Leiter selbst.</p>
+    <p class="unterschrift"><b>PLANNED.</b> SPEC-3 12 führt „Integrations" als fehlend. Diese
+    Tafel ist ein Bild, kein Auftrag: der Bereich hängt an Roadmap-Punkt 6.</p>
+  </div>
+
+  <!-- O9 GEDAECHTNIS -->
+  <div class="tafel" id="o9">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O9</span><span class="tafel-name">Gedächtnis</span>
+      <span class="stempel">PLANNED — nicht bauen</span>
+      <span class="grundlage">zeigt B25 · OD-2</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span class="an">Lage</span><span>Entscheidungen <i>3</i></span><span>Briefing</span><span>Protokoll</span>
+        </div>
+
+        <h4>Gedaechtnis</h4>
+        <dl class="fk">
+          <dt>Tatsachen</dt><dd>38 / 500 &nbsp;<span class="balken"><i style="width:10%"></i></span></dd>
+          <dt>Verdraengung</dt><dd>unwichtigste zuerst, bei gleichem Gewicht die aelteste</dd>
+          <dt>Schreibende Quellen</dt><dd>nur der Nutzer</dd>
+        </dl>
+
+        <h5>Langzeit</h5>
+        <div class="rollbar"><table>
+          <thead><tr><th>Schluessel</th><th>Wert</th><th>Kategorie</th><th>Herkunft</th><th>Gewicht</th><th>Zuletzt</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="m">arbeitgeber</td><td>Nordwerk GmbH</td><td class="dim">person</td>
+              <td><span class="mk">vom Nutzer</span></td><td class="m">8</td><td class="m dim">2026-07-02</td>
+              <td><button class="kn" type="button">Vergessen</button></td></tr>
+            <tr><td class="m">anrede_stil</td><td>knapp, kein Konjunktiv</td><td class="dim">praeferenz</td>
+              <td><span class="mk">vom Nutzer</span></td><td class="m">6</td><td class="m dim">2026-08-14</td>
+              <td><button class="kn" type="button">Vergessen</button></td></tr>
+            <tr><td class="m">zugang_vpn</td><td class="dim">&mdash; Wert wird nicht angezeigt</td><td class="dim">zugang</td>
+              <td><span class="mk">vom Nutzer</span></td><td class="m">9</td><td class="m dim">2026-05-20</td>
+              <td><button class="kn" type="button">Vergessen</button></td></tr>
+          </tbody>
+        </table></div>
+
+        <h5>Kurzzeitkontext</h5>
+        <dl class="fk"><dt>mail</dt><dd>5 Eintraege, Fenster 8</dd>
+          <dt>briefing</dt><dd>3 Eintraege, Fenster 8</dd></dl>
+
+        <div class="note warn">Herkunft steht hier durchgaengig auf „vom Nutzer", weil heute nur
+          der Nutzer schreibt. Eine Herkunftsklasse als Feld gibt es nicht &mdash; SPEC-3 9.2
+          fuehrt sie als fehlend, OD-2 ist offen.</div>
+        <div class="fuss-z">Loeschen wirkt sofort und steht im Protokoll.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Die Spalte <b>Herkunft</b> zeigt überall denselben Wert — und sagt,
+    warum. Das ist die ehrliche Form einer Lücke: SPEC-3 9.2 hält fest, dass eine vom Nutzer
+    gesagte und eine aus Fremdtext abgeleitete Tatsache heute <em>nicht unterscheidbar</em>
+    sind. Ein Wertebereich wurde nicht erfunden — das ist OD-2, und OD-2 ist offen.</p>
+    <p class="unterschrift"><b>PLANNED.</b> Zusätzlich hängt hier KI-7: der Kurzzeitkontext
+    lässt sich heute nicht über eine Bedienoberfläche leeren.</p>
+  </div>
+
+  <!-- O10 SPRACHE -->
+  <div class="tafel" id="o10">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O10</span><span class="tafel-name">Sprache</span>
+      <span class="stempel neutral">Bedienweise umgesetzt · Komfort PLANNED</span>
+      <span class="grundlage">zeigt B22 · B23</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div style="border:1px solid var(--linie2);background:var(--flaeche);padding:16px">
+          <div class="m" style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin-bottom:12px">
+            jarvis voice &mdash; sechs feste Absichten</div>
+          <div class="m" style="font-size:13px;line-height:2">
+            <span style="color:var(--t3)">&gt;</span> <span style="color:var(--t)">Wie steht es?</span><br>
+            <span style="color:var(--akz)">status</span> <span style="color:var(--t2)">&nbsp;Betrieb. Trockenlauf an. Drei Vorgaenge offen.</span><br><br>
+            <span style="color:var(--t3)">&gt;</span> <span style="color:var(--t)">Was ist heute?</span><br>
+            <span style="color:var(--akz)">briefing</span> <span style="color:var(--t2)">&nbsp;Drei Termine. Um 14:00 und 14:15 eine Ueberschneidung.</span><br><br>
+            <span style="color:var(--t3)">&gt;</span> <span style="color:var(--t)">Was liegt an?</span><br>
+            <span style="color:var(--akz)">offen</span> <span style="color:var(--t2)">&nbsp;Drei Vorgaenge. Freigeben geht nur am Bildschirm.</span><br><br>
+            <span style="color:var(--t3)">&gt;</span> <span style="color:var(--t)">Halt an.</span><br>
+            <span style="color:var(--warn)">anhalten</span> <span style="color:var(--t2)">&nbsp;Angehalten. Jede ausgehende Aktion ist blockiert.</span><br><br>
+            <span style="color:var(--t3)">&gt;</span> <span style="color:var(--t)">Mach weiter.</span><br>
+            <span style="color:var(--fehl)">unbekannt</span> <span style="color:var(--t2)">&nbsp;Fortsetzen geht nicht per Sprache.</span>
+          </div>
+        </div>
+
+        <h4>Die Asymmetrie ist Absicht</h4>
+        <div class="gatter">
+          <div class="sp"><span class="nr">✓</span><span class="nm">status, briefing, offen</span><span class="wt">lesen</span><span class="mk erf">erlaubt</span></div>
+          <div class="sp"><span class="nr">✓</span><span class="nm">anhalten</span><span class="wt">die sichere Richtung</span><span class="mk erf">erlaubt</span></div>
+          <div class="sp hit"><span class="nr">✗</span><span class="nm">fortsetzen</span><span class="wt">gibt Wirkung nach aussen frei</span><span class="mk blk">nie per Sprache</span></div>
+          <div class="sp hit"><span class="nr">✗</span><span class="nm">freigeben, senden</span><span class="wt">Sprache hat keinen act-Pfad</span><span class="mk blk">gibt es nicht</span></div>
+        </div>
+
+        <h4>Was es nicht gibt</h4>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <span class="mk res">Weckwort</span>
+          <span class="mk res">Dauerschleife</span>
+          <span class="mk res">Sprach-Oberflaeche</span>
+          <span class="mk res">Mikrofonknopf</span>
+        </div>
+        <div class="note warn">Alle vier sind PLANNED (SPEC-3 19.5). Sie erscheinen in keiner
+          Ansicht &mdash; auch nicht ausgegraut. Ein ausgegrautes Element ist ein Versprechen.</div>
+      </div>
+    </div>
+    <p class="unterschrift"><b>Sprache hat keine eigene Oberfläche und bekommt keine.</b> Sie
+    ist eine Bedienweise, keine Fähigkeit — <span class="m">build_skill("voice")</span>
+    scheitert absichtlich. Ein Mikrofonknopf im Dashboard wäre ein zweiter Weg in dieselbe
+    Handlung, ohne Gewinn.</p>
+    <p class="unterschrift">Die Asymmetrie <b>anhalten ja, fortsetzen nie</b> steht so in
+    SPEC-3 19.5 und bleibt erhalten. Dieselbe Logik trägt am Bildschirm die Rückfrageseite (O3).</p>
+  </div>
+
+  <!-- O11 MELDUNGEN -->
+  <div class="tafel" id="o11">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O11</span><span class="tafel-name">Meldungen — Proaktivität</span>
+      <span class="stempel">PLANNED — nicht bauen</span>
+      <span class="grundlage">zeigt B24 · ODS-2</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <div class="band">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span class="schub"></span>
+          <button class="kn warn" type="button">Anhalten</button>
+        </div>
+        <div class="titel">JARVIS</div>
+        <div class="nav">
+          <span class="an">Lage</span><span>Entscheidungen <i>3</i></span><span>Briefing</span><span>Protokoll</span>
+        </div>
+
+        <h4>Abweichungen</h4>
+        <div style="border-left:2px solid var(--warn);padding:8px 0 8px 13px;margin-bottom:8px">
+          <div style="font-size:13.5px">Kalenderkonflikt am 02.09., 14:00 bis 14:30.</div>
+          <div class="m dim" style="font-size:11.5px;margin-top:2px">erkannt 08:12 &middot; calendar</div>
+        </div>
+        <div style="border-left:2px solid var(--warn);padding:8px 0 8px 13px;margin-bottom:8px">
+          <div style="font-size:13.5px">Zwei Antwortentwuerfe warten seit drei Tagen.</div>
+          <div class="m dim" style="font-size:11.5px;margin-top:2px">erkannt 08:12 &middot; mail_reply</div>
+        </div>
+        <div style="border-left:2px solid var(--fehl);padding:8px 0 8px 13px">
+          <div style="font-size:13.5px">calendar ist seit gestern nicht erreichbar.</div>
+          <div class="m dim" style="font-size:11.5px;margin-top:2px">letzter Fehler 07:58 &middot; connection refused</div>
+        </div>
+
+        <div class="note warn"><b>Keine Handlung an der Meldung.</b> Wer etwas tun will, geht zur
+          Vorgangskarte &mdash; und damit durch <span class="m">execute_approval</span> und
+          dasselbe Gatter.</div>
+
+        <h4>Lage</h4>
+        <dl class="fk">
+          <dt>Offene Entscheidungen</dt><dd>3</dd>
+          <dt>Kette</dt><dd>intakt</dd>
+        </dl>
+        <div class="fuss-z">Loopback, Einzelplatz.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Der heikle Punkt bei Proaktivität ist nicht das Erkennen — Konflikte
+    und Fristen erkennt JARVIS bereits. Es ist der <b>Meldeweg</b>: SPEC-3 19.5 verlangt, dass
+    er kein zweiter Aktionspfad wird.</p>
+    <p class="unterschrift">Deshalb dieser Entwurf: Meldungen sind eine <b>Abweichungszeile auf
+    Lage, ohne eigene Schaltfläche</b>. Kein Bereich „Meldungen", kein Posteingang, keine
+    Regel-Engine. Wer eine Meldung in eine Handlung überführen will, landet zwangsläufig auf
+    der Vorgangskarte.</p>
+    <p class="unterschrift"><b>PLANNED und offen.</b> Die Fähigkeit gibt es nicht; der Entwurf
+    steht als ODS-2 zur Entscheidung, nicht zum Bau.</p>
+  </div>
+
+  <!-- O12 MUSTERBLATT -->
+  <div class="tafel" id="o12">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">O12</span><span class="tafel-name">Musterblatt — Zustände und Bausteine</span>
+      <span class="stempel neutral">Referenz</span>
+      <span class="grundlage">zeigt B9 · B15 · B16 · B21</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <h5>Achse 1 &mdash; Aktionszustand. Sechs von neun existieren</h5>
+        <div class="rollbar"><table>
+          <thead><tr><th>Marke</th><th>Zustand</th><th>Herkunft im Code</th><th>Vorhanden</th></tr></thead>
+          <tbody>
+            <tr><td><span class="mk erf">Ausgefuehrt</span></td><td class="dim">SUCCESS</td><td class="m dim">Result.performed</td><td>ja</td></tr>
+            <tr><td><span class="mk off">Offen</span></td><td class="dim">PENDING</td><td class="m dim">approvals.state = pending</td><td>ja</td></tr>
+            <tr><td><span class="mk blk">Blockiert</span></td><td class="dim">BLOCKED</td><td class="m dim">Disposition.BLOCKED</td><td>ja</td></tr>
+            <tr><td><span class="mk vrw">Verworfen</span></td><td class="dim">REJECTED</td><td class="m dim">approvals.state = rejected</td><td>ja</td></tr>
+            <tr><td><span class="mk feh">Fehlgeschlagen</span></td><td class="dim">FAILED</td><td class="m dim">Result.performed = False</td><td>ja</td></tr>
+            <tr><td><span class="mk tro">Dry Run</span></td><td class="dim">DRY_RUN</td><td class="m dim">Disposition.DRY_RUN</td><td>ja</td></tr>
+            <tr><td><span class="mk res">Unverified</span></td><td class="dim">UNVERIFIED</td><td class="dim">kein Zustand</td><td style="color:var(--warn)">nein</td></tr>
+            <tr><td><span class="mk res">Offline</span></td><td class="dim">OFFLINE</td><td class="dim">kein Zustand</td><td style="color:var(--warn)">nein</td></tr>
+            <tr><td><span class="mk res">Cancelled</span></td><td class="dim">CANCELLED</td><td class="dim">kein Zustand</td><td style="color:var(--warn)">nein</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note warn">Die drei gepunkteten Marken erscheinen <b>nicht</b> in der
+          Oberflaeche. Sie stehen hier, damit sichtbar bleibt, dass sie fehlen.</div>
+
+        <h5>Reserviert fuer die Zustandsmaschine (OD-1, offen)</h5>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span class="mk res">Beansprucht</span>
+          <span class="mk res">Laeuft</span>
+          <span class="dim" style="font-size:12.5px">&mdash; Namen und Uebergaenge sind OD-1 und werden nicht von der Gestaltung entschieden.</span>
+        </div>
+
+        <h5>Achse 2 &mdash; Nachweisstand, unabhaengig davon</h5>
+        <dl class="fk" style="grid-template-columns:11rem 1fr">
+          <dt>alle Stufen</dt><dd><span class="leiter"><i class="v"></i><i class="v"></i><i class="v"></i><i class="v"></i><i class="v"></i></span><span class="nt">built, tested, mocked, live, platform</span></dd>
+          <dt>heutiger Bestfall</dt><dd><span class="leiter"><i class="v"></i><i class="v"></i><i class="v"></i><i></i><i></i></span><span class="nt nie">live: nie</span></dd>
+        </dl>
+
+        <h5>Autonomiestufe &mdash; immer beide Zahlen</h5>
+        <table>
+          <tr><td style="width:12rem"><span class="stufe"><span class="g">0</span> <span class="v">/ 0</span></span> <span class="dim">Schattenbetrieb</span></td><td class="dim">gewaehrt reicht &mdash; die Faehigkeit handelt selbst</td></tr>
+          <tr><td><span class="stufe kurz"><span class="g">0</span> <span class="v">/ 1</span></span> <span class="dim">verlangt Allowlist</span></td><td class="dim">gewaehrt reicht nicht &mdash; jeder Vorgang wartet auf Freigabe</td></tr>
+          <tr><td><span class="stufe"><span class="g">2</span> <span class="v">/ 1</span></span> <span class="dim">Freigegebene Kategorien</span></td><td class="dim">gewaehrt liegt darueber &mdash; handelt ohne Rueckfrage</td></tr>
+        </table>
+
+        <h5>Schaltflaechen</h5>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--linie);background:var(--hoch);padding:10px 14px">
+          <button class="kn akz" type="button">Ruhiger Weg</button>
+          <button class="kn" type="button">Neutral</button>
+          <button class="kn warn" type="button">Verlaesst den Rechner</button>
+          <button class="kn" type="button" disabled>Nicht moeglich</button>
+        </div>
+        <div class="note">Hervorgehoben ist der ruhige Weg, nicht der handelnde. Jede
+          Schaltflaeche, die etwas ausloest, geht durch <span class="m">execute_approval</span>
+          &mdash; nie direkt an einen Dienst.</div>
+
+        <h5>Leere und Fehler</h5>
+        <div class="zwei" style="gap:16px">
+          <div style="border:1px solid var(--linie);padding:12px">
+            <div class="leer" style="padding:0">Nichts anstehend. Was von selbst durchging, steht im Protokoll.
+              <div class="m" style="margin-top:8px;font-size:12px;color:var(--t2)">jarvis mail poll</div></div>
+          </div>
+          <div style="border:1px solid var(--linie);padding:12px">
+            <div class="note fehl" style="margin:0">Gmail war nicht erreichbar. Der Vorgang bleibt offen und ist unveraendert.</div>
+            <div class="dim" style="font-size:11.5px;margin-top:8px">Ein Fehler nennt: was scheiterte, was jetzt gilt, was der naechste Schritt ist. Nie nur „Fehler".</div>
+          </div>
+        </div>
+
+        <h5>Symbole &mdash; Inline-SVG, 16px-Raster, currentColor</h5>
+        <div style="display:flex;gap:26px;flex-wrap:wrap;color:var(--t2);font-size:11.5px;text-align:center">
+          <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="11" height="11"/></svg><br>halt</div>
+          <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M9 4l4 4-4 4"/></svg><br>weiter</div>
+          <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5l3.5 3.5L13 5"/></svg><br>erledigt</div>
+          <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"/></svg><br>verworfen</div>
+          <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5l2 1.5"/></svg><br>offen</div>
+          <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2.5l5.5 9.5h-11z"/><path d="M8 6.5v2.5"/></svg><br>achtung</div>
+          <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="6.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><br>gesperrt</div>
+          <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 5.5h11M2.5 8h11M2.5 10.5h7"/></svg><br>protokoll</div>
+        </div>
+        <div class="note">Keine Bilddatei, keine Symbolschrift &mdash; <span class="m">img-src 'none'</span>
+          laesst beides nicht zu. Ein Inline-SVG ist Dokumentinhalt, keine geladene Quelle.
+          <b>Kein Symbol steht allein:</b> jede Handlung traegt ihr Wort.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Das Musterblatt ist die Referenz, gegen die ein neuer Entwurf
+    geprüft wird. Wer eine Marke braucht, die hier nicht steht, hat entweder einen Zustand
+    gefunden, den das System nicht kennt — oder einen erfunden.</p>
+  </div>
+
+</section>
+
+<!-- ================================================================
+     TEIL C — ABDECKUNG
+     ================================================================ -->
+<section class="teil">
+  <div class="teil-kopf">
+    <div class="teil-nr">Teil C</div>
+    <div class="teil-titel">Abdeckung</div>
+  </div>
+  <p class="teil-vorspann">
+    B1 bis B25 sind keine Oberflächen, sondern die 25 Sätze aus SPEC-3, die die Gestaltung
+    binden. Ein Teil davon lässt sich zeigen. Ein anderer prinzipiell nicht: eine Regel wie
+    „kein zweiter Aktionsweg" ist eine <em>Abwesenheit</em> — man kann sie einhalten, aber
+    nicht abbilden. Diese Karte hält beides nach.
+  </p>
+
+  <div class="tafel" id="c1">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">C1</span><span class="tafel-name">B1–B25, Tafel für Tafel</span>
+      <span class="grundlage">19 sichtbar · 2 mittelbar · 4 nicht zeigbar</span>
+    </div>
+    <div class="rollbar"><table class="btab">
+      <thead><tr><th>#</th><th>Vorgabe</th><th>SPEC-3</th><th>Zu sehen auf</th></tr></thead>
+      <tbody>
+        <tr><td class="m">B1</td><td>Dashboard ist Oberfläche, nicht Sicherheitsinstanz</td><td class="m">4.6 · 12</td><td class="m">mittelbar: O2, O4, O12</td></tr>
+        <tr><td class="m">B2</td><td>Kein Knopf ruft direkt einen Dienst</td><td class="m">4.6</td><td class="warn">nicht zeigbar</td></tr>
+        <tr><td class="m">B3</td><td>Kein zweiter Aktionsweg</td><td class="m">12</td><td class="warn">nicht zeigbar</td></tr>
+        <tr><td class="m">B4</td><td>Loopback, Token, Origin, CSP, kein JavaScript</td><td class="m">4.6</td><td class="m">mittelbar: G6, G7, O3, O12</td></tr>
+        <tr><td class="m">B5</td><td>Stoppschalter auf jeder Ansicht</td><td class="m">12</td><td class="ja">O1–O11 · explizit O4</td></tr>
+        <tr><td class="m">B6</td><td>Gatterreihenfolge ist Absicht</td><td class="m">4.2</td><td class="ja">O2, O4, O6, O8</td></tr>
+        <tr><td class="m">B7</td><td>Freigabe ersetzt die Stufe — sonst nichts</td><td class="m">4.2 · 28</td><td class="ja">O2, O3, O4</td></tr>
+        <tr><td class="m">B8</td><td>Autonomie je Fähigkeit, gewährt gegen verlangt</td><td class="m">4.3 · 6.1</td><td class="ja">O1, O12</td></tr>
+        <tr><td class="m">B9</td><td>Ein Fehler darf nie wie ein Erfolg aussehen</td><td class="m">3.4 · 5.2</td><td class="ja">G1, G3, O5, O12</td></tr>
+        <tr><td class="m">B10</td><td>Acht Fragen aus dem Protokoll beantwortbar</td><td class="m">4.9</td><td class="ja">O6</td></tr>
+        <tr><td class="m">B11</td><td>Keine Geheimnisse im Protokoll; Absender und Betreff ja</td><td class="m">4.9</td><td class="ja">O5, O6</td></tr>
+        <tr><td class="m">B12</td><td>Mailinhalte werden nicht gespeichert</td><td class="m">8 · 10</td><td class="warn">nicht zeigbar</td></tr>
+        <tr><td class="m">B13</td><td>Fremde Inhalte sind Daten, auch in der Anzeige</td><td class="m">3.2 P3</td><td class="ja">O2, O7</td></tr>
+        <tr><td class="m">B14</td><td>Das Modell wählt nie ein Ziel</td><td class="m">3.2 P1</td><td class="ja">G2, O2, O6</td></tr>
+        <tr><td class="m">B15</td><td>Neun Zustände — drei existieren nicht</td><td class="m">5.2</td><td class="ja">O12</td></tr>
+        <tr><td class="m">B16</td><td>Nachweisstufen sind eine eigene Leiter</td><td class="m">11</td><td class="ja">O8, O12</td></tr>
+        <tr><td class="m">B17</td><td>Nie live, nie auf macOS</td><td class="m">11 · 14</td><td class="ja">O1, O8</td></tr>
+        <tr><td class="m">B18</td><td>Keine Erfolgsmeldung stärker als der Nachweis</td><td class="m">27</td><td class="ja">G1, O3, O7, O8</td></tr>
+        <tr><td class="m">B19</td><td>Kein Feature ohne Trockenlaufpfad</td><td class="m">22 · 12</td><td class="ja">O1, O2, O3</td></tr>
+        <tr><td class="m">B20</td><td>Lokal, ohne Anmeldung, ohne Build-Schritt</td><td class="m">25</td><td class="warn">nicht zeigbar</td></tr>
+        <tr><td class="m">B21</td><td>Keine Fake-Features für PLANNED-Funktionen</td><td class="m">24 · 19.3</td><td class="ja">O8, O9, O10, O11</td></tr>
+        <tr><td class="m">B22</td><td>Sprache ohne <span class="m">act</span>-Pfad; anhalten ja, fortsetzen nie</td><td class="m">19.5</td><td class="ja">O10</td></tr>
+        <tr><td class="m">B23</td><td>Sprache ist nicht der Hauptbedienweg</td><td class="m">24</td><td class="ja">O10</td></tr>
+        <tr><td class="m">B24</td><td>Meldeweg wird kein zweiter Aktionspfad</td><td class="m">19.5</td><td class="ja">O11</td></tr>
+        <tr><td class="m">B25</td><td>Gedächtnis kennt keinen Vertrauensgrad</td><td class="m">9.2 · OD-2</td><td class="ja">O9</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="tafel" id="c2">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">C2</span><span class="tafel-name">Was sich nicht zeigen lässt</span>
+      <span class="grundlage">vier Vorgaben</span>
+    </div>
+    <p style="margin-top:16px">Diese vier sind Abwesenheiten. Eine Zeichnung davon wäre eine
+    Zeichnung von nichts — sie lassen sich nur einhalten und prüfen, nicht abbilden. Woran man
+    ihre Einhaltung trotzdem erkennt:</p>
+    <div class="rollbar"><table class="btab">
+      <thead><tr><th>#</th><th>Warum kein Bild</th><th>Woran man es merkt</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="m">B2</td>
+          <td>„Kein Knopf ruft direkt einen Dienst" ist eine Aussage über den Weg <em>hinter</em> dem Knopf.</td>
+          <td>Jede Schaltfläche in Teil B löst denselben Weg aus: <span class="m">execute_approval</span> → Gatter. Es gibt keine zweite.</td>
+        </tr>
+        <tr>
+          <td class="m">B3</td>
+          <td>Ein zweiter Aktionsweg fehlt — und Fehlendes hat kein Bild.</td>
+          <td>Am Fehlen sichtbar: kein Befehlsfeld (O1), kein Mikrofonknopf (O10), keine Handlung an der Meldung (O11).</td>
+        </tr>
+        <tr>
+          <td class="m">B12</td>
+          <td>Der Nachrichtentext ist nicht gespeichert. Man kann nicht zeigen, was nicht da ist.</td>
+          <td>In O2 und O6 steht der <em>Entwurfs</em>text — den JARVIS selbst geschrieben hat. Die Quellmail taucht nirgends auf, nur Absender, Betreff, Kategorie.</td>
+        </tr>
+        <tr>
+          <td class="m">B20</td>
+          <td>„Ohne Build-Schritt, ohne Anmeldung" ist eine Eigenschaft der Werkzeugkette.</td>
+          <td>An der Form sichtbar: Systemschriften statt Webfonts (G2), kein Theme-Umschalter (G6), jede Größenstufe für sich vollständig (G7).</td>
+        </tr>
+      </tbody>
+    </table></div>
+    <p class="unterschrift" style="margin-top:18px">Dass vier Vorgaben kein Bild haben, ist kein
+    Mangel des Blätterwerks. Es ist die ehrliche Grenze zwischen Gestaltung und Architektur:
+    <b>die Oberfläche kann eine Sicherheitseigenschaft sichtbar machen, aber nicht herstellen.</b>
+    Herstellen tut sie das Gatter.</p>
+  </div>
+
+  <div class="tafel">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">C3</span><span class="tafel-name">Was hier Bild ist und was Code</span>
+      <span class="grundlage">Stand 2026-08-31</span>
+    </div>
+    <div class="rollbar"><table class="btab">
+      <thead><tr><th>Tafel</th><th>Stand</th><th>Wenn nicht gebaut: warum</th></tr></thead>
+      <tbody>
+        <tr><td class="m">O1 Lage</td><td class="ja">umgesetzt</td><td class="dim">—</td></tr>
+        <tr><td class="m">O2 Entscheidungen</td><td class="ja">umgesetzt</td><td class="dim">—</td></tr>
+        <tr><td class="m">O3 Rückfrage</td><td class="warn">Entwurf</td><td>Wird erst gebraucht, wenn <span class="m">dry_run = false</span> je vorkommt — Roadmap-Punkt 2.</td></tr>
+        <tr><td class="m">O4 Angehalten</td><td class="ja">umgesetzt</td><td class="dim">—</td></tr>
+        <tr><td class="m">O5 Protokoll</td><td class="ja">umgesetzt</td><td class="dim">—</td></tr>
+        <tr><td class="m">O6 Protokolleintrag</td><td class="warn">Entwurf</td><td>Neue Route. TD-1 — der Routenschutz ist ein Dekorator — gehört vorher geschlossen.</td></tr>
+        <tr><td class="m">O7 Briefing</td><td class="ja">umgesetzt</td><td class="dim">—</td></tr>
+        <tr><td class="m">O8 Dienste</td><td class="warn">PLANNED</td><td>SPEC-3 12 führt „Integrations" als fehlend. Hängt an Roadmap-Punkt 6.</td></tr>
+        <tr><td class="m">O9 Gedächtnis</td><td class="warn">PLANNED</td><td>Ebenfalls Roadmap 6. Zusätzlich müsste OD-2 vorher entschieden sein.</td></tr>
+        <tr><td class="m">O10 Sprache</td><td class="ja">Bedienweise umgesetzt</td><td>Weckwort und Dauerschleife sind PLANNED und erscheinen in keiner Ansicht.</td></tr>
+        <tr><td class="m">O11 Meldungen</td><td class="warn">PLANNED</td><td>Proaktivität existiert nicht. Der Meldeweg ist offen als ODS-2.</td></tr>
+        <tr><td class="m">O12 Musterblatt</td><td class="ja">Referenz</td><td class="dim">—</td></tr>
+      </tbody>
+    </table></div>
+    <p class="unterschrift" style="margin-top:18px"><b>Fünf der zwölf Screens sind Bild und
+    kein Code</b> — und das ist die Absicht. SPEC-3 24 schließt Fake-Features aus: kein Stub,
+    kein Dummy, keine leere Tabelle für eine PLANNED-Funktion. Ein Entwurf auf Papier ist
+    keines davon; ein ausgegrauter Knopf in der Oberfläche wäre eines.</p>
+  </div>
+</section>
+
+<footer class="fuss">
+  <b>Diese Datei</b> trägt ihr eigenes Stylesheet und braucht keine Nachbardateien: kein
+  JavaScript, keine Bilddatei, keine Nebendatei. Sie liegt als
+  <span class="m">design/designsystem.html</span> im Repository und lässt sich lokal direkt
+  öffnen. Einzige externe Quelle ist IBM Plex für die Präsentationsebene; ohne Netz fällt sie
+  auf Georgia und die Systemschrift zurück, und alle Tafeln bleiben lesbar. Die Specimen selbst
+  benutzen ausschließlich Systemschriften — so, wie das Design es festlegt.<br><br>
+
+  <b>Weiterführend:</b> <span class="m">design/JARVIS-DESIGN-SYSTEM.md</span> — 25 SPEC-3-Vorgaben,
+  33 Designentscheidungen mit Grundlage, 12 Bausteine, 7 offene Designfragen.
+  <span class="m">design/prototyp/</span> — dieselben Oberflächen als einzelne Blätter mit
+  gemeinsamem Stylesheet.<br><br>
+
+  <b>Einschränkung.</b> Diese Tafeln sind von Hand geschrieben und in keinem Browser geprüft
+  worden — die Sitzung lief unter Linux ohne Bildschirm, Safari auf macOS gab es hier nie.
+  Gebaut ist nicht geprüft; dieselbe Regel, die SPEC-3 für den Code aufstellt, gilt für dieses
+  Blatt.<br><br>
+
+  <b>SPEC-3 steht unverändert auf Fassung 3.0</b>, <span class="m">jarvis/</span> ist von diesem
+  Blatt nicht berührt. Nichts hier ist ein Bauauftrag.
+</footer>
+
+</div>

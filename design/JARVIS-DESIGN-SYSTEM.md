@@ -148,6 +148,7 @@ SPEC-Luecke haelt, hat die Luecke verloren.
 | Stoppschalter | eigenes Band ganz oben, faerbt sich bei gesetztem Schalter | `style.py` `.stop`, `render.py` `seite()` |
 | Zielfelder im Vorgang | feste Reihenfolge: Empfaenger, Betreff, Kategorie, Label, Nachricht, Entwurf | `render.py` `BEKANNTE_ZIELE` |
 | Maskierung | jeder Wert von aussen durch `esc`; nur `seite()` nimmt fertiges HTML | `render.py` Kopfkommentar |
+| Inline-Stile | **keine** -- die gesamte Gestaltung steht im Stylesheet, passend zu `style-src 'self'` | `render.py`, `app.py`, nachgesehen |
 | Rueckmeldungen | Codes in der Adresse, Text aus einer festen Tabelle -- nie freier Text aus der URL | `app.py` `MELDUNGEN` |
 
 Die heutige Gestaltung ist damit bereits nahe an dem, was dieses Dokument
@@ -179,6 +180,7 @@ genau daraus entsteht der Stil.
 |---|---|
 | `default-src 'none'`, **kein JavaScript** (B4) | Keine Umschalter, keine Menues, keine Sortierung im Client, kein Dialogfenster, kein Fortschrittsbalken, keine Nachladen-Animation. Jede Auswahl ist eine Adresse, jede Handlung ein Formular |
 | `img-src 'none'` (B4) | Keine Bilddateien, keine Symbolschrift, keine externen Schriften, kein Logo als Datei. Symbole nur als Inline-SVG; Schrift nur, was das System hat |
+| `style-src 'self'` (B4) | **Kein `style`-Attribut.** Jede Gestaltung steht im Stylesheet; ein dynamischer Wert -- etwa ein Fuellstand -- wird auf eine Stufenklasse gerundet, statt inline gesetzt zu werden (DD-33) |
 | Kein Build-Schritt (B20) | Handgeschriebenes CSS in einer Datei. Kein Praeprozessor, kein Framework, keine Werkzeugkette |
 | `meta refresh` statt Ereignisstrom | Aktualisierung ist ein Neuladen. Die Seite muss ohne Zustand im Client vollstaendig sein, und ein Neuladen darf keine Handlung wiederholen (deshalb Umleitung nach jedem POST, CURRENT) |
 
@@ -669,18 +671,25 @@ eine Fundstelle im Prototyp und eine Grundlage.
 
 ## 22. Systemband (K1)
 
-**Was darin steht** -- und warum genau diese drei:
+**Was darin steht** -- und warum genau diese vier:
 
 | Tatsache | Warum sie oben steht |
 |---|---|
 | `Betrieb` / `ANGEHALTEN` | B5. Der Stoppschalter gehoert auf jede Ansicht |
 | `Trockenlauf an` / `Trockenlauf AUS` | Entscheidet, ob ein Klick Wirkung nach aussen hat (B19) |
 | `Dienste Mock` / `Live` | Entscheidet, ob ueberhaupt etwas Echtes geschieht (B17) |
+| `Zugangsdaten` | SPEC-3 12 zaehlt die Zugangsdatenquelle ausdruecklich zum System Status |
 
-Diese drei zusammen beantworten die Frage, die vor jeder Handlung zaehlt:
-*wird das, was ich gleich tue, wirklich passieren?* Zugangsdaten kommen als
-vierte Angabe dazu, wenn eine Abweichung besteht (`jarvis status` setzt dort
-heute den Rueckgabewert auf 1) -- sonst nicht.
+Die ersten drei beantworten zusammen die Frage, die vor jeder Handlung zaehlt:
+*wird das, was ich gleich tue, wirklich passieren?* Die vierte steht dabei, weil
+SPEC-3 12 sie zum System Status zaehlt; weicht die Quelle von der Keychain ab,
+traegt sie Warnfarbe -- `jarvis status` setzt in diesem Fall heute den
+Rueckgabewert auf 1.
+
+**Die Dateirechte gehoeren nicht ins Band.** SPEC-3 12 nennt sie ebenfalls unter
+System Status, aber sie sind kein Zustand, der eine Handlung beeinflusst. Sie
+stehen als Kopfzahl *Ablage* auf der Lage-Ansicht, und nur wenn etwas offen ist,
+als Abweichungszeile.
 
 **Angehalten faerbt das ganze Band.** Nicht nur die Marke. Ein angehaltenes
 System ist der einzige Zustand, den man ohne Lesen erkennen soll.
@@ -1205,13 +1214,14 @@ dem, was freie Wahl ist.
 | **DD-25** | Umleitung nach jeder veraendernden Anfrage bleibt | CURRENT, `app.py` | Bestand bestaetigt | 33 |
 | **DD-26** | Stoppschalter erstes Element im Dokument, ohne Maus und ohne Farbe erreichbar | B5 | folgt aus der Vorgabe | 37 |
 | **DD-27** | Die Vertrauensnaht ist das Signaturelement; kodiert ueber Linienart und Schrift, nicht ueber Farbe | B14, SPEC-3 25 (Future-only) | freie Wahl, von SPEC-3 positiv bewertet | 23 |
-| **DD-28** | Systemband mit genau drei Tatsachen: Betrieb, Trockenlauf, Dienste | B5, B17, B19 | folgt aus der Vorgabe | 22 |
+| **DD-28** | Systemband mit vier Tatsachen: Betrieb, Trockenlauf, Dienste, Zugangsdaten; Dateirechte gehoeren auf die Lage-Ansicht | B5, B17, B19, SPEC-3 12 | folgt aus der Vorgabe | 22 |
 | **DD-29** | Aktionszustand und Nachweisstand sind getrennte Achsen an getrennten Orten | B15, B16 | folgt aus der Vorgabe | 16 |
 | **DD-30** | Wortlaut nennt Tatsachen, nie Erfolge; Zustaende heissen wie im Code | B18 | folgt aus der Vorgabe | 34 |
 | **DD-31** | Der unsichere Zustand ist der auffaellige (`Trockenlauf AUS`, `Mock`) | B17, B19, `cli.py` | freie Wahl mit Begruendung | 8, D5 |
 | **DD-32** | Drei Groessenstufen, jede fuer sich vollstaendig; Zielfenster 1100x760, kleinste Breite 380px | B4 | freie Wahl | 36 |
+| **DD-33** | Kein `style`-Attribut. Dynamische Werte werden auf Stufenklassen gerundet (Fuellstand in Fuenferschritten) | B4 (`style-src 'self'`) | folgt aus der Randbedingung | 6 |
 
-**Neunzehn der zweiunddreissig folgen aus einer SPEC-3-Vorgabe oder einer
+**Zweiundzwanzig der dreiunddreissig folgen aus einer SPEC-3-Vorgabe oder einer
 Randbedingung.** Das ist der Punkt: das Design ist zu einem grossen Teil nicht
 frei -- es macht sichtbar, was der Kern ohnehin verlangt.
 
@@ -1391,6 +1401,10 @@ Gestaltungsarbeit, und Roadmap 6 (Control Plane) ist PLANNED.
     "Bekannte Testluecken").
 14. Jede neue Anzeige eines Fremdwerts geht durch `esc` (`render.py`).
 15. Keine neue Abhaengigkeit, kein Build-Schritt (B20, SPEC-3 22).
+16. Kein `style`-Attribut in einer neuen Ansicht (DD-33). Es wuerde ohne
+    sichtbaren Fehler wirkungslos bleiben -- die Richtlinie verwirft es still.
+    Beim Erstellen der Entwuerfe ist genau dieser Fehler passiert und wurde
+    beim Gegenlesen behoben.
 
 ## 47. Selbstpruefung dieses Dokuments
 

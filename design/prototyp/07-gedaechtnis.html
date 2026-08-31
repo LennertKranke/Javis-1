@@ -19,6 +19,7 @@
     <span class="marke">Betrieb</span>
     <span class="tatsache"><span class="tatsache-name">Trockenlauf</span><span class="tatsache-wert hebt">an</span></span>
     <span class="tatsache"><span class="tatsache-name">Dienste</span><span class="tatsache-wert">Mock</span></span>
+    <span class="tatsache"><span class="tatsache-name">Zugangsdaten</span><span class="tatsache-wert">Keychain</span></span>
     <form method="post" action="/stop"><button type="submit" class="folgenreich">Anhalten</button></form>
   </div>
 </div>
@@ -34,7 +35,7 @@
 
 <h2>Gedaechtnis</h2>
 <dl class="fakten">
-  <dt>Tatsachen</dt><dd>38 / 500  <span class="balken" style="vertical-align:middle"><span style="width:8%"></span></span></dd>
+  <dt>Tatsachen</dt><dd>38 / 500  <span class="balken"><span class="f-10"></span></span></dd>
   <dt>Verdraengung</dt><dd>unwichtigste zuerst, bei gleichem Gewicht die aelteste</dd>
   <dt>Schreibende Quellen</dt><dd>nur der Nutzer</dd>
 </dl>
@@ -78,7 +79,7 @@
   <dt>mail</dt><dd>5 Eintraege, Fenster 8</dd>
   <dt>briefing</dt><dd>3 Eintraege, Fenster 8</dd>
 </dl>
-<div class="handlungen" style="border:1px solid var(--linie)">
+<div class="handlungen gerahmt">
   <span class="hinweis-knapp">Leeren loescht das Fenster, nicht das Langzeitgedaechtnis.</span>
   <form method="post" action="/gedaechtnis/kontext/leeren"><button type="submit">Kontext leeren</button></form>
 </div>

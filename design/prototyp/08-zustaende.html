@@ -26,20 +26,20 @@
 <tr><td data-kopf="Marke"><span class="marke verworfen">Verworfen</span></td><td data-kopf="Zustand">REJECTED</td><td data-kopf="Code" class="masch">approvals.state = rejected</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Verworfen. Es ist nichts geschehen.&ldquo;</td></tr>
 <tr><td data-kopf="Marke"><span class="marke fehler">Fehlgeschlagen</span></td><td data-kopf="Zustand">FAILED</td><td data-kopf="Code" class="masch">Result.performed = False</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Anbieter nicht erreichbar: connection refused&ldquo;</td></tr>
 <tr><td data-kopf="Marke"><span class="marke trocken">Dry Run</span></td><td data-kopf="Zustand">DRY_RUN</td><td data-kopf="Code" class="masch">Disposition.DRY_RUN</td><td data-kopf="Vorhanden">ja</td><td data-kopf="Wortlaut">&bdquo;Trockenlauf global aktiv. Nichts ist hinausgegangen.&ldquo;</td></tr>
-<tr><td data-kopf="Marke"><span class="marke reserviert">Unverified</span></td><td data-kopf="Zustand">UNVERIFIED</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" style="color:var(--signal-warnung)">nein</td><td data-kopf="Wortlaut">gehoert auf die Nachweisachse, nicht an eine Aktion</td></tr>
-<tr><td data-kopf="Marke"><span class="marke reserviert">Offline</span></td><td data-kopf="Zustand">OFFLINE</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" style="color:var(--signal-warnung)">nein</td><td data-kopf="Wortlaut">erscheint heute als Fehlgeschlagen mit Fehlertext</td></tr>
-<tr><td data-kopf="Marke"><span class="marke reserviert">Cancelled</span></td><td data-kopf="Zustand">CANCELLED</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" style="color:var(--signal-warnung)">nein</td><td data-kopf="Wortlaut">Verwerfen fuehrt heute zu Verworfen</td></tr>
+<tr><td data-kopf="Marke"><span class="marke reserviert">Unverified</span></td><td data-kopf="Zustand">UNVERIFIED</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" class="wert-gefahr">nein</td><td data-kopf="Wortlaut">gehoert auf die Nachweisachse, nicht an eine Aktion</td></tr>
+<tr><td data-kopf="Marke"><span class="marke reserviert">Offline</span></td><td data-kopf="Zustand">OFFLINE</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" class="wert-gefahr">nein</td><td data-kopf="Wortlaut">erscheint heute als Fehlgeschlagen mit Fehlertext</td></tr>
+<tr><td data-kopf="Marke"><span class="marke reserviert">Cancelled</span></td><td data-kopf="Zustand">CANCELLED</td><td data-kopf="Code" class="gedaempft">kein Zustand</td><td data-kopf="Vorhanden" class="wert-gefahr">nein</td><td data-kopf="Wortlaut">Verwerfen fuehrt heute zu Verworfen</td></tr>
 </tbody>
 </table>
 
 <p class="meldung warnung">Die drei letzten Marken sind reserviert, nicht verfuegbar. Sie in die Oberflaeche zu nehmen, waere ein Zustand, den das System nicht kennt &mdash; und damit eine Aussage, die staerker ist als der Nachweis (SPEC-3 27).</p>
 
 <h3>Reserviert fuer die Zustandsmaschine (OD-1, offen)</h3>
-<p style="font-size:0.86rem;color:var(--text-zweit)">SPEC-3 nennt unter SEC-2 die Kette <span class="masch">PENDING &rarr; CLAIMED &rarr; EXECUTING &rarr; SUCCEEDED | FAILED | CANCELLED</span> als Konzept und laesst die genaue Maschine ausdruecklich offen. Das Design haelt zwei Marken frei und legt sie nicht fest:</p>
+<p class="erlaeuterung">SPEC-3 nennt unter SEC-2 die Kette <span class="masch">PENDING &rarr; CLAIMED &rarr; EXECUTING &rarr; SUCCEEDED | FAILED | CANCELLED</span> als Konzept und laesst die genaue Maschine ausdruecklich offen. Das Design haelt zwei Marken frei und legt sie nicht fest:</p>
 <p><span class="marke reserviert">Beansprucht</span> <span class="marke reserviert">Laeuft</span></p>
 
 <h2>2 &mdash; Nachweisachse</h2>
-<p style="font-size:0.86rem;color:var(--text-zweit)">Unabhaengig vom Aktionszustand. Eine Aktion kann erfolgreich sein und der Dienst trotzdem nie live verifiziert.</p>
+<p class="erlaeuterung">Unabhaengig vom Aktionszustand. Eine Aktion kann erfolgreich sein und der Dienst trotzdem nie live verifiziert.</p>
 <dl class="fakten">
   <dt>alle Stufen</dt><dd><span class="nachweis"><span class="leiter"><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span></span><span class="nachweis-text">built, tested, mocked, live, platform</span></span></dd>
   <dt>heutiger Bestfall</dt><dd><span class="nachweis"><span class="leiter"><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse voll"></span><span class="sprosse leer"></span><span class="sprosse leer"></span></span><span class="nachweis-text nie">live: nie</span></span></dd>
@@ -71,16 +71,16 @@
 <div class="naht">
   <div class="naht-halb modell">
     <div class="naht-kopf">Modell entschied</div>
-    <p style="font-size:0.86rem;color:var(--text-zweit);margin-top:0">Gepunktete Linie, Prosa in Satzschrift, Fremdtext als Zitat. Alles hier ist abgeleitet und nie ein Ziel.</p>
+    <p class="erlaeuterung buendig">Gepunktete Linie, Prosa in Satzschrift, Fremdtext als Zitat. Alles hier ist abgeleitet und nie ein Ziel.</p>
   </div>
   <div class="naht-halb code">
     <div class="naht-kopf">Code berechnete</div>
-    <p style="font-size:0.86rem;color:var(--text-zweit);margin-top:0">Durchgezogene Linie, Werte in Maschinenschrift, jeweils mit Herkunft. Nur hier stehen Ziele.</p>
+    <p class="erlaeuterung buendig">Durchgezogene Linie, Werte in Maschinenschrift, jeweils mit Herkunft. Nur hier stehen Ziele.</p>
   </div>
 </div>
 
 <h2>6 &mdash; Schaltflaechen</h2>
-<div class="handlungen" style="border:1px solid var(--linie)">
+<div class="handlungen gerahmt">
   <button type="button" class="haupt">Ruhiger Weg</button>
   <button type="button">Neutral</button>
   <button type="button" class="folgenreich">Verlaesst den Rechner</button>
@@ -98,13 +98,13 @@
   <div class="tafel">
     <div class="tafel-kopf"><span class="tafel-name">Fehlerzustand</span></div>
     <p class="meldung fehler">Gmail war nicht erreichbar. Der Vorgang bleibt offen und ist unveraendert.</p>
-    <p style="font-size:0.82rem;color:var(--text-gedaempft);margin:0">Ein Fehler nennt: was scheiterte, was jetzt gilt, und was der naechste Schritt ist. Nie nur &bdquo;Fehler&ldquo;.</p>
+    <p class="randbemerkung">Ein Fehler nennt: was scheiterte, was jetzt gilt, und was der naechste Schritt ist. Nie nur &bdquo;Fehler&ldquo;.</p>
   </div>
 </div>
 
 <h2>8 &mdash; Symbole</h2>
-<p style="font-size:0.86rem;color:var(--text-zweit)">Inline-SVG, 16px-Raster, 1.5px Strich, <span class="masch">currentColor</span>. Keine Bilddatei, keine Symbolschrift &mdash; die Sicherheitsrichtlinie verbietet beides. Symbole stehen nie allein: jede Handlung traegt ihr Wort.</p>
-<div style="display:flex;gap:var(--r6);flex-wrap:wrap;color:var(--text-zweit);font-size:0.76rem;text-align:center">
+<p class="erlaeuterung">Inline-SVG, 16px-Raster, 1.5px Strich, <span class="masch">currentColor</span>. Keine Bilddatei, keine Symbolschrift &mdash; die Sicherheitsrichtlinie verbietet beides. Symbole stehen nie allein: jede Handlung traegt ihr Wort.</p>
+<div class="zeichenreihe">
   <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="11" height="11"/></svg><br>halt</div>
   <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M9 4l4 4-4 4"/></svg><br>weiter</div>
   <div><svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5l3.5 3.5L13 5"/></svg><br>erledigt</div>

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 
-from jarvis.core.approvals import EXECUTED, PENDING, REJECTED, ApprovalStore
+from jarvis.core.approvals import CLAIMED, EXECUTED, PENDING, REJECTED, ApprovalStore
 from jarvis.core.audit import AuditLog
 from jarvis.core.config import StopSwitch
+from jarvis.core.db import open_database
 from jarvis.core.gate import Disposition, Gate
 from jarvis.core.ratelimit import RateLimiter
 from jarvis.skills.base import Decision, Event, Result, Skill
@@ -259,6 +262,128 @@ def test_zweimal_verwerfen_geht_nicht(conn, home):
     audit = AuditLog(conn)
     reject_approval(eintrag, audit=audit, approvals=store)
     assert reject_approval(store.get(eintrag.id), audit=audit, approvals=store) is False
+
+
+# --- SEC-2: hoechstens eine Wirkung je Vorgang ------------------------------ #
+
+
+def test_dieselbe_freigabe_zweimal_wirkt_nur_einmal(conn, home):
+    """SEC-2, der gemessene Befund: zwei Aufrufe mit demselben Abbild.
+
+    Doppelklick, zwei Arbeiter, Daemon und Dashboard gleichzeitig -- vor dem
+    atomaren Anspruch liefen beide durch, und im Postfach lagen zwei Entwuerfe.
+    """
+    store = ApprovalStore(conn)
+    eintrag = einstellen(store)
+    gate, audit, _ = gatter(conn, home, dry_run=False, level=0)
+    skill = Attrappe()
+
+    erster = execute_approval(eintrag, skill=skill, gate=gate, audit=audit, approvals=store)
+    zweiter = execute_approval(eintrag, skill=skill, gate=gate, audit=audit, approvals=store)
+
+    assert erster is not None and erster.performed
+    assert zweiter is None
+    assert len(skill.ausgefuehrt) == 1
+    assert store.get(eintrag.id).state == EXECUTED
+
+
+def test_der_verlierer_bekommt_einen_grund_ins_protokoll(conn, home):
+    """Der zweite Aufruf ist kein Fehler -- er traegt einen lesbaren Grund."""
+    store = ApprovalStore(conn)
+    eintrag = einstellen(store)
+    gate, audit, _ = gatter(conn, home, dry_run=False, level=0)
+    skill = Attrappe()
+    execute_approval(eintrag, skill=skill, gate=gate, audit=audit, approvals=store)
+    execute_approval(eintrag, skill=skill, gate=gate, audit=audit, approvals=store)
+
+    letzter = audit.recent(1)[0]
+    assert letzter.outcome == "refused"
+    assert "kein Anspruch" in str(letzter.detail.get("reason", ""))
+    assert audit.verify().ok
+
+
+def test_der_anspruch_ist_atomar(conn):
+    """`claim` gelingt genau einmal; der Verlierer bekommt None."""
+    store = ApprovalStore(conn)
+    eintrag = einstellen(store)
+    assert store.claim(eintrag.id) is not None
+    assert store.claim(eintrag.id) is None
+    assert store.get(eintrag.id).state == CLAIMED
+
+
+def test_der_anspruch_haelt_nebenlaeufig_ueber_getrennte_verbindungen(conn, home):
+    """Zwei Verbindungen wie zwei Prozesse: genau einer gewinnt.
+
+    Der Schutz liegt in der Datenbank (`BEGIN IMMEDIATE` plus
+    Zustandsbedingung), nicht in einem Python-Zustand -- deshalb muss er auch
+    ueber getrennte Verbindungen halten, nicht nur im selben Objekt.
+    """
+    store = ApprovalStore(conn)
+    eintrag = einstellen(store)
+
+    start = threading.Barrier(2)
+    treffer: list[int] = []
+
+    def greifer() -> None:
+        eigene = open_database(home / "state.db")
+        try:
+            start.wait(timeout=10)
+            if ApprovalStore(eigene).claim(eintrag.id) is not None:
+                treffer.append(1)
+        finally:
+            eigene.close()
+
+    faeden = [threading.Thread(target=greifer) for _ in range(2)]
+    for faden in faeden:
+        faden.start()
+    for faden in faeden:
+        faden.join(timeout=30)
+
+    assert sum(treffer) == 1
+    assert store.get(eintrag.id).state == CLAIMED
+
+
+def test_freigeben_am_stoppschalter_gibt_den_anspruch_zurueck(conn, home):
+    """Blockiert das Gatter, wandert der Vorgang zurueck in die Warteschlange."""
+    store = ApprovalStore(conn)
+    eintrag = einstellen(store)
+    gate, audit, _ = gatter(conn, home, dry_run=False, level=0)
+    StopSwitch(home / "STOP").engage("Vorfall")
+
+    assert (
+        execute_approval(eintrag, skill=Attrappe(), gate=gate, audit=audit, approvals=store) is None
+    )
+    frisch = store.get(eintrag.id)
+    assert frisch.state == PENDING
+    # Und er laesst sich danach ganz normal ausfuehren.
+    StopSwitch(home / "STOP").release()
+    ergebnis = execute_approval(frisch, skill=Attrappe(), gate=gate, audit=audit, approvals=store)
+    assert ergebnis is not None and ergebnis.performed
+
+
+def test_beanspruchtes_laesst_sich_nicht_verwerfen(conn, home):
+    """Was gerade ausgefuehrt wird, kann niemand mehr zuruecknehmen."""
+    store = ApprovalStore(conn)
+    eintrag = einstellen(store)
+    audit = AuditLog(conn)
+    assert store.claim(eintrag.id) is not None
+    assert reject_approval(eintrag, audit=audit, approvals=store) is False
+    assert store.get(eintrag.id).state == CLAIMED
+
+
+def test_solange_beansprucht_wird_nichts_neues_eingestellt(conn):
+    """`claimed` zaehlt als offen -- sonst entstuende eine zweite Kopie."""
+    store = ApprovalStore(conn)
+    eintrag = einstellen(store)
+    store.claim(eintrag.id)
+    assert einstellen(store) is None
+
+
+def test_claimed_ist_kein_endzustand(conn):
+    store = ApprovalStore(conn)
+    eintrag = einstellen(store)
+    with pytest.raises(ValueError):
+        store.settle(eintrag.id, CLAIMED)
 
 
 # --- Der Durchlauf reiht ein ------------------------------------------------ #

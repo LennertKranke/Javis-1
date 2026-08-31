@@ -637,6 +637,14 @@ class MailSendSkill(Skill):
             raise TargetMismatch("Wurde bereits gesendet")
         if eintrag.needs_human:
             raise TargetMismatch("Steht zur Durchsicht zurueck")
+        # SEC-1: die Allowlist gilt auch auf dem Freigabeweg. Eine Freigabe
+        # ersetzt die Autonomiestufe -- nicht die Pruefung des Ziels. Zwischen
+        # Einstellen und Freigeben koennen Tage liegen; was heute gesperrt ist,
+        # bleibt gesperrt, egal was damals galt. Geprueft wird der Empfaenger
+        # aus dem eigenen Antwortspeicher, nicht aus der aufbewahrten Zeile.
+        urteil = self._allowlist.permits(eintrag.recipient)
+        if not urteil.allowed:
+            raise TargetMismatch(f"Allowlist: {urteil.reason}")
         if (einwand := self._pruefe_entwurf(eintrag)) is not None:
             raise TargetMismatch(einwand)
 
@@ -726,6 +734,18 @@ class MailSendSkill(Skill):
                 performed=False,
                 detail={"integritaet": "abweichung", "to": eintrag.recipient},
                 error=einwand,
+            )
+        # SEC-1, zweite Haelfte: die Allowlist unmittelbar vor dem Versand,
+        # unabhaengig vom Weg hierher. Wer `decide` oder `verify_targets`
+        # umgeht, scheitert hier -- am Empfaenger aus dem Antwortspeicher.
+        urteil = self._allowlist.permits(eintrag.recipient)
+        if not urteil.allowed:
+            return Result(
+                skill=self.name,
+                event_key=decision.event_key,
+                performed=False,
+                detail={"allowlist": urteil.source, "to": eintrag.recipient},
+                error=f"Allowlist: {urteil.reason}",
             )
 
         try:

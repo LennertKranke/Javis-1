@@ -13,6 +13,15 @@ Datenbank.
 
 Ein Vorgang steht hoechstens einmal offen; dafuer sorgt ein Teilindex in der
 Datenbank, nicht eine Pruefung im Code.
+
+Ausgefuehrt wird nur, was vorher atomar beansprucht wurde (SEC-2): der
+Uebergang `pending -> claimed` ist ein einzelnes UPDATE mit Zustandsbedingung
+unter `BEGIN IMMEDIATE` und gelingt genau einem Aufrufer -- auch ueber
+Prozessgrenzen. Ein Doppelklick, zwei Arbeiter oder Daemon und Dashboard
+gleichzeitig erzeugen so hoechstens eine Wirkung. Lehnt das Gatter nach dem
+Anspruch ab, gibt `release` den Vorgang zurueck in die Warteschlange; stirbt
+der Prozess mittendrin, bleibt der Vorgang als `claimed` stehen und wird nie
+von selbst erneut ausgefuehrt -- geschlossen ausfallen, nicht offen.
 """
 
 from __future__ import annotations
@@ -29,10 +38,13 @@ from jarvis.core.db import transaction
 __all__ = ["STATES", "Approval", "ApprovalStore"]
 
 PENDING = "pending"
+CLAIMED = "claimed"
 EXECUTED = "executed"
 REJECTED = "rejected"
 FAILED = "failed"
-STATES = frozenset({PENDING, EXECUTED, REJECTED, FAILED})
+STATES = frozenset({PENDING, CLAIMED, EXECUTED, REJECTED, FAILED})
+# Offen heisst: hier kann (pending) oder wird gerade (claimed) gehandelt.
+OPEN_STATES = (PENDING, CLAIMED)
 
 MAX_JSON = 8000
 
@@ -88,8 +100,8 @@ class ApprovalStore:
         jetzt = datetime.now(UTC).isoformat(timespec="seconds")
         with transaction(self._conn):
             vorhanden = self._conn.execute(
-                "SELECT id FROM approvals WHERE skill = ? AND event_key = ? AND state = ?",
-                (skill, event_key, PENDING),
+                "SELECT id FROM approvals WHERE skill = ? AND event_key = ? AND state IN (?, ?)",
+                (skill, event_key, *OPEN_STATES),
             ).fetchone()
             if vorhanden is not None:
                 return None
@@ -161,16 +173,66 @@ class ApprovalStore:
         ).fetchall()
         return {z["state"]: z["anzahl"] for z in zeilen}
 
-    def settle(self, approval_id: int, state: str, *, note: str | None = None) -> bool:
-        """Schliesst einen Vorgang ab. Nur ein offener laesst sich abschliessen."""
-        if state not in STATES or state == PENDING:
+    def claim(self, approval_id: int) -> Approval | None:
+        """Beansprucht einen offenen Vorgang atomar fuer die Ausfuehrung (SEC-2).
+
+        Genau ein Aufrufer gewinnt: der Uebergang `pending -> claimed` ist ein
+        einzelnes UPDATE mit Zustandsbedingung, und `BEGIN IMMEDIATE` haelt die
+        Schreibsperre schon beim Start -- auch ueber getrennte Verbindungen und
+        Prozesse. Wer None bekommt, hat nichts auszufuehren.
+
+        Zurueck kommt die Zeile, wie sie im Moment des Anspruchs in der
+        Datenbank stand -- nicht das Abbild, das der Aufrufer mitbrachte.
+        """
+        with transaction(self._conn):
+            cursor = self._conn.execute(
+                "UPDATE approvals SET state = ? WHERE id = ? AND state = ?",
+                (CLAIMED, approval_id, PENDING),
+            )
+            if (cursor.rowcount or 0) != 1:
+                return None
+            zeile = self._conn.execute(
+                "SELECT * FROM approvals WHERE id = ?", (approval_id,)
+            ).fetchone()
+        return self._approval(zeile) if zeile else None
+
+    def release(self, approval_id: int, note: str) -> bool:
+        """Gibt einen beanspruchten Vorgang zurueck in die Warteschlange.
+
+        Fuer den Fall, dass nach dem Anspruch nicht gehandelt werden darf --
+        Stoppschalter, Obergrenze, Trockenlauf. Der Vorgang bleibt offen und
+        traegt den Grund als Vermerk.
+        """
+        with transaction(self._conn):
+            cursor = self._conn.execute(
+                "UPDATE approvals SET state = ?, note = ? WHERE id = ? AND state = ?",
+                (PENDING, note[:500] or None, approval_id, CLAIMED),
+            )
+        return (cursor.rowcount or 0) > 0
+
+    def settle(
+        self,
+        approval_id: int,
+        state: str,
+        *,
+        note: str | None = None,
+        only_from: tuple[str, ...] = OPEN_STATES,
+    ) -> bool:
+        """Schliesst einen Vorgang ab. Nur ein offener laesst sich abschliessen.
+
+        `only_from` grenzt ein, aus welchem Zustand heraus: der Freigabeweg
+        schliesst Beanspruchtes ab, Verwerfen dagegen nur Wartendes -- ein
+        Vorgang, der gerade ausgefuehrt wird, laesst sich nicht mehr verwerfen.
+        """
+        if state not in STATES or state in OPEN_STATES:
             raise ValueError(f"Unbrauchbarer Endzustand: {state!r}")
         jetzt = datetime.now(UTC).isoformat(timespec="seconds")
+        platzhalter = ", ".join("?" for _ in only_from)
         with transaction(self._conn):
             cursor = self._conn.execute(
                 "UPDATE approvals SET state = ?, settled_at = ?, note = ? "
-                "WHERE id = ? AND state = ?",
-                (state, jetzt, (note or "")[:500] or None, approval_id, PENDING),
+                f"WHERE id = ? AND state IN ({platzhalter})",
+                (state, jetzt, (note or "")[:500] or None, approval_id, *only_from),
             )
         return (cursor.rowcount or 0) > 0
 

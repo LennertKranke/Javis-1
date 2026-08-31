@@ -243,6 +243,165 @@ def test_das_protokoll_nennt_den_empfaenger(conn, home):
     assert "anna@example.com" in json.dumps([e.detail for e in audit.recent(10)])
 
 
+# --- SEC-1: eine Freigabe ersetzt die Stufe, nicht die Allowlist ------------ #
+
+
+def _sende_vorgang_einstellen(conn, home, client, *, empfaenger="anna@example.com"):
+    """Stellt einen Sendevorgang bei (noch) erlaubter Adresse in die Warteschlange."""
+    from jarvis.core.approvals import ApprovalStore
+
+    entwurf_ablegen(conn, client=client, empfaenger=empfaenger)
+    skill = MailSendSkill(
+        options=SendOptions({}),
+        client=client,
+        reply_store=ReplyStore(conn),
+        allowlist=Allowlist(conn, manual=[empfaenger], threshold=3),
+    )
+    config = konfig(home, dry_run=True, send_level=1)
+    audit = AuditLog(conn)
+    gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
+    store = ApprovalStore(conn)
+    run_skill(skill, gate=gate, audit=audit, approvals=store, collect_approvals=True)
+    assert store.count_pending() == 1, "der Vorgang muss in der Warteschlange stehen"
+    return store, audit
+
+
+def _freigabe_skill(conn, client, *, manual=(), blocked=()):
+    """Die Faehigkeit, wie sie zum Freigabezeitpunkt gebaut wird -- mit der
+    Allowlist von *jetzt*, nicht von damals."""
+    return MailSendSkill(
+        options=SendOptions({}),
+        client=client,
+        reply_store=ReplyStore(conn),
+        allowlist=Allowlist(conn, manual=manual, blocked=blocked, threshold=3),
+    )
+
+
+def test_eine_freigabe_umgeht_die_allowlist_nicht(conn, home):
+    """SEC-1, das gemessene Szenario: eingestellt bei erlaubter Adresse, dann
+    gesperrt, dann im Dashboard freigegeben.
+
+    Vor dem Fix ging die Nachricht an die gesperrte Adresse hinaus, weil die
+    Allowlist nur in `decide()` stand und der Freigabeweg `decide()` nie ruft.
+    """
+    from jarvis.skills.runner import execute_approval
+
+    client = FakeGmailClient(capabilities=SENDING)
+    store, audit = _sende_vorgang_einstellen(conn, home, client)
+    vorgang = store.pending(limit=1)[0]
+
+    gesperrt = _freigabe_skill(conn, client, blocked=["anna@example.com"])
+    scharf = konfig(home, dry_run=False, send_level=1)
+    gate = Gate(scharf, audit, RateLimiter(conn, scharf.capabilities))
+
+    ergebnis = execute_approval(vorgang, skill=gesperrt, gate=gate, audit=audit, approvals=store)
+
+    assert ergebnis is None
+    assert client.sent_drafts == [], "an eine gesperrte Adresse darf nichts hinausgehen"
+    frisch = store.get(vorgang.id)
+    assert frisch.state == "failed"
+    assert "Sperrliste" in (frisch.note or ""), "der Grund muss am Vorgang stehen"
+    verweigert = [e for e in audit.recent(10) if e.outcome == "refused"]
+    assert any("Sperrliste" in str(e.detail) for e in verweigert), "und im Protokoll"
+
+
+def test_gegenprobe_eine_weiterhin_erlaubte_adresse_geht_hinaus(conn, home):
+    from jarvis.skills.runner import execute_approval
+
+    client = FakeGmailClient(capabilities=SENDING)
+    store, audit = _sende_vorgang_einstellen(conn, home, client)
+    vorgang = store.pending(limit=1)[0]
+
+    erlaubt = _freigabe_skill(conn, client, manual=["anna@example.com"])
+    scharf = konfig(home, dry_run=False, send_level=1)
+    gate = Gate(scharf, audit, RateLimiter(conn, scharf.capabilities))
+
+    ergebnis = execute_approval(vorgang, skill=erlaubt, gate=gate, audit=audit, approvals=store)
+
+    assert ergebnis is not None and ergebnis.performed
+    assert client.sent_drafts == ["Draft_a"]
+    assert store.get(vorgang.id).state == "executed"
+    assert ReplyStore(conn).get("a").disposition == "sent"
+
+
+def test_verify_targets_prueft_die_allowlist(conn, home):
+    """Mutationsprobe fuer die erste Haelfte: die Pruefung in `verify_targets`."""
+    import pytest
+
+    from jarvis.skills.base import Decision, TargetMismatch
+
+    client = FakeGmailClient(capabilities=SENDING)
+    entwurf_ablegen(conn, client=client)
+    gesperrt = _freigabe_skill(conn, client, blocked=["anna@example.com"])
+    eintrag = ReplyStore(conn).get("a")
+    decision = Decision(
+        skill="mail_send",
+        event_key="a",
+        action="send",
+        reason="",
+        decided_by="allowlist",
+        targets={
+            "message_id": "a",
+            "draft_id": eintrag.draft_id,
+            "to": eintrag.recipient,
+            "fingerprint": eintrag.fingerprint,
+        },
+    )
+    with pytest.raises(TargetMismatch, match="Sperrliste"):
+        gesperrt.verify_targets(decision)
+
+
+def test_die_harte_sperre_prueft_die_allowlist_unmittelbar_vor_dem_versand(conn, home):
+    """Mutationsprobe fuer die zweite Haelfte: auch wer `decide` und
+    `verify_targets` umgeht, scheitert in `act()` an der Sperrliste."""
+    from jarvis.skills.base import Decision
+
+    client = FakeGmailClient(capabilities=SENDING)
+    entwurf_ablegen(conn, client=client)
+    gesperrt = _freigabe_skill(conn, client, blocked=["anna@example.com"])
+    eintrag = ReplyStore(conn).get("a")
+    decision = Decision(
+        skill="mail_send",
+        event_key="a",
+        action="send",
+        reason="",
+        decided_by="allowlist",
+        targets={
+            "message_id": "a",
+            "draft_id": eintrag.draft_id,
+            "to": eintrag.recipient,
+            "fingerprint": eintrag.fingerprint,
+        },
+    )
+    ergebnis = gesperrt.act(decision)
+    assert not ergebnis.performed
+    assert "Sperrliste" in (ergebnis.error or "")
+    assert client.sent_drafts == []
+
+
+# --- SEC-2: doppelte Freigabe, eine Wirkung --------------------------------- #
+
+
+def test_eine_doppelte_freigabe_erzeugt_nur_einen_entwurf(conn, home):
+    """SEC-2, das gemessene Szenario: `mail_reply`, derselbe Vorgang zweimal.
+
+    Vor dem Fix: beide Aufrufe `performed = True`, zwei Entwuerfe im Postfach.
+    Der Schutz muss im Rahmenwerk liegen, nicht in der Faehigkeit -- deshalb
+    laeuft dieser Test ueber eine Faehigkeit ohne eigenen Versandschutz.
+    """
+    from jarvis.skills.runner import execute_approval
+
+    skill, client, gate, audit, store = _freigabelauf(conn, home)
+    vorgang = store.pending(limit=1)[0]
+
+    erster = execute_approval(vorgang, skill=skill, gate=gate, audit=audit, approvals=store)
+    zweiter = execute_approval(vorgang, skill=skill, gate=gate, audit=audit, approvals=store)
+
+    assert erster is not None and erster.performed
+    assert zweiter is None
+    assert len(client.drafts) == 1, "genau ein Entwurf, nicht zwei"
+
+
 # --- Der Freigabeweg war eine Sackgasse ------------------------------------ #
 
 

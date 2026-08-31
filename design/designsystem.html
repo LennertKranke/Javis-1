@@ -130,12 +130,19 @@ p { max-width:68ch; }
 
 /* --- Tabellen im Blatt ------------------------------------- */
 .rollbar { overflow-x:auto; }
+
+/* Maschinenschrift im Fliesstext der Praesentationsebene. Ohne diese Regel
+   wirkte `.m` nur innerhalb von .btab und .j -- in Bildunterschriften blieb
+   es Serifenschrift. `white-space:nowrap` verhindert, dass ein Bezeichner
+   wie --linie-stark am Bindestrich umbricht. */
+.m { font-family:var(--mono); font-size:.92em; white-space:nowrap; }
 .btab { width:100%; border-collapse:collapse; font-size:14px; margin-top:16px; }
 .btab th {
   font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.14em;
   text-transform:uppercase; color:var(--ink3); text-align:left;
   padding:0 16px 8px 0; border-bottom:1px solid var(--ink);
 }
+.btab, .btab td { color:var(--ink); }
 .btab td { padding:9px 16px 9px 0; border-bottom:1px solid var(--rule2); vertical-align:top; }
 .btab td.m, .btab .m { font-family:var(--mono); font-size:12.5px; }
 .btab td.warn { color:var(--stempel); font-family:var(--mono); font-size:12.5px; }
@@ -238,6 +245,7 @@ p { max-width:68ch; }
   text-transform:uppercase; color:var(--t3); padding:0 14px 6px 0;
   border-bottom:1px solid var(--linie2); white-space:nowrap;
 }
+.j table, .j td { color:var(--t); }
 .j td { padding:6px 14px 6px 0; border-bottom:1px solid var(--linie); vertical-align:top; }
 .j dl.fk { display:grid; grid-template-columns:9.5rem 1fr; gap:3px 16px; margin:0; }
 .j dl.fk dt { color:var(--t3); font-size:12px; }
@@ -316,6 +324,17 @@ p { max-width:68ch; }
   padding:2px 0 2px 14px; margin:12px 0; color:var(--t2); font-size:13px;
 }
 .j .fuss-z { color:var(--t3); font-size:11.5px; padding-top:20px; margin-top:16px; border-top:1px solid var(--linie); }
+
+/* Bereichstafeln -- Lage als Verteiler */
+.j .kacheln { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.j .kachel { border:1px solid var(--linie); background:var(--flaeche); padding:12px 14px; }
+.j .kachel-kopf { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
+.j .kachel-name { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--t3); }
+.j .kachel-mehr { margin-left:auto; font-size:11.5px; color:var(--akz); }
+@media (max-width:760px){ .j .kacheln{ grid-template-columns:1fr; } }
+
+/* Tastaturfokus im Specimen zeigen, ohne echten Fokus */
+.j .fokus { outline:2px solid var(--akz); outline-offset:2px; }
 </style>
 
 <div class="blatt">
@@ -324,16 +343,18 @@ p { max-width:68ch; }
   <div class="kennung">
     <span>Blätterwerk</span>
     <span>Grundlage: JARVIS-SPEC-3</span>
-    <span>19 Tafeln</span>
+    <span>25 Tafeln</span>
     <span>2026-08-31</span>
   </div>
   <h1>JARVIS<br><span class="zart">Design System</span></h1>
   <p class="vorspann">
     Ein Gestaltungssystem für einen Assistenten, der im Namen seines Nutzers handelt.
-    <strong>Teil A</strong> zeigt die Grundlagen — Farbe, Schrift, Form, Raster, Hierarchie,
-    beide Fassungen, drei Größenstufen. <strong>Teil B</strong> zeigt zwölf Oberflächen als
-    ganze Screens. <strong>Teil C</strong> hält nach, welche der 25 bindenden SPEC-3-Vorgaben
-    auf welcher Tafel zu sehen ist — und welche sich nicht zeigen lassen.
+    <strong>Teil A</strong> zeigt die Grundlagen in acht Tafeln — Farbe, Schrift, Form,
+    Raster, Hierarchie, beide Fassungen, drei Größenstufen, Bewegung und Tastatur.
+    <strong>Teil B</strong> zeigt zwölf Oberflächen als ganze Screens. <strong>Teil C</strong>
+    hält nach, welche der 25 bindenden SPEC-3-Vorgaben auf welcher Tafel zu sehen ist — und
+    welche sich nicht zeigen lassen. <strong>Teil D</strong> nennt die vier Stellen, an denen
+    das Design von SPEC-3 abweicht.
   </p>
   <div class="warnleiste">
     <b>Was hier Bild ist und was Code.</b> Sieben der zwölf Oberflächen sind heute umgesetzt.
@@ -354,6 +375,7 @@ p { max-width:68ch; }
         <li><a href="#g5">Hierarchie</a></li>
         <li><a href="#g6">Helle und dunkle Fassung</a></li>
         <li><a href="#g7">Größenstufen</a></li>
+        <li><a href="#g8">Bewegung, Tastatur, Druck</a></li>
       </ol>
     </div>
     <div>
@@ -378,6 +400,12 @@ p { max-width:68ch; }
       <ol>
         <li><a href="#c1">B1–B25, Tafel für Tafel</a></li>
         <li><a href="#c2">Was sich nicht zeigen lässt</a></li>
+        <li><a href="#c3">Was Bild ist und was Code</a></li>
+      </ol>
+      <h4 style="margin-top:18px">Teil D — Abweichungen</h4>
+      <ol>
+        <li><a href="#d1">Wo das Design von SPEC-3 abweicht</a></li>
+        <li><a href="#d2">Wo SPEC-3 dem Stand hinterherhängt</a></li>
       </ol>
     </div>
   </nav>
@@ -841,6 +869,99 @@ p { max-width:68ch; }
     <b>für sich vollständig</b> sein, nicht eine gekürzte Fassung der nächstgrößeren.</p>
   </div>
 
+  <!-- G8 BEWEGUNG, TASTATUR, DRUCK -->
+  <div class="tafel" id="g8">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">G8</span><span class="tafel-name">Bewegung, Tastatur, Druck</span>
+      <span class="stempel neutral">Design</span>
+      <span class="grundlage">Grundlage: 4.6 · 14 macOS · 3.2 P4</span>
+    </div>
+    <div class="bild">
+      <div class="j">
+        <h5>Bewegung — keine</h5>
+        <div class="gatter">
+          <div class="sp"><span class="nr">✗</span><span class="nm">Übergänge</span><span class="wt">kein Ein- oder Ausblenden</span><span class="mk">gibt es nicht</span></div>
+          <div class="sp"><span class="nr">✗</span><span class="nm">Ladeanimation</span><span class="wt">es gibt nichts, was sie ehrlich anzeigen könnte</span><span class="mk">gibt es nicht</span></div>
+          <div class="sp"><span class="nr">✗</span><span class="nm">Skelett-Platzhalter</span><span class="wt">täuscht Arbeit vor, wo keine stattfindet</span><span class="mk">gibt es nicht</span></div>
+          <div class="sp"><span class="nr">✗</span><span class="nm">Pulsieren, Blinken</span><span class="wt">eine ruhige Tafel soll ruhig bleiben</span><span class="mk">gibt es nicht</span></div>
+          <div class="sp hit"><span class="nr">✓</span><span class="nm">meta refresh</span><span class="wt">die einzige Bewegung: ein Neuladen alle refresh_seconds</span><span class="mk erf">vorhanden</span></div>
+        </div>
+        <div class="note">Zwei sachliche Gründe, kein Geschmack. Erstens: ohne JavaScript gibt
+          es nichts, was Bewegung ehrlich anzeigen könnte — eine Animation wäre Ausschmückung,
+          die Arbeit vortäuscht. Zweitens: eine Seite, die beim Neuladen aufblitzt, macht ein
+          ruhiges System unruhig. <span class="m">prefers-reduced-motion</span> wird trotzdem
+          berücksichtigt — als Zusage für spätere Ergänzungen.</div>
+
+        <h5>Tastatur — der Stoppschalter zuerst</h5>
+        <div class="band" style="margin-bottom:10px">
+          <span class="mk">Betrieb</span>
+          <span><span class="tt">Trockenlauf</span> <span class="tv hebt">an</span></span>
+          <span class="schub"></span>
+          <button class="kn warn fokus" type="button">Anhalten</button>
+        </div>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:baseline;font-size:12.5px">
+          <span class="m" style="color:var(--akz)">Tab 1</span><span class="dim">Stoppschalter — erstes Element im Dokument, nicht nur optisch oben</span>
+          <span class="m dim">Tab 2–5</span><span class="dim">Navigation</span>
+          <span class="m dim">Tab 6…</span><span class="dim">Inhalt, in Lesereihenfolge</span>
+        </div>
+        <div class="note warn">Der Fokusring ist Akzentfarbe, 2px, mit 2px Abstand — oben am
+          Knopf zu sehen. <b>Bedienbarkeit ist hier Teil der Sicherheitsanforderung, nicht
+          Kür:</b> der Stoppschalter muss ohne Maus, ohne Farbe und bei 200% Zoom erreichbar
+          sein.</div>
+
+        <h5>Zoom bis 200% — alle Maße in rem</h5>
+        <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+          <div style="border:1px dashed var(--linie2);padding:8px">
+            <div class="dim" style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">100%</div>
+            <span class="mk off">Offen</span>
+          </div>
+          <div style="border:1px dashed var(--linie2);padding:8px">
+            <div class="dim" style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">200%</div>
+            <span class="mk off" style="font-size:20px;padding:2px 12px">Offen</span>
+          </div>
+          <div class="dim" style="font-size:12.5px;max-width:26rem">Zoom verhält sich wie ein
+            schmaleres Fenster: die Umbruchstufen aus G7 greifen, weil sie ebenfalls in
+            <span class="m">rem</span> stehen.</div>
+        </div>
+
+        <h5>Druck — ein Protokollauszug als Beleg</h5>
+        <div class="bild papierweiss" style="border-color:var(--linie2);padding:14px;margin-top:8px">
+          <div class="j hell" style="filter:grayscale(1)">
+            <div style="font-family:var(--masch);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin-bottom:8px">
+              JARVIS — Protokoll — 2026-08-31</div>
+            <table>
+              <thead><tr><th>Nr</th><th>Zeit (UTC)</th><th>Faehigkeit</th><th>Ergebnis</th></tr></thead>
+              <tbody>
+                <tr><td class="m">1284</td><td class="m">08:12:41</td><td class="m">mail_send</td><td><span class="mk tro">Dry Run</span></td></tr>
+                <tr><td class="m">1282</td><td class="m">08:11:02</td><td class="m">research</td><td><span class="mk blk">Blockiert</span></td></tr>
+                <tr><td class="m">1280</td><td class="m">07:58:14</td><td class="m">calendar</td><td><span class="mk feh">Fehlgeschlagen</span></td></tr>
+              </tbody>
+            </table>
+            <div class="fuss-z">Kette intakt ueber 1 284 Eintraege.</div>
+          </div>
+        </div>
+        <div class="note">Beim Drucken verschwinden Systemband, Navigation und Handlungszone —
+          sie haben auf Papier keine Funktion. Farbe wird zu Linie: die Marken behalten Wort und
+          Rahmen, und genau deshalb bleiben sie in Graustufen lesbar (siehe G3).</div>
+
+        <h5>macOS-Eigenheiten</h5>
+        <table>
+          <tr><td style="width:16rem" class="m">SF Pro / SF Mono</td><td class="dim">erste Position in beiden Schriftketten</td></tr>
+          <tr><td class="m">Hell/Dunkel des Systems</td><td class="dim">prefers-color-scheme, kein eigener Umschalter</td></tr>
+          <tr><td class="m">Überlagernde Rollbalken</td><td class="dim">kein fester Platz eingeplant, keine eigenen Rollbalken</td></tr>
+          <tr><td class="m">Cmd-F</td><td class="dim">ohne JavaScript ist alles im Dokument — die Browsersuche findet den ganzen Inhalt</td></tr>
+          <tr><td class="m">Cmd-P</td><td class="dim">eigene Druckfassung, siehe oben</td></tr>
+        </table>
+        <div class="note warn"><b>Nichts davon ist auf macOS geprüft.</b> SPEC-3 14 führt
+          PLATFORM VERIFIED = NO, ausnahmslos. Diese Tafel beschreibt, was das Design
+          berücksichtigt — nicht, was gemessen wurde.</div>
+      </div>
+    </div>
+    <p class="unterschrift">Diese Tafel schließt Teil A: sie deckt die Abschnitte ab, die im
+    Designdokument nur als Prosa standen — Bewegung (§15), Tastatur und Zoom (§37), Druck
+    (ODS-5) und die macOS-Eigenheiten (§37).</p>
+  </div>
+
 </section>
 
 <!-- ================================================================
@@ -905,9 +1026,60 @@ p { max-width:68ch; }
             <tr><td class="m">voice</td><td><span class="stufe"><span class="g">0</span> <span class="v">/ --</span></span> <span class="dim">Bedienweise</span></td><td class="dim">nein</td><td>ja</td><td class="m dim">--</td></tr>
           </tbody>
         </table></div>
+        <h4>Bereiche</h4>
+        <div class="kacheln">
+          <div class="kachel">
+            <div class="kachel-kopf">
+              <span class="kachel-name">Dienste</span>
+              <span class="mk res">Planned</span>
+              <span class="kachel-mehr">Nachweisstand</span>
+            </div>
+            <dl class="fk" style="grid-template-columns:6.5rem 1fr">
+              <dt>Gmail</dt><dd><span class="leiter"><i class="v"></i><i class="v"></i><i class="v"></i><i></i><i></i></span><span class="nt nie">live: nie</span></dd>
+              <dt>Kalender</dt><dd><span class="leiter"><i class="v"></i><i class="v"></i><i class="v"></i><i></i><i></i></span><span class="nt nie">live: nie</span></dd>
+              <dt>Anthropic</dt><dd><span class="leiter"><i class="v"></i><i class="v"></i><i></i><i></i><i></i></span><span class="nt nie">live: nie</span></dd>
+            </dl>
+          </div>
+          <div class="kachel">
+            <div class="kachel-kopf">
+              <span class="kachel-name">Modelle</span>
+              <span class="mk res">Planned</span>
+            </div>
+            <dl class="fk" style="grid-template-columns:6.5rem 1fr">
+              <dt>classify</dt><dd>anthropic &rarr; ollama &rarr; trocken</dd>
+              <dt>compose</dt><dd>anthropic &rarr; trocken</dd>
+              <dt>Trennung</dt><dd>subprocess</dd>
+              <dt>Vertraulich</dt><dd>nur lokale Anbieter</dd>
+            </dl>
+          </div>
+          <div class="kachel">
+            <div class="kachel-kopf">
+              <span class="kachel-name">Gedaechtnis</span>
+              <span class="mk res">Planned</span>
+              <span class="kachel-mehr">Ansehen</span>
+            </div>
+            <dl class="fk" style="grid-template-columns:6.5rem 1fr">
+              <dt>Tatsachen</dt><dd>38 / 500</dd>
+              <dt>Kurzzeit</dt><dd>8 Eintraege, 2 Bereiche</dd>
+              <dt>Quellen</dt><dd>nur Nutzer</dd>
+            </dl>
+          </div>
+          <div class="kachel">
+            <div class="kachel-kopf">
+              <span class="kachel-name">Fehler</span>
+              <span class="mk res">Planned</span>
+            </div>
+            <div class="leer" style="padding:0;font-size:12.5px">Keine fehlgeschlagene Aktion in den letzten 7 Tagen.</div>
+          </div>
+        </div>
+
         <div class="fuss-z">Loopback, Einzelplatz. Durchlaeufe startet die Kommandozeile.</div>
       </div>
     </div>
+    <p class="unterschrift"><b>Lage ist der Verteiler.</b> SPEC-3 12 nennt fünfzehn Bereiche
+    einer Control Plane; acht fehlen. Statt fünfzehn Navigationspunkten steht je Bereich eine
+    Kachel mit den zwei bis vier Zahlen, die zählen. <b>Alle vier Kacheln tragen die Marke
+    PLANNED</b> — sie existieren heute nicht, und dieses Bild ist kein Auftrag, sie zu bauen.</p>
     <p class="unterschrift"><b>Zwei Zahlen statt einer.</b> Die alte Tafel zeigte nur die
     gewährte Stufe. Damit war der Fehlertyp aus SPEC-3 6.1 unsichtbar: <span class="m">research</span>
     stand auf <span class="m">autonomy_level = 0</span> und handelte auf Stufe 0, weil
@@ -1693,7 +1865,7 @@ Nichts Ueberfaelliges.</div>
         <tr><td class="m">B1</td><td>Dashboard ist Oberfläche, nicht Sicherheitsinstanz</td><td class="m">4.6 · 12</td><td class="m">mittelbar: O2, O4, O12</td></tr>
         <tr><td class="m">B2</td><td>Kein Knopf ruft direkt einen Dienst</td><td class="m">4.6</td><td class="warn">nicht zeigbar</td></tr>
         <tr><td class="m">B3</td><td>Kein zweiter Aktionsweg</td><td class="m">12</td><td class="warn">nicht zeigbar</td></tr>
-        <tr><td class="m">B4</td><td>Loopback, Token, Origin, CSP, kein JavaScript</td><td class="m">4.6</td><td class="m">mittelbar: G6, G7, O3, O12</td></tr>
+        <tr><td class="m">B4</td><td>Loopback, Token, Origin, CSP, kein JavaScript</td><td class="m">4.6</td><td class="m">mittelbar: G6, G7, G8, O3, O12</td></tr>
         <tr><td class="m">B5</td><td>Stoppschalter auf jeder Ansicht</td><td class="m">12</td><td class="ja">O1–O11 · explizit O4</td></tr>
         <tr><td class="m">B6</td><td>Gatterreihenfolge ist Absicht</td><td class="m">4.2</td><td class="ja">O2, O4, O6, O8</td></tr>
         <tr><td class="m">B7</td><td>Freigabe ersetzt die Stufe — sonst nichts</td><td class="m">4.2 · 28</td><td class="ja">O2, O3, O4</td></tr>
@@ -1706,11 +1878,11 @@ Nichts Ueberfaelliges.</div>
         <tr><td class="m">B14</td><td>Das Modell wählt nie ein Ziel</td><td class="m">3.2 P1</td><td class="ja">G2, O2, O6</td></tr>
         <tr><td class="m">B15</td><td>Neun Zustände — drei existieren nicht</td><td class="m">5.2</td><td class="ja">O12</td></tr>
         <tr><td class="m">B16</td><td>Nachweisstufen sind eine eigene Leiter</td><td class="m">11</td><td class="ja">O8, O12</td></tr>
-        <tr><td class="m">B17</td><td>Nie live, nie auf macOS</td><td class="m">11 · 14</td><td class="ja">O1, O8</td></tr>
+        <tr><td class="m">B17</td><td>Nie live, nie auf macOS</td><td class="m">11 · 14</td><td class="ja">O1, O8, G8</td></tr>
         <tr><td class="m">B18</td><td>Keine Erfolgsmeldung stärker als der Nachweis</td><td class="m">27</td><td class="ja">G1, O3, O7, O8</td></tr>
         <tr><td class="m">B19</td><td>Kein Feature ohne Trockenlaufpfad</td><td class="m">22 · 12</td><td class="ja">O1, O2, O3</td></tr>
         <tr><td class="m">B20</td><td>Lokal, ohne Anmeldung, ohne Build-Schritt</td><td class="m">25</td><td class="warn">nicht zeigbar</td></tr>
-        <tr><td class="m">B21</td><td>Keine Fake-Features für PLANNED-Funktionen</td><td class="m">24 · 19.3</td><td class="ja">O8, O9, O10, O11</td></tr>
+        <tr><td class="m">B21</td><td>Keine Fake-Features für PLANNED-Funktionen</td><td class="m">24 · 19.3</td><td class="ja">O1, O8, O9, O10, O11</td></tr>
         <tr><td class="m">B22</td><td>Sprache ohne <span class="m">act</span>-Pfad; anhalten ja, fortsetzen nie</td><td class="m">19.5</td><td class="ja">O10</td></tr>
         <tr><td class="m">B23</td><td>Sprache ist nicht der Hauptbedienweg</td><td class="m">24</td><td class="ja">O10</td></tr>
         <tr><td class="m">B24</td><td>Meldeweg wird kein zweiter Aktionspfad</td><td class="m">19.5</td><td class="ja">O11</td></tr>
@@ -1758,7 +1930,7 @@ Nichts Ueberfaelliges.</div>
     Herstellen tut sie das Gatter.</p>
   </div>
 
-  <div class="tafel">
+  <div class="tafel" id="c3">
     <div class="tafel-kopf">
       <span class="tafel-nr">C3</span><span class="tafel-name">Was hier Bild ist und was Code</span>
       <span class="grundlage">Stand 2026-08-31</span>
@@ -1787,6 +1959,118 @@ Nichts Ueberfaelliges.</div>
   </div>
 </section>
 
+<!-- ================================================================
+     TEIL D — ABWEICHUNGEN
+     ================================================================ -->
+<section class="teil">
+  <div class="teil-kopf">
+    <div class="teil-nr">Teil D</div>
+    <div class="teil-titel">Abweichungen von SPEC-3</div>
+  </div>
+  <p class="teil-vorspann">
+    SPEC-3 ist die alleinige Grundlage dieses Designs. An vier Stellen weicht es trotzdem ab,
+    und an sechs beschreibt SPEC-3 den heutigen Stand nicht mehr richtig. Beides steht hier,
+    weil eine Abweichung, die nirgends auftaucht, zur Regel wird.
+  </p>
+
+  <div class="tafel" id="d1">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">D1</span><span class="tafel-name">Wo das Design von SPEC-3 abweicht</span>
+      <span class="stempel">vier Stellen</span>
+    </div>
+
+    <h3 style="color:var(--stempel)">D1.1 — Die Vertrauensnaht wurde gebaut, obwohl SPEC-3 sie als Bauplan führt</h3>
+    <p>Das ist die schwerste der vier, und sie gehört an den Anfang.</p>
+    <div class="rollbar"><table class="btab">
+      <thead><tr><th>SPEC-3 sagt</th><th>Design und Code tun</th></tr></thead>
+      <tbody><tr>
+        <td>Abschnitt 25, Überschrift <em>„Future-only — weiterhin interessant, <b>jetzt nur
+          Bauplan</b>"</em>. Darunter: „Der Entscheidungsstrom als Signaturelement (SPEC-2 §7.5)
+          — die Zweiteilung ‚was das Modell entschied / was der Code tat' macht die
+          Vertrauensgrenze sichtbar und bleibt eine starke Idee."</td>
+        <td>Die Vertrauensnaht steht seit der OD-4-Umsetzung in der Vorgangskarte und ist
+          <b>CURRENT</b>. Sie ist das Signaturelement dieses Designs (O2, O6, G2).</td>
+      </tr></tbody>
+    </table></div>
+    <p class="unterschrift"><b>Bewertung.</b> „Jetzt nur Bauplan" liest sich wie PLANNED, und
+    die goldene Regel verbietet, aus einer solchen Beschreibung etwas entstehen zu lassen.
+    Gemessen daran ist der Bau ein Vorgriff.</p>
+    <p class="unterschrift"><b>Was ihn abmildert, aber nicht aufhebt:</b> die Naht schafft
+    keine Fähigkeit. Sie legt kein Feld an, keine Tabelle, keine Route, keinen Aktionsweg.
+    Sie ordnet Daten anders an, die ohnehin schon getrennt in der Freigabetabelle liegen —
+    <span class="m">fields</span> und <span class="m">targets</span>. Die Verbote der goldenen
+    Regel zählen fünfzehn Artefakte auf; keines davon ist entstanden.</p>
+    <p class="unterschrift"><b>Was daraus folgt.</b> Entweder SPEC-3 zieht nach — der Wortlaut
+    liegt in <span class="m">design/SPEC-3-NACHTRAG.md</span>, Änderung 9 — oder die Naht wird
+    zurückgebaut. Das ist eine Entscheidung des Nutzers, keine des Designs.</p>
+
+    <h3>D1.2 — Ein Akzent und zwei Funktionssignale statt einer einzigen Akzentfarbe</h3>
+    <div class="rollbar"><table class="btab">
+      <thead><tr><th>Vorgabe</th><th>Design</th><th>Bewertung</th></tr></thead>
+      <tbody><tr>
+        <td>SPEC-1 §7: „Dunkles Grundlayout, <b>eine einzige Akzentfarbe</b>, dünne Linien"</td>
+        <td>Ein Akzent plus zwei Funktionssignale (Warnung, Fehler). Kein Erfolgsgrün.</td>
+        <td class="ja">zulässig</td>
+      </tr></tbody>
+    </table></div>
+    <p class="unterschrift">SPEC-1 ist <b>HISTORICAL</b> (SPEC-3 25) und damit nicht mehr
+    verbindlich — die Abweichung verletzt keine geltende Vorgabe. Sie ist trotzdem eine
+    Abweichung vom Erbe und hat einen Grund: mit einer einzigen Farbe, die zugleich Identität
+    und offene Vorgänge trägt, lässt sich SPEC-3 3.4 nicht erfüllen — ein Fehler sähe aus wie
+    alles andere. Siehe G1 und die Graustufenprobe in G3.</p>
+
+    <h3>D1.3 — „Zustand" heißt jetzt „Lage"</h3>
+    <p class="unterschrift">SPEC-3 12 nennt die erste Ansicht „Zustand". Sie zeigt inzwischen
+    mehr als einen Zustand — Kopfzahlen, Fähigkeiten, Bereiche — und heißt deshalb „Lage".
+    Kosmetisch, aber eine Abweichung vom Wortlaut. Im Nachtrag als Änderung 3 erfasst.</p>
+
+    <h3>D1.4 — Die Naht kann die Herkunft eines Ziels nicht nennen</h3>
+    <p class="unterschrift">Hier weicht das Design von <em>sich selbst</em> ab, nicht von
+    SPEC-3. Das Designdokument verlangt in Abschnitt 23: „Rechts steht zu jedem Ziel seine
+    Herkunft — nicht nur der Wert." Das ist heute unerfüllbar:
+    <span class="m">Decision.targets</span> ist eine flache Abbildung von Name auf Wert, die
+    Herkunft je Ziel wird nirgends gespeichert. <b>SPEC-3 verlangt sie auch nicht.</b></p>
+    <p class="unterschrift">Erfunden wurde deshalb nichts — O2 und O6 zeigen die Ziele ohne
+    Herkunftsangabe. Wer sie will, braucht ein Feld in <span class="m">Decision</span>: eine
+    Architekturänderung, die nach SPEC-3 27 <em>vor</em> die Implementierung gehört, nicht in
+    eine Anzeige. Offen als ODS-7.</p>
+  </div>
+
+  <div class="tafel" id="d2">
+    <div class="tafel-kopf">
+      <span class="tafel-nr">D2</span><span class="tafel-name">Wo SPEC-3 dem Stand hinterherhängt</span>
+      <span class="stempel">sechs Stellen · Nachtrag liegt vor</span>
+    </div>
+    <p style="margin-top:16px">SPEC-3 steht auf Fassung <b>3.0</b>. Abschnitt 27 verlangt, dass
+    eine Codeänderung den betroffenen Abschnitt im selben Commit mitzieht. Das ist offen —
+    nicht aus Nachlässigkeit, sondern weil die Änderung der Spezifikation dem Nutzer gehört.
+    Der vollständige Wortlaut für alle Stellen liegt einsatzbereit in
+    <span class="m">design/SPEC-3-NACHTRAG.md</span>.</p>
+    <div class="rollbar"><table class="btab">
+      <thead><tr><th>Abschnitt</th><th>Was dort steht</th><th>Was tatsächlich gilt</th></tr></thead>
+      <tbody>
+        <tr><td class="m">4.2</td><td>Das Gatter hat eine Methode, <span class="m">evaluate()</span>.</td>
+          <td class="warn">Es hat zwei. <span class="m">preview()</span> bildet die Reihenfolge lesend ab — kein Protokoll, kein Kontingent. Ohne diesen Absatz könnte sie für einen zweiten Entscheidungsweg gehalten werden.</td></tr>
+        <tr><td class="m">12</td><td>Lokale Instrumententafel: Zustand, Briefing, Entscheidungen, Protokoll.</td>
+          <td class="warn">Dazu vier Anzeigen, die mehr als Gestaltung tragen: Stufe gewährt/verlangt, Zustandsmarke, Gatterleiter, Vertrauensnaht.</td></tr>
+        <tr><td class="m">15</td><td>Dashboard: Token, Origin, CSP, kein JS.</td>
+          <td class="warn">Zusätzlich Gatterleiter und Naht.</td></tr>
+        <tr><td class="m">23 OD-4</td><td>Status: OFFEN.</td>
+          <td class="warn">Entschieden und umgesetzt — Weg B, nur was neue Information bringt.</td></tr>
+        <tr><td class="m">25</td><td>Der Entscheidungsstrom ist Future-only.</td>
+          <td class="warn">Er ist CURRENT. Siehe D1.1 — das ist zugleich die Abweichung und ihre Auflösung.</td></tr>
+        <tr><td class="m">1 · 3.4 · 13 · 28</td><td>1018 Tests, 15 882 Zeilen Quellcode.</td>
+          <td class="warn">1048 Tests, 16 517 Zeilen. Der zeitabhängige Test (KI-8) besteht weiter: 1047 von 1048 zu jeder Tageszeit.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="unterschrift" style="margin-top:18px"><b>Was unberührt bleibt.</b> Die vier
+    Prinzipien (3.2), das Ausführungsmodell (5), die Sicherheitsmatrix (16), die offenen Befunde
+    (17) — <b>SEC-1 und SEC-2 sind unverändert offen</b> —, die technischen Schulden (18), die
+    Zukunftsarchitektur (19–20), die Roadmap (21) und die Abnahmekriterien (26). Keine
+    Gestaltungsentscheidung hat eine davon berührt.</p>
+  </div>
+</section>
+
 <footer class="fuss">
   <b>Diese Datei</b> trägt ihr eigenes Stylesheet und braucht keine Nachbardateien: kein
   JavaScript, keine Bilddatei, keine Nebendatei. Sie liegt als
@@ -1800,10 +2084,17 @@ Nichts Ueberfaelliges.</div>
   <span class="m">design/prototyp/</span> — dieselben Oberflächen als einzelne Blätter mit
   gemeinsamem Stylesheet.<br><br>
 
-  <b>Einschränkung.</b> Diese Tafeln sind von Hand geschrieben und in keinem Browser geprüft
-  worden — die Sitzung lief unter Linux ohne Bildschirm, Safari auf macOS gab es hier nie.
-  Gebaut ist nicht geprüft; dieselbe Regel, die SPEC-3 für den Code aufstellt, gilt für dieses
-  Blatt.<br><br>
+  <b>Geprüft.</b> Diese Tafeln sind in Chromium gerendert und vermessen worden — 1280px und
+  420px, helle und dunkle Fassung: kein horizontaler Seitenüberlauf, kein Text unter 3:1
+  Kontrast, saubere Verschachtelung, 25 Anker ohne Waise. Zwei Fehler hat erst das Rendern
+  gezeigt: im Quirks-Modus (die lokale Datei trägt kein <span class="m">doctype</span>) erben
+  Tabellenzellen die Textfarbe nicht — vier Beschriftungen standen bei 1,05:1. Und die Klasse
+  für Maschinenschrift wirkte nur innerhalb der Tabellen. Beides behoben und nachgemessen.<br><br>
+
+  <b>Einschränkung.</b> Geprüft wurde in Chromium unter Linux, nicht in Safari auf macOS —
+  der Zielplattform. SPEC-3 14 führt PLATFORM VERIFIED = NO, ausnahmslos; für dieses Blatt
+  gilt dasselbe. Beim Rendern gab es kein Netz: der Rückfall von IBM Plex auf Georgia und
+  Systemschrift wurde damit unfreiwillig mitgetestet und trägt.<br><br>
 
   <b>SPEC-3 steht unverändert auf Fassung 3.0</b>, <span class="m">jarvis/</span> ist von diesem
   Blatt nicht berührt. Nichts hier ist ein Bauauftrag.

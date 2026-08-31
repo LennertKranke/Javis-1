@@ -120,7 +120,7 @@ def test_stylesheet_wird_ausgeliefert(dashboard):
     antwort = klient(dashboard).get("/jarvis.css")
     assert antwort.status_code == 200
     assert antwort.headers["content-type"].startswith("text/css")
-    assert "--accent" in antwort.text
+    assert "--akzent" in antwort.text
 
 
 # --- Maskierung ------------------------------------------------------------- #
@@ -307,7 +307,7 @@ def test_stoppschalter_auf_jeder_ansicht(dashboard):
     client = klient(dashboard)
     for pfad in ("/", "/entscheidungen", "/protokoll"):
         text = client.get(pfad).text
-        assert "BETRIEB" in text
+        assert ">Betrieb<" in text
         assert 'action="/stop"' in text
 
 
@@ -316,7 +316,7 @@ def test_anhalten_und_fortsetzen(dashboard):
     antwort = eigene_post(client, "/stop")
     assert antwort.status_code == 303
     assert (dashboard / "STOP").exists()
-    assert "ANGEHALTEN" in client.get("/").text
+    assert ">Angehalten<" in client.get("/").text
 
     eigene_post(client, "/weiter")
     assert not (dashboard / "STOP").exists()
@@ -358,7 +358,8 @@ def test_protokoll_zeigt_eintraege(dashboard):
     AuditLog(conn).record(capability="mail", kind="action", outcome="dry_run")
     conn.close()
     text = klient(dashboard).get("/protokoll").text
-    assert "dry_run" in text
+    assert "Dry Run" in text
+    assert "mail" in text
 
 
 def sichtbarer_text(html: str) -> str:
@@ -465,3 +466,157 @@ def test_briefing_verlangt_den_token(dashboard):
 def test_briefing_steht_in_der_navigation(dashboard):
     antwort = klient(dashboard).get("/")
     assert 'href="/briefing"' in antwort.text
+
+
+# --- Was die Ansicht neu zeigt ---------------------------------------------- #
+#
+# Vier Elemente, und jedes hat einen Grund, der aelter ist als der Geschmack:
+# die verlangte Stufe (weil `0 >= 0` wahr ist), die Zustandsmarke (weil ein
+# Fehler nicht wie ein Erfolg aussehen darf), die Gatterleiter (weil eine
+# Freigabe nur die Stufe ersetzt) und die Naht (weil das Modell nie ein Ziel
+# waehlt).
+
+
+def test_stufe_zeigt_gewaehrte_und_verlangte(dashboard):
+    """Nur die gewaehrte zu zeigen war die alte Fassung -- und der Fehlertyp."""
+    text = klient(dashboard).get("/").text
+    assert "Stufe gewaehrt / verlangt" in text
+    # mail_send: gewaehrt 0, verlangt 1 -- die Luecke wird ausgewiesen.
+    assert 'class="stufe reicht-nicht"' in text
+    assert '<span class="verlangt">/ 1</span>' in text
+
+
+def test_bedienweise_ohne_faehigkeit_zeigt_keine_verlangte_stufe(dashboard):
+    """`voice` steht in [capabilities], ist aber keine Faehigkeit."""
+    text = klient(dashboard).get("/").text
+    assert '<span class="verlangt">/ --</span>' in text
+
+
+def test_vorgang_trennt_modell_und_code(dashboard):
+    vorgang_einstellen(dashboard, fields={"category": "geschaeftlich"})
+    text = klient(dashboard).get("/entscheidungen").text
+
+    assert "Modell entschied" in text
+    assert "Code berechnete" in text
+
+    # Nur innerhalb der Naht messen: in der Zusammenfassung darueber steht die
+    # Adresse ohnehin, und das ist keine Aussage ueber ihre Herkunft.
+    naht = text.index('<div class="naht">')
+    modell = text.index("naht-halb modell", naht)
+    code = text.index("naht-halb code", naht)
+    kategorie = text.index("geschaeftlich", naht)
+    ziel = text.index("kunde@example.com", naht)
+
+    # Was das Modell entschied, steht links; das Ziel rechts. Stuende es links,
+    # waere das kein Schoenheits-, sondern ein Prinzipienfehler -- und genau
+    # daran zu erkennen.
+    assert modell < kategorie < code < ziel
+
+
+def test_entwurfstext_steht_ausserhalb_beider_haelften(dashboard):
+    """Vom Modell geschriebene Prosa ist kein berechnetes Ziel."""
+    vorgang_einstellen(dashboard)
+    text = klient(dashboard).get("/entscheidungen").text
+    assert "Entwurfstext" in text
+    assert '<div class="item-body">Guten Tag.</div>' in text
+
+
+def test_gatterleiter_nennt_alle_fuenf_sprossen(dashboard):
+    vorgang_einstellen(dashboard, skill="mail_send")
+    text = klient(dashboard).get("/entscheidungen").text
+    for name in (
+        "Faehigkeit aktiv",
+        "Stoppschalter",
+        "Stufe / Freigabe",
+        "Obergrenze",
+        "Ausfuehrung",
+    ):
+        assert name in text
+
+
+def test_gatterleiter_zeigt_dass_die_freigabe_den_stoppschalter_nicht_ersetzt(dashboard):
+    """Das Prinzip aus Abschnitt 4.2, auf dem Bildschirm nachlesbar."""
+    trockenlauf_aus(dashboard)
+    vorgang_einstellen(dashboard, skill="mail_send")
+    StopSwitch(dashboard / "STOP").engage("Vorfall")
+
+    text = klient(dashboard).get("/entscheidungen").text
+    leiter = text[text.index("Wenn du jetzt freigibst") :]
+    stoppzeile = leiter[leiter.index("Stoppschalter") : leiter.index("Stufe / Freigabe")]
+    assert "Blockiert" in stoppzeile
+    assert "Vorfall" in stoppzeile
+
+
+def test_gatterleiter_zeigt_den_trockenlauf_als_haltend(dashboard):
+    vorgang_einstellen(dashboard, skill="mail_send")
+    text = klient(dashboard).get("/entscheidungen").text
+    leiter = text[text.index("Wenn du jetzt freigibst") :]
+    assert "Trockenlauf global aktiv" in leiter
+
+
+def test_die_ansicht_entscheidet_nichts(dashboard):
+    """Der wichtigste Test dieser Aenderung.
+
+    Die Gatterleiter bildet die Kette ab -- sie darf sie nicht durchlaufen.
+    Eine Anzeige, die Protokoll schreibt oder Kontingent verbraucht, waere aus
+    einer Oberflaeche eine Instanz geworden. Zehnmal laden aendert nichts.
+    """
+    vorgang_einstellen(dashboard, skill="mail_send")
+    conn = open_database(dashboard / "state.db")
+    try:
+        vorher = AuditLog(conn).count()
+    finally:
+        conn.close()
+
+    client = klient(dashboard)
+    for _ in range(10):
+        assert client.get("/entscheidungen").status_code == 200
+
+    conn = open_database(dashboard / "state.db")
+    try:
+        assert AuditLog(conn).count() == vorher
+        assert conn.execute("SELECT count(*) FROM rate_events").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_protokoll_gibt_nur_zustaenden_eine_marke(dashboard):
+    """Die vorgeschlagene Aktion eines Modells ist kein Zustand."""
+    conn = open_database(dashboard / "state.db")
+    audit = AuditLog(conn)
+    audit.record(capability="mail", kind="decision", outcome="draft")
+    audit.record(capability="mail_send", kind="action", outcome="failed")
+    conn.close()
+
+    text = klient(dashboard).get("/protokoll").text
+    assert '<span class="marke fehler">Fehlgeschlagen</span>' in text
+    assert '<span class="dim">draft</span>' in text
+    assert 'marke erfolg">draft' not in text
+
+
+def test_systemband_hebt_den_unsicheren_zustand_hervor(dashboard):
+    """Auffaellig ist, was hinausgeht -- nicht, was zurueckgehalten wird."""
+    ruhig = klient(dashboard).get("/").text
+    assert '<span class="tatsache-wert hebt">an</span>' in ruhig
+
+    trockenlauf_aus(dashboard)
+    scharf = klient(dashboard).get("/").text
+    assert '<span class="tatsache-wert gefahr">AUS</span>' in scharf
+
+
+def test_systemband_nennt_den_mock_als_solchen(dashboard):
+    """Ein Mock, den man nicht sieht, ist eine Falle."""
+    pfad = dashboard / "config.toml"
+    pfad.write_text(
+        pfad.read_text(encoding="utf-8").replace('mode = "live"', 'mode = "mock"'),
+        encoding="utf-8",
+    )
+    text = klient(dashboard).get("/").text
+    assert '<span class="tatsache-wert gefahr">Mock</span>' in text
+
+
+def test_angehaltenes_band_sagt_was_gilt(dashboard):
+    eigene_post(klient(dashboard), "/stop")
+    text = klient(dashboard).get("/").text
+    assert "systemband angehalten" in text
+    assert "jede ausgehende Aktion blockiert" in text

@@ -1256,7 +1256,7 @@ SPEC-3 fuer spaeter beschreibt, und was dieses Dokument beisteuert.
 Bewusst nicht entschieden. Jede braucht entweder den Nutzer oder eine
 SPEC-3-Entscheidung.
 
-### ODS-1 -- Wird das Dashboard ueberhaupt angeglichen?
+### ODS-1 -- Wird das Dashboard ueberhaupt angeglichen?  [ENTSCHIEDEN]
 
 ```
 Frage:     Wird die vorhandene Oberflaeche auf dieses Design umgestellt, und
@@ -1266,10 +1266,8 @@ Optionen:  A  gar nicht -- die heutige Fassung bleibt verbindlich
            B  nur die Teile, die neue Information bringen (verlangte Stufe,
               Zustandsmarken, Gatterleiter, Naht) -- ohne neue Bereiche
            C  vollstaendig, zusammen mit dem Ausbau zur Control Plane
-Empfehlung: B. Die drei Elemente mit echtem Informationsgewinn kosten wenig und
-           setzen keine PLANNED-Faehigkeit voraus. C haengt an Roadmap 6 und
-           damit hinter fuenf REQUIRED-Punkten.
-Status:    OFFEN -- Entscheidung des Nutzers, nicht des Designs
+Entscheidung: B, vom Nutzer am 2026-08-31. Umgesetzt.
+Status:    ENTSCHIEDEN und umgesetzt -- siehe Abschnitt 48
 ```
 
 ### ODS-2 -- Wie werden Meldungen einer kuenftigen Proaktivitaet dargestellt?
@@ -1450,3 +1448,72 @@ bei der hellen Fassung und im schmalen Fenster.
 | Offene Designentscheidungen | Abschnitt 44 |
 | Bewusst nicht festgelegt | Abschnitt 45 |
 | Naechste Schritte | Abschnitt 46 |
+
+
+---
+
+## 48. Umgesetzt am 2026-08-31 (ODS-1, Weg B)
+
+Was aus diesem Dokument in `jarvis/interfaces/web/` und `jarvis/core/gate.py`
+eingegangen ist. **CURRENT**, mit Tests belegt.
+
+| Element | Stand | Wo | Tests |
+|---|---|---|---|
+| Marken und Bausteine (DD-01 bis DD-13, DD-31) | umgesetzt | `web/style.py` | Stylesheet wird ausgeliefert |
+| Systemband mit vier Tatsachen (DD-28, DD-31) | umgesetzt | `render.seite` | Trockenlauf ruhig/auffaellig, Mock benannt, angehaltenes Band |
+| Stufe gewaehrt / verlangt (DD-16) | umgesetzt | `render.stufe`, `app.lage` | verlangte Stufe sichtbar, `voice` ohne verlangte Stufe |
+| Zustandsmarken im Protokoll (DD-14, DD-07) | umgesetzt | `render.zustandsmarke` | Marke nur fuer Zustaende, nicht fuer vorgeschlagene Aktionen |
+| Gatterleiter (K5, DD-17) | umgesetzt | `core.Gate.preview`, `render.gatterleiter` | fuenf Sprossen, Stoppschalter haelt trotz Freigabe, Trockenlauf haelt |
+| Vertrauensnaht (K6, DD-27) | umgesetzt | `render.naht` | Ziel steht rechts, Entwurfstext ausserhalb beider Haelften |
+| Zaehler mit Bezug und Balken (Abschnitt 21, DD-33) | umgesetzt | `render.zaehler` | keine Inline-Stile im erzeugten HTML |
+| Zwei Spurbreiten (DD-03) | umgesetzt | `render.seite(weit=...)` | -- |
+| Helle Fassung (DD-11) | umgesetzt | `web/style.py` | -- |
+
+**Bewusst nicht umgesetzt**, obwohl im Design beschrieben:
+
+| Element | Warum nicht |
+|---|---|
+| Rueckfrageseite (K10) | Sie wird erst gebraucht, wenn `dry_run = false` je vorkommt -- also nach Roadmap-Punkt 2. Vorher waere sie eine Rueckfrage vor einer Handlung, die nichts bewirkt |
+| Protokoll-Einzelansicht (acht Fragen, B10) | Neue Route. TD-1 (Schutz ist ein Dekorator) waere vorher zu schliessen |
+| Sichten im Protokoll (Filter als Links) | Neue Abfrageparameter, kein Informationsgewinn ueber das hinaus, was die Liste schon zeigt |
+| Dienste, Modelle, Gedaechtnis, Fehler | Neue Bereiche. Weg B schliesst sie aus; sie bleiben PLANNED hinter Roadmap 6 |
+| Umbenennung "Zustand" zu "Lage" | *doch* umgesetzt -- eine Beschriftung, kein Bereich |
+
+### 48.1 Ein Befund aus der Umsetzung
+
+**Die Naht kann die Herkunft eines Ziels nicht nennen.** Abschnitt 23 verlangt:
+"Rechts steht zu jedem Ziel seine Herkunft (`Kopffeld From`,
+`Antwortdatensatz`) -- nicht nur der Wert." Das laesst sich heute nicht
+erfuellen: `Decision.targets` ist eine flache Abbildung von Name auf Wert, die
+Herkunft je Ziel wird nirgends gespeichert. SPEC-3 verlangt sie auch nicht.
+
+Erfunden wurde deshalb nichts. Die Naht zeigt die Ziele ohne Herkunftsangabe.
+Wer sie will, braucht ein Feld in `Decision` -- das waere eine
+Architekturaenderung und gehoert nach SPEC-3 §27 vor die Implementierung, nicht
+in eine Anzeige.
+
+**Offen als ODS-7.**
+
+### 48.2 Was SPEC-3 §27 jetzt verlangt
+
+SPEC-3 Abschnitt 27 (Change Management) sagt: *"Codeaenderung -- betroffenen
+SPEC-Abschnitt mitziehen, im selben Commit."* Diese Aenderung beruehrt vier
+Stellen. Der Wortlaut steht in `design/SPEC-3-NACHTRAG.md` als Vorschlag; er
+ist **nicht** in SPEC-3 eingetragen, weil die Aenderung der Spezifikation dem
+Nutzer gehoert.
+
+### ODS-7 -- Traegt ein Ziel seine Herkunft?
+
+```
+Frage:     Soll Decision.targets je Ziel festhalten, woraus es berechnet wurde?
+Bezug:     SPEC-3 3.2 P1, 6.1 (Definierte Targets); Abschnitt 23 dieses Dokuments
+Wirkung:   Die Vertrauensnaht koennte "Empfaenger -- aus Kopffeld From" zeigen
+           statt nur den Wert. Ohne das bleibt die rechte Haelfte eine Liste
+           von Werten, deren Vertrauenswuerdigkeit man glauben muss.
+Kosten:    Aenderung an Decision, an jeder Faehigkeit, die Ziele baut, und an
+           der Freigabetabelle. Architekturaenderung nach SPEC-3 27.
+Empfehlung: Nicht jetzt. Erst wenn eine zweite Zielart dazukommt (Dateipfad,
+           Geraet) -- dann zahlt sie sich aus und wird zugleich noetig, siehe
+           ODS-4.
+Status:    OFFEN
+```

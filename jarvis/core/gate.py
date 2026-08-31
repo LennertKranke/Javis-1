@@ -34,7 +34,7 @@ from jarvis.core.audit import KIND_ACTION, AuditLog
 from jarvis.core.config import Config
 from jarvis.core.ratelimit import RateLimiter, RateVerdict
 
-__all__ = ["Disposition", "Gate", "GateVerdict"]
+__all__ = ["Disposition", "Gate", "GatePreview", "GateStep", "GateVerdict"]
 
 
 class Disposition(StrEnum):
@@ -57,6 +57,40 @@ class GateVerdict:
     def may_act(self) -> bool:
         """Nur hier darf die Aktion tatsaechlich ausgefuehrt werden."""
         return self.disposition is Disposition.ACT
+
+
+@dataclass(frozen=True)
+class GateStep:
+    """Eine Sprosse der Leiter, wie die Oberflaeche sie zeigt.
+
+    `outcome` ist bewusst kein `Disposition`: eine Sprosse hat mehr Zustaende
+    als der Vorgang als Ganzes. `offen` heisst "nicht ausgewertet" -- und das
+    ist etwas anderes als "bestanden".
+    """
+
+    name: str
+    value: str
+    outcome: str  # weiter | blockiert | trocken | act | offen
+
+
+@dataclass(frozen=True)
+class GatePreview:
+    capability: str
+    disposition: Disposition
+    reason: str
+    granted_level: int
+    required_level: int
+    steps: tuple[GateStep, ...]
+
+
+#: Die Reihenfolge aus Abschnitt 4.2. Sie wird nie umsortiert.
+SPROSSEN = (
+    "Faehigkeit aktiv",
+    "Stoppschalter",
+    "Stufe / Freigabe",
+    "Obergrenze",
+    "Ausfuehrung",
+)
 
 
 class Gate:
@@ -150,6 +184,97 @@ class Gate:
             subject,
             detail,
         )
+
+    def preview(
+        self,
+        capability: str,
+        *,
+        required_level: int,
+        approved: bool = False,
+    ) -> GatePreview:
+        """Woran haengt es gerade -- ohne etwas zu entscheiden.
+
+        Fuer die Oberflaeche. `evaluate` beantwortet "darf gehandelt werden"
+        und schreibt dabei ins Protokoll und verbraucht Kontingent; das darf
+        eine Anzeige nicht tun. Deshalb hier dieselbe Reihenfolge, aber
+        lesend: `limiter.check` statt `limiter.acquire`, kein Protokolleintrag.
+
+        Dass die Reihenfolge damit ein zweites Mal im Code steht, ist der Preis.
+        Er wird durch einen Test bezahlt, der Vorschau und Auswertung ueber
+        alle Lagen gegeneinander haelt -- eine Oberflaeche, die etwas anderes
+        anzeigt als das Gatter tut, waere schlimmer als eine, die nichts zeigt.
+        """
+        cap = self._config.capability(capability)
+        granted = int(cap.autonomy_level)
+        schritte: list[GateStep] = []
+
+        def fertig(disposition: Disposition, reason: str) -> GatePreview:
+            # Was nach der haltenden Sprosse kommt, wurde nicht ausgewertet.
+            # Es als "bestanden" zu zeigen waere gelogen.
+            for name in SPROSSEN[len(schritte) :]:
+                schritte.append(GateStep(name, "nicht ausgewertet", "offen"))
+            return GatePreview(
+                capability=capability,
+                disposition=disposition,
+                reason=reason,
+                granted_level=granted,
+                required_level=int(required_level),
+                steps=tuple(schritte),
+            )
+
+        if not cap.enabled:
+            schritte.append(GateStep(SPROSSEN[0], "abgeschaltet", "blockiert"))
+            return fertig(Disposition.BLOCKED, "Faehigkeit abgeschaltet")
+        schritte.append(GateStep(SPROSSEN[0], "ja", "weiter"))
+
+        stop = self._config.stop_switch
+        if stop.engaged():
+            grund = stop.reason() or "ohne Angabe"
+            schritte.append(GateStep(SPROSSEN[1], f"gesetzt: {grund}", "blockiert"))
+            return fertig(Disposition.BLOCKED, f"Stoppschalter aktiv ({grund})")
+        schritte.append(GateStep(SPROSSEN[1], "nicht gesetzt", "weiter"))
+
+        stufe_reicht = self._config.permits(capability, required_level, approved=approved)
+        if not stufe_reicht:
+            schritte.append(
+                GateStep(
+                    SPROSSEN[2],
+                    f"gewaehrt {granted} reicht nicht fuer verlangt {required_level}",
+                    "trocken",
+                )
+            )
+        elif approved and granted < int(required_level):
+            schritte.append(
+                GateStep(
+                    SPROSSEN[2],
+                    f"von Hand freigegeben -- gewaehrt {granted}, verlangt {required_level}",
+                    "weiter",
+                )
+            )
+        else:
+            schritte.append(
+                GateStep(SPROSSEN[2], f"gewaehrt {granted}, verlangt {required_level}", "weiter")
+            )
+
+        rate = self._limiter.check(capability)
+        stand = "  ".join(f"{w.used}/{w.limit} {w.window}" for w in rate.windows)
+        if not rate.allowed:
+            schritte.append(GateStep(SPROSSEN[3], rate.reason or "erreicht", "blockiert"))
+            return fertig(Disposition.BLOCKED, rate.reason or "Obergrenze erreicht")
+        schritte.append(GateStep(SPROSSEN[3], stand or "keine Obergrenze", "weiter"))
+
+        if self._config.dry_run or not stufe_reicht:
+            why = (
+                "Trockenlauf global aktiv"
+                if self._config.dry_run
+                else f"Stufe {granted} reicht nicht fuer Stufe {required_level}"
+            )
+            schritte.append(GateStep(SPROSSEN[4], why, "trocken"))
+            return fertig(Disposition.DRY_RUN, why)
+
+        grund = "von Hand freigegeben" if approved else "freigegeben"
+        schritte.append(GateStep(SPROSSEN[4], "geht nach aussen", "act"))
+        return fertig(Disposition.ACT, grund)
 
     def _record(
         self,

@@ -34,8 +34,21 @@ from jarvis.core.approvals import ApprovalStore
 from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import Config, ConfigError, Paths, StopSwitch
 from jarvis.core.db import open_database
+from jarvis.core.gate import Gate, GatePreview
 from jarvis.core.ratelimit import RateLimiter
-from jarvis.interfaces.web.render import esc, fakten, hinweis, leer, seite, tabelle, vorgang
+from jarvis.core.secrets import default_store
+from jarvis.interfaces.web.render import (
+    esc,
+    fakten,
+    hinweis,
+    leer,
+    seite,
+    stufe,
+    tabelle,
+    vorgang,
+    zaehler,
+    zustandsmarke,
+)
 from jarvis.interfaces.web.security import (
     COOKIE_NAME,
     SECURITY_HEADERS,
@@ -44,6 +57,7 @@ from jarvis.interfaces.web.security import (
     token_matches,
 )
 from jarvis.interfaces.web.style import CSS
+from jarvis.skills.base import available_skills
 from jarvis.skills.briefing.store import BriefingStore
 from jarvis.skills.factory import build_skill
 from jarvis.skills.runner import execute_approval, reject_approval
@@ -156,7 +170,9 @@ def create_app(
 
         return gepruefte
 
-    def rahmen(request: Request, titel: str, inhalt: str, aktiv: str) -> HTMLResponse:
+    def rahmen(
+        request: Request, titel: str, inhalt: str, aktiv: str, *, weit: bool = False
+    ) -> HTMLResponse:
         config = konfiguration()
         schalter = config.stop_switch
         conn = verbindung()
@@ -164,6 +180,14 @@ def create_app(
             offen = ApprovalStore(conn).count_pending()
         finally:
             conn.close()
+
+        # Die Zugangsdatenquelle steht im Band, weil Abschnitt 12 sie zum
+        # Systemzustand zaehlt. `describe()` liest nur, was beim Start gewaehlt
+        # wurde -- es fragt keinen Speicher und holt kein Geheimnis.
+        speicher = default_store()
+        zugangsdaten = speicher.describe()
+        if speicher.violates_spec:
+            zugangsdaten = f"{zugangsdaten} -- Abweichung"
 
         meldung = MELDUNGEN.get(request.query_params.get("m", ""))
         koerper = (hinweis(meldung) if meldung else "") + inhalt
@@ -176,13 +200,17 @@ def create_app(
                 stopp_grund=schalter.reason(),
                 offen=offen,
                 refresh=config.web.refresh_seconds,
+                trockenlauf=config.dry_run,
+                dienste_mock=config.services.is_mock,
+                zugangsdaten=zugangsdaten,
+                weit=weit,
             )
         )
 
     # ---------------------------------------------------------------- #
 
     @geschuetzt
-    def zustand(request: Request) -> Response:
+    def lage(request: Request) -> Response:
         config = konfiguration()
         conn = verbindung()
         try:
@@ -193,44 +221,54 @@ def create_app(
 
             kopf = fakten(
                 [
-                    ("Trockenlauf", "an" if config.dry_run else "AUS"),
+                    ("Offene Entscheidungen", offen),
                     ("Protokoll", f"{audit.count()} Eintraege"),
                     ("Kette", "intakt" if kette.ok else f"GEBROCHEN bei {kette.broken_at}"),
-                    ("Offen", offen),
                 ]
             )
 
+            # Die verlangte Stufe steht am Skill, die gewaehrte in der
+            # Konfiguration. Nur eine von beiden zu zeigen war die alte
+            # Fassung -- und genau diese Verwechslung hat im Audit eine
+            # Faehigkeit auf Stufe 0 handeln lassen: `0 >= 0` ist wahr.
+            faehigkeiten = available_skills()
             zeilen = []
             for name in sorted(config.capabilities):
                 cap = config.capabilities[name]
-                zaehler = (
-                    "  ".join(f"{w.window} {w.used}/{w.limit}" for w in begrenzer.usage(name))
-                    or "--"
-                )
+                klasse = faehigkeiten.get(name)
+                verlangt = None if klasse is None else int(klasse.autonomy_level)
                 zeilen.append(
                     [
                         name,
-                        f"{int(cap.autonomy_level)}  {cap.autonomy_level.label}",
+                        stufe(int(cap.autonomy_level), verlangt, cap.autonomy_level.label),
                         "ja" if cap.requires_outbound else "nein",
                         "ja" if cap.enabled else "nein",
-                        zaehler,
+                        zaehler((w.window, w.used, w.limit) for w in begrenzer.usage(name)),
                     ]
                 )
             inhalt = (
-                "<h2>Zustand</h2>"
+                "<h2>Lage</h2>"
                 + kopf
                 + "<h2>Faehigkeiten</h2>"
                 + tabelle(
                     # Siehe cli.py: "Ausgehend" war irrefuehrend. Labels und
                     # Entwuerfe gehen zu Google, erreichen aber niemanden.
-                    ["Faehigkeit", "Stufe", "Erreicht Dritte", "Aktiv", "Zaehler"],
+                    # "Stufe" traegt jetzt beide Zahlen: gewaehrt / verlangt.
+                    [
+                        "Faehigkeit",
+                        "Stufe gewaehrt / verlangt",
+                        "Erreicht Dritte",
+                        "Aktiv",
+                        "Kontingent",
+                    ],
                     zeilen,
-                    mono=(0, 4),
+                    mono=(0,),
+                    roh=(1, 4),
                 )
             )
         finally:
             conn.close()
-        return rahmen(request, "Zustand", inhalt, "/")
+        return rahmen(request, "Lage", inhalt, "/", weit=True)
 
     @geschuetzt
     def briefing(request: Request) -> Response:
@@ -275,12 +313,35 @@ def create_app(
             conn.close()
         return rahmen(request, "Briefing", inhalt, "/briefing")
 
+    def _vorschau(gate: Gate, skill: str) -> GatePreview | None:
+        """Woran haengt dieser Vorgang, wenn jetzt freigegeben wird?
+
+        `approved=True`, weil das die Frage ist, die vor dem Klick zaehlt. Die
+        Leiter zeigt dann, dass eine Freigabe nur auf Sprosse 3 wirkt --
+        Stoppschalter, Obergrenze und Trockenlauf gelten weiter.
+
+        Sie entscheidet nichts: `preview` schreibt kein Protokoll und
+        verbraucht kein Kontingent. Wer wirklich handelt, ist `execute_approval`
+        ueber `evaluate`.
+        """
+        klasse = available_skills().get(skill)
+        if klasse is None:
+            return None
+        try:
+            return gate.preview(skill, required_level=int(klasse.autonomy_level), approved=True)
+        except ConfigError:
+            # Ein Vorgang zu einer Faehigkeit, die es in der Konfiguration
+            # nicht mehr gibt. Kein Grund, die ganze Ansicht zu verlieren.
+            return None
+
     @geschuetzt
     def entscheidungen(request: Request) -> Response:
         config = konfiguration()
         conn = verbindung()
         try:
             eintraege = ApprovalStore(conn).pending(limit=50)
+            gate = Gate(config, AuditLog(conn), RateLimiter(conn, config.capabilities))
+            vorschauen = {e.id: _vorschau(gate, e.skill) for e in eintraege}
         finally:
             conn.close()
 
@@ -295,10 +356,13 @@ def create_app(
                 teile.append(
                     hinweis(
                         "Trockenlauf ist an. Verwerfen geht, Freigeben bewirkt nichts -- "
-                        "dry_run in der Konfiguration auf false setzen."
+                        "dry_run in der Konfiguration auf false setzen.",
+                        art="warnung",
                     )
                 )
-            teile += [vorgang(e, ausfuehrbar=ausfuehrbar) for e in eintraege]
+            teile += [
+                vorgang(e, ausfuehrbar=ausfuehrbar, vorschau=vorschauen[e.id]) for e in eintraege
+            ]
             inhalt = "".join(teile)
         return rahmen(request, "Entscheidungen", inhalt, "/entscheidungen")
 
@@ -309,24 +373,27 @@ def create_app(
             eintraege = AuditLog(conn).recent(60)
         finally:
             conn.close()
+        # Statt einer T-Spalte mit Legende steht der Zustand als Marke da.
+        # Was kein Zustand ist -- die vom Modell vorgeschlagene Aktion eines
+        # `decision`-Eintrags -- bekommt keine Marke, sondern bleibt Text.
         zeilen = [
             [
                 e.id,
                 e.ts[:19].replace("T", " "),
-                "T" if e.dry_run else "",
                 e.capability,
                 e.kind,
-                e.outcome,
+                zustandsmarke(e.outcome, dry_run=e.dry_run),
                 str(e.detail.get("reason", "") or e.detail.get("summary", ""))[:90],
             ]
             for e in eintraege
         ]
         inhalt = "<h2>Protokoll</h2>" + tabelle(
-            ["Nr", "Zeit (UTC)", "T", "Faehigkeit", "Art", "Ergebnis", "Grund"],
+            ["Nr", "Zeit (UTC)", "Faehigkeit", "Art", "Ergebnis", "Grund"],
             zeilen,
-            mono=(0, 1, 2),
+            mono=(0, 1),
+            roh=(4,),
         )
-        return rahmen(request, "Protokoll", inhalt, "/protokoll")
+        return rahmen(request, "Protokoll", inhalt, "/protokoll", weit=True)
 
     # ---------------------------------------------------------------- #
 
@@ -414,7 +481,7 @@ def create_app(
         return Response(CSS, media_type="text/css")
 
     routen = [
-        Route("/", zustand),
+        Route("/", lage),
         Route("/briefing", briefing),
         Route("/entscheidungen", entscheidungen),
         Route("/entscheidungen/{vorgang_id:int}/freigeben", freigeben, methods=["POST"]),

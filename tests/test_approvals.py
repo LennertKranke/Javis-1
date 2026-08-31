@@ -336,3 +336,123 @@ def test_zweiter_durchlauf_reiht_nicht_doppelt_ein(conn, home):
     zweiter = run_skill(skill, gate=gate, audit=audit, approvals=store, collect_approvals=True)
     assert zweiter.queued == 0
     assert store.count_pending() == 1
+
+
+# --- Gatter: die Vorschau erklaert, ohne zu entscheiden ---------------------- #
+#
+# Die Vorschau ist fuer die Oberflaeche da. Sie beantwortet nicht "darf
+# gehandelt werden" -- das tut weiter `evaluate` --, sondern "woran wuerde es
+# gerade haengen". Zwei Eigenschaften muessen halten, sonst richtet sie mehr
+# Schaden an als Nutzen: sie darf nichts veraendern, und sie darf nie etwas
+# anderes sagen als das Gatter selbst.
+
+
+def test_vorschau_veraendert_nichts(conn, home):
+    """Kein Protokolleintrag, kein verbrauchtes Kontingent."""
+    gate, audit, config = gatter(conn, home, dry_run=False, level=1, limits={"hour": 2})
+    limiter = RateLimiter(conn, config.capabilities)
+    vorher = audit.count()
+
+    for _ in range(5):
+        gate.preview("mail", required_level=1)
+
+    assert audit.count() == vorher
+    assert limiter.usage("mail")[0].used == 0
+    # Gegenprobe: eine echte Auswertung tut beides sehr wohl.
+    gate.evaluate("mail", required_level=1)
+    assert audit.count() == vorher + 1
+    assert limiter.usage("mail")[0].used == 1
+
+
+@pytest.mark.parametrize(
+    "lage",
+    [
+        {"dry_run": False, "level": 1},
+        {"dry_run": False, "level": 0},
+        {"dry_run": True, "level": 1},
+        {"dry_run": False, "level": 1, "enabled": False},
+        {"dry_run": False, "level": 0, "limits": {"hour": 0}},
+    ],
+)
+@pytest.mark.parametrize("freigegeben", [False, True])
+def test_vorschau_stimmt_mit_dem_gatter_ueberein(conn, home, lage, freigegeben):
+    """Der eigentliche Schutz gegen Auseinanderdriften.
+
+    Die Vorschau bildet die Reihenfolge aus Abschnitt 4.2 ein zweites Mal ab.
+    Zwei Fassungen derselben Rechnung driften auseinander, wenn nichts sie
+    zusammenhaelt -- und eine Oberflaeche, die etwas anderes anzeigt als das
+    Gatter tut, ist schlimmer als eine, die nichts anzeigt.
+    """
+    gate, _, _ = gatter(conn, home, **lage)
+    vorschau = gate.preview("mail", required_level=1, approved=freigegeben)
+    urteil = gate.evaluate("mail", required_level=1, approved=freigegeben)
+    assert vorschau.disposition is urteil.disposition
+
+
+@pytest.mark.parametrize("freigegeben", [False, True])
+def test_vorschau_stimmt_auch_bei_gesetztem_stoppschalter(conn, home, freigegeben):
+    """Der Fall, den die Matrix oben nicht abdeckt -- und der teuer waere."""
+    gate, _, _ = gatter(conn, home, dry_run=False, level=1)
+    StopSwitch(home / "STOP").engage("Vorfall")
+    vorschau = gate.preview("mail", required_level=1, approved=freigegeben)
+    urteil = gate.evaluate("mail", required_level=1, approved=freigegeben)
+    assert vorschau.disposition is urteil.disposition is Disposition.BLOCKED
+
+
+def test_vorschau_beim_stoppschalter(conn, home):
+    gate, _, _ = gatter(conn, home, dry_run=False, level=1)
+    StopSwitch(home / "STOP").engage("Vorfall")
+    vorschau = gate.preview("mail", required_level=1, approved=True)
+
+    assert vorschau.disposition is Disposition.BLOCKED
+    schritte = {s.name: s for s in vorschau.steps}
+    assert schritte["Stoppschalter"].outcome == "blockiert"
+    assert "Vorfall" in schritte["Stoppschalter"].value
+    # Was danach kommt, wurde nicht ausgewertet -- und sagt das auch.
+    assert schritte["Obergrenze"].outcome == "offen"
+    assert schritte["Stufe / Freigabe"].outcome == "offen"
+
+
+def test_vorschau_zeigt_dass_die_freigabe_nur_die_stufe_ersetzt(conn, home):
+    """Prinzip aus 4.2, an der Leiter ablesbar."""
+    gate, _, _ = gatter(conn, home, dry_run=True, level=0)
+    vorschau = gate.preview("mail", required_level=1, approved=True)
+    schritte = {s.name: s for s in vorschau.steps}
+
+    # Die Freigabe wirkt auf Sprosse 3 ...
+    assert schritte["Stufe / Freigabe"].outcome == "weiter"
+    assert "freigegeben" in schritte["Stufe / Freigabe"].value.lower()
+    # ... und nicht auf den Trockenlauf.
+    assert vorschau.disposition is Disposition.DRY_RUN
+    assert schritte["Ausfuehrung"].outcome == "trocken"
+    assert "Trockenlauf" in schritte["Ausfuehrung"].value
+
+
+def test_vorschau_haelt_an_der_stufe(conn, home):
+    gate, _, _ = gatter(conn, home, dry_run=False, level=0)
+    vorschau = gate.preview("mail", required_level=1)
+    schritte = {s.name: s for s in vorschau.steps}
+
+    assert vorschau.disposition is Disposition.DRY_RUN
+    assert schritte["Stufe / Freigabe"].outcome == "trocken"
+    assert vorschau.granted_level == 0
+    assert vorschau.required_level == 1
+
+
+def test_vorschau_nennt_die_fuenf_sprossen_in_der_reihenfolge(conn, home):
+    """Die Reihenfolge ist Absicht (4.2) und wird nie umsortiert."""
+    gate, _, _ = gatter(conn, home, dry_run=False, level=1)
+    assert [s.name for s in gate.preview("mail", required_level=1).steps] == [
+        "Faehigkeit aktiv",
+        "Stoppschalter",
+        "Stufe / Freigabe",
+        "Obergrenze",
+        "Ausfuehrung",
+    ]
+
+
+def test_vorschau_zeigt_die_obergrenze_mit_bezug(conn, home):
+    gate, _, _ = gatter(conn, home, dry_run=False, level=1, limits={"hour": 2})
+    gate.evaluate("mail", required_level=1)
+    schritte = {s.name: s for s in gate.preview("mail", required_level=1).steps}
+    assert "1/2" in schritte["Obergrenze"].value

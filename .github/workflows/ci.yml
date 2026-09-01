@@ -1,0 +1,22 @@
+# CI fuer JARVIS: dieselben Pruefungen, die eine Sitzung von Hand laufen
+# laesst -- bei jedem Push und jedem Pull Request, ohne Ausnahme. Der Job
+# heisst "tests", damit er im Branch-Schutz unter diesem Namen waehlbar ist.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest

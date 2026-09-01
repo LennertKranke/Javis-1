@@ -293,6 +293,50 @@ def test_freigabe_bei_gestopptem_system(dashboard, attrappe):
     assert attrappe.ausgefuehrt == []
 
 
+def test_doppelklick_fuehrt_nur_einmal_aus(dashboard, attrappe):
+    """SEC-2 aus Sicht der Oberflaeche: zwei Klicks, eine Wirkung.
+
+    Den atomaren Anspruch selbst pruefen die Tests am Freigabeweg; hier steht,
+    dass der zweite Klick durch die Route hindurch nichts bewirkt und eine
+    Antwort bekommt, die das sagt.
+    """
+    trockenlauf_aus(dashboard)
+    vorgang = vorgang_einstellen(dashboard)
+    client = klient(dashboard)
+
+    erste = eigene_post(client, f"/entscheidungen/{vorgang.id}/freigeben")
+    zweite = eigene_post(client, f"/entscheidungen/{vorgang.id}/freigeben")
+
+    assert "m=freigegeben" in erste.headers["location"]
+    assert "m=unbekannt" in zweite.headers["location"]
+    assert len(attrappe.ausgefuehrt) == 1
+
+
+def test_ein_beanspruchter_vorgang_wird_ueber_die_route_nicht_ausgefuehrt(dashboard, attrappe):
+    """Daemon und Dashboard gleichzeitig: der Anspruch liegt schon woanders.
+
+    `claimed` ist nicht `pending` -- die Route darf einen Vorgang, den ein
+    anderer Arbeiter gerade ausfuehrt, weder erneut ausfuehren noch schliessen.
+    """
+    trockenlauf_aus(dashboard)
+    vorgang = vorgang_einstellen(dashboard)
+    conn = open_database(dashboard / "state.db")
+    try:
+        assert ApprovalStore(conn).claim(vorgang.id) is not None
+    finally:
+        conn.close()
+
+    antwort = eigene_post(klient(dashboard), f"/entscheidungen/{vorgang.id}/freigeben")
+    assert "m=unbekannt" in antwort.headers["location"]
+    assert attrappe.ausgefuehrt == []
+
+    conn = open_database(dashboard / "state.db")
+    try:
+        assert ApprovalStore(conn).get(vorgang.id).state == "claimed"
+    finally:
+        conn.close()
+
+
 def test_der_trockenlauf_wird_auf_der_seite_erklaert(dashboard):
     vorgang_einstellen(dashboard)
     text = klient(dashboard).get("/entscheidungen").text

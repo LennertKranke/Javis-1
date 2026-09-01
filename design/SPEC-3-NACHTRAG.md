@@ -2,6 +2,8 @@
 
 ```
 Status:   VORSCHLAG -- nicht in JARVIS-SPEC-3.md eingetragen
+Fassung:  bei der Konsolidierung (2026-09-01) von 3.1 auf 3.2 umnummeriert --
+          3.1 ist seither durch die SEC-Fixe vergeben, siehe Abschnitt 1
 Anlass:   SPEC-3 Abschnitt 27, Change Management:
           "Codeaenderung -- betroffenen SPEC-Abschnitt mitziehen, im selben Commit"
 Betrifft: commit b17edf0 (Dashboard: vier Anzeigen)
@@ -22,24 +24,30 @@ Neun Stellen. Der Text unten ist einsetzbar, wie er ist.
 
 ## 1. Kopfblock
 
-```
-alt:  Version:               3.0
-      Created:               2026-08-30
-      Repository state:      commit 0b7b9b7, Arbeitsbaum sauber
-      Test state:            1017 von 1018 pytest gruen, ruff check und format sauber
+Die erste Fassung dieses Nachtrags entstand neben der SEC-Behebung und nannte
+sich selbst 3.1. Bei der Konsolidierung beider Straenge (2026-09-01) hat die
+SEC-Behebung die 3.1 bekommen; dieser Nachtrag wird beim Eintragen zur **3.2**.
 
-neu:  Version:               3.1
+```
+alt:  Version:               3.1
+      Created:               2026-08-30
+      Updated:               2026-08-31  --  SEC-1 und SEC-2 behoben, mit Regressionstests
+      Repository state:      Nachfolger von fa568bb, Arbeitsbaum sauber
+
+neu:  Version:               3.2
       Created:               2026-08-30  (Fassung 3.0, Stand commit 0b7b9b7)
-      Changed:               2026-08-31  (Fassung 3.1) -- OD-4 entschieden und
+      Updated:               2026-08-31  (Fassung 3.1) -- SEC-1 und SEC-2 behoben,
+                             mit Regressionstests
+      Changed:               (Fassung 3.2) -- OD-4 entschieden und
                              umgesetzt. Inhaltlich betroffen: 4.2, 12, 15, 23,
                              25, Anhang B. Nur Zahlen: 1, 3.4, 13, 28. Keine
                              Prinzipien, keine Roadmap, kein offener Befund
-                             beruehrt; SEC-1 und SEC-2 bleiben unveraendert offen
-      Repository state:      commit b17edf0, Arbeitsbaum sauber
-      Test state:            1047 von 1048 pytest gruen, ruff check und format sauber
+                             beruehrt
+      Repository state:      beim Eintragen einsetzen (Commit auf main)
+      Test state:            beim Eintragen einsetzen (gemessener Lauf)
 ```
 
-Die drei Folgezeilen zu KI-8 bleiben unveraendert -- der zeitabhaengige Test
+Die Folgezeilen zu KI-8 bleiben unveraendert -- der zeitabhaengige Test
 besteht weiter.
 
 ---
@@ -213,7 +221,7 @@ alt:  nein -- weder die Spec-Erstellung noch die Nachtragsrunde hat Code geaende
 ```
 
 > nein -- die Spec-Erstellung und die Nachtragsrunde haben keinen Code
-> geaendert. Fassung 3.1 begleitet eine Codeaenderung (OD-4), die
+> geaendert. Fassung 3.2 begleitet eine Codeaenderung (OD-4), die
 > ausschliesslich vorhandene Anzeigen betrifft: keine neue Faehigkeit, kein
 > Stub, keine Tabelle, kein vorgezogenes PLANNED-Feature
 

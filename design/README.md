@@ -44,6 +44,9 @@ xdg-open design/prototyp/index.html      # Linux
 Das Fenster schmaler ziehen zeigt die drei Groessenstufen. Die Systemeinstellung
 auf *Hell* zeigt die helle Fassung.
 
-**Einschraenkung:** Die Blaetter sind von Hand geschrieben und **in keinem
-Browser dargestellt worden** -- die Sitzung lief unter Linux ohne Bildschirm.
-Gebaut ist nicht geprueft; dieselbe Regel, die SPEC-3 fuer den Code aufstellt.
+**Einschraenkung:** Die Blaetter sind von Hand geschrieben. Bei der
+Konsolidierung (2026-09-01) wurden drei davon (01, 02, 08) erstmals in einem
+Browser gerendert -- helle Fassung, 1280 px, headless Chromium -- und stellen
+korrekt dar. Die uebrigen sechs Blaetter, die dunkle Fassung und die
+Groessenstufen sind weiterhin ungeprueft. Gebaut ist nicht geprueft; dieselbe
+Regel, die SPEC-3 fuer den Code aufstellt.

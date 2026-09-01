@@ -1,12 +1,14 @@
 # JARVIS — Projektstand und Uebergabe
 
-Stand: End-to-End-Review Phase 1-7, Branch `claude/jarvis-audit-phase-1-7-w73he0`.
-1018 Tests gruen, `ruff check` und `ruff format --check` sauber.
+Stand: Konsolidierung 2026-09-01, Branch `main`.
+1063 Tests gruen, `ruff check` und `ruff format --check` sauber.
 
 Dieses Dokument beschreibt den **tatsaechlichen** Stand, nicht die Absicht.
-Verbindliche Vorgabe bleibt `JARVIS-SPEC.md`. Ausfuehrliche Begruendungen
-stehen in `README.md`; hier steht, was eine neue Sitzung wissen muss, um ohne
-den bisherigen Verlauf weiterzuarbeiten.
+Verbindliche Vorgabe ist `JARVIS-SPEC-3.md` (Source of Truth); die
+historische `JARVIS-SPEC.md` bleibt als Ursprung liegen und gilt nur, wo
+SPEC-3 nichts sagt. Ausfuehrliche Begruendungen stehen in `README.md`; hier
+steht, was eine neue Sitzung wissen muss, um ohne den bisherigen Verlauf
+weiterzuarbeiten.
 
 ---
 
@@ -211,14 +213,56 @@ zu Recht -- zurueck. Innerhalb eines Prozesses laeuft die Kette vollstaendig.
 
 ---
 
+## 2c. Konsolidierung (2026-09-01)
+
+Vor dieser Sitzung lag die Arbeit in vier unverbundenen Branches; der
+Default-Branch war der aelteste Stand, und es gab weder `main` noch CI noch
+je einen Pull Request. Der juengste Arbeitsstand (Designsystem) enthielt die
+SEC-Fixe **nicht** -- sie lagen auf einem Geschwister-Branch.
+
+Was diese Sitzung getan hat:
+
+1. **Zusammengefuehrt:** `claude/jarvis-design-system-us1y4r` (Designsystem,
+   Entwurfsblaetter, Dashboard-Umbau mit `gate.preview`) und
+   `claude/javis-1-read-only-audit-e2lawf` (SEC-1 und SEC-2 behoben,
+   SPEC-3 Fassung 3.1). Der Merge war konfliktfrei; alle Tests gruen.
+2. **Naht geprueft und getestet:** Das Dashboard ruft `execute_approval`,
+   damit greifen atomarer Anspruch (SEC-2) und Allowlist auf dem Freigabeweg
+   (SEC-1) auch vom Browser aus. Zwei neue Tests in `test_web.py` halten das
+   fest: Doppelklick fuehrt genau einmal aus; ein bereits beanspruchter
+   Vorgang wird ueber die Route weder ausgefuehrt noch geschlossen.
+3. **SPEC-Versionierung bereinigt:** 3.1 gehoert den SEC-Fixen. Der
+   Dashboard-Nachtrag (`design/SPEC-3-NACHTRAG.md`, OD-4) ist auf **3.2**
+   umnummeriert und wartet weiter auf die Freigabe des Nutzers.
+4. **CI eingerichtet:** `.github/workflows/ci.yml` -- `uv sync`, `ruff check`,
+   `ruff format --check`, `pytest` bei jedem Push und Pull Request.
+5. **`CLAUDE.md` angelegt:** Befehle, Dokumenten-Rangfolge, Arbeitsregeln --
+   wird von jeder Claude-Code-Sitzung automatisch geladen.
+6. **Drei Entwurfsblaetter erstmals im Browser gerendert** (01, 02, 08;
+   helle Fassung, 1280 px, headless Chromium): sie stellen korrekt dar.
+   Dunkle Fassung und Groessenstufen bleiben ungeprueft.
+
+Die alten Branches (`claude/jarvis-spec-phase-1-e3hopg`,
+`claude/jarvis-audit-phase-1-7-w73he0`, `claude/jarvis-design-system-us1y4r`,
+`claude/javis-1-read-only-audit-e2lawf`) sind vollstaendig in `main`
+enthalten und koennen geloescht werden, sobald `main` der Default-Branch ist.
+
+Arbeitsweise ab jetzt: **jede Sitzung endet mit einem Pull Request gegen
+`main`**, nicht mit einem frei stehenden Branch. Die CI muss gruen sein,
+bevor gemerged wird.
+
+---
+
 ## 3. Tests
 
-**1018, alle gruen.** `uv run pytest` — Laufzeit rund 16 s.
+**1063, alle gruen.** `uv run pytest` — Laufzeit rund 19 s. Sie laufen seit
+der Konsolidierung auch in der CI (`.github/workflows/ci.yml`) bei jedem
+Push und Pull Request.
 
-Groesste Gruppen: `test_cli.py` (81), `test_voice.py` (79), `test_calendar.py`
-(55), `test_isolation.py` (41), `test_daemon.py` (38), `test_web.py` (40),
-`test_services.py` (36), `test_briefing.py` (33), `test_hardening.py` (32),
-`test_research.py` (30).
+Groesste Gruppen: `test_voice.py` (99), `test_cli.py` (84), `test_calendar.py`
+(64), `test_web.py` (54), `test_approvals.py` (51), `test_schema.py` (42),
+`test_isolation.py` (41), `test_briefing.py` (39), `test_daemon.py` (38),
+`test_research.py` (37).
 
 Keine Typechecks im Projekt konfiguriert (kein mypy, kein pyright).
 
@@ -383,6 +427,9 @@ dagegen. Anhalten und fragen.
 
 ## 10. Vorschlag fuer die Reihenfolge
 
+Die Konsolidierung (Abschnitt 2c) ist erledigt. Die Punkte 1 und 2 brauchen
+beide den Nutzer an seinem Mac und lassen sich als **ein** Termin erledigen.
+
 1. **Erste echte Verbindung** (Gmail + Kalender lesend, Stufe 0, Trockenlauf
    an). Der groesste offene Punkt ueberhaupt: alles ist gebaut, nichts ist je
    gelaufen. Braucht Zugangsdaten vom Nutzer.
@@ -400,7 +447,7 @@ dagegen. Anhalten und fragen.
 
 ```sh
 uv sync
-uv run pytest -q                 # 1018 Tests
+uv run pytest -q                 # 1063 Tests
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe

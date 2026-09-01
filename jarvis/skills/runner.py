@@ -21,7 +21,7 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 
-from jarvis.core.approvals import EXECUTED, FAILED, REJECTED, Approval, ApprovalStore
+from jarvis.core.approvals import EXECUTED, FAILED, PENDING, REJECTED, Approval, ApprovalStore
 from jarvis.core.audit import KIND_ACTION, KIND_DECISION, KIND_SYSTEM, AuditLog
 from jarvis.core.gate import Disposition, Gate
 from jarvis.skills.base import Decision, Result, Skill, TargetMismatch
@@ -224,12 +224,47 @@ def execute_approval(
     Ein-Aus-Schalter und Obergrenze gelten weiter; greift eine davon, bleibt
     der Vorgang offen und traegt den Grund als Vermerk. Erneut klicken kostet
     dann nichts, und niemand muss raten, warum nichts geschah.
+
+    Vor allem anderen steht der atomare Anspruch (SEC-2): `pending -> claimed`
+    gelingt genau einem Aufrufer, auch bei Doppelklick, zwei Arbeitern oder
+    Daemon und Dashboard gleichzeitig. Der Verlierer bekommt None und einen
+    Protokolleintrag mit dem Grund -- keine zweite Wirkung.
     """
     log = logger or logging.getLogger("jarvis.runner")
     if not approval.pending:
         return None
 
-    decision = _decision_from(approval)
+    beansprucht = approvals.claim(approval.id)
+    if beansprucht is None:
+        aktuell = approvals.get(approval.id)
+        zustand = aktuell.state if aktuell else "nicht vorhanden"
+        audit.record(
+            capability=skill.name,
+            kind=KIND_ACTION,
+            outcome="refused",
+            subject=approval.event_key,
+            detail={
+                "approval_id": approval.id,
+                "reason": f"kein Anspruch: Vorgang ist bereits {zustand}",
+            },
+        )
+        log.info(
+            "Freigabe nicht ausgefuehrt: Vorgang bereits beansprucht oder abgeschlossen",
+            extra={"skill": skill.name, "approval": approval.id, "state": zustand},
+        )
+        return None
+
+    # Aus der beanspruchten Zeile, nicht aus dem Abbild des Aufrufers --
+    # zwischen Lesen und Anspruch kann die Zeile veraendert worden sein.
+    try:
+        decision = _decision_from(beansprucht)
+    except ValueError:
+        # Ein Ziel in der Modellhaelfte (Prinzip 2.1). Der Vorgang ist damit
+        # unbrauchbar und wird geschlossen, nicht wieder freigegeben.
+        approvals.settle(
+            approval.id, FAILED, note="Ziel in der Modellhaelfte, Prinzip 2.1 verletzt"
+        )
+        raise
 
     # Erst die Ziele gegen die Quelle pruefen, dann das Gatter fragen. Umgekehrt
     # wuerde ein Kontingent fuer eine Entscheidung verbraucht, die gar nicht
@@ -260,7 +295,8 @@ def execute_approval(
     )
 
     if not verdict.may_act:
-        approvals.note(approval.id, verdict.reason)
+        # Anspruch zurueckgeben: der Vorgang bleibt offen und traegt den Grund.
+        approvals.release(approval.id, verdict.reason)
         log.info(
             "Freigabe nicht ausgefuehrt",
             extra={"skill": skill.name, "approval": approval.id, "reason": verdict.reason},
@@ -343,8 +379,13 @@ def reject_approval(
     approvals: ApprovalStore,
     note: str = "von Hand verworfen",
 ) -> bool:
-    """Verwirft eine Entscheidung. Es geschieht nichts ausser einem Vermerk."""
-    if not approvals.settle(approval.id, REJECTED, note=note):
+    """Verwirft eine Entscheidung. Es geschieht nichts ausser einem Vermerk.
+
+    Nur Wartendes laesst sich verwerfen: ein bereits beanspruchter Vorgang
+    wird gerade ausgefuehrt, und ein Verwerfen danach saehe aus wie ein
+    Zuruecknehmen einer Wirkung, die schon draussen ist.
+    """
+    if not approvals.settle(approval.id, REJECTED, note=note, only_from=(PENDING,)):
         return False
     audit.record(
         capability=approval.skill,

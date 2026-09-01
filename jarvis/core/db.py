@@ -290,6 +290,19 @@ MIGRATIONS: list[tuple[int, tuple[str, ...]]] = [
             "CREATE INDEX ix_findings_question ON research_findings (question_id)",
         ),
     ),
+    (
+        8,
+        (
+            # SEC-2: `claimed` ist der Zustand zwischen Anspruch und Abschluss
+            # einer Freigabe. Er zaehlt als offen: solange eine Ausfuehrung
+            # laeuft, darf kein zweiter Vorgang zu derselben Frage entstehen.
+            "DROP INDEX ux_approvals_offen",
+            """
+            CREATE UNIQUE INDEX ux_approvals_offen ON approvals (skill, event_key)
+            WHERE state IN ('pending', 'claimed')
+            """,
+        ),
+    ),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1][0]

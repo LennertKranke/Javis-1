@@ -3,12 +3,14 @@
 ```
 Document:              JARVIS-SPEC-3
 Status:                CURRENT SOURCE OF TRUTH
-Version:               3.0
+Version:               3.1
 Created:               2026-08-30
-Repository state:      commit 0b7b9b7, Arbeitsbaum sauber
-Test state:            1017 von 1018 pytest gruen, ruff check und format sauber
-                       Ein Test ist zeitabhaengig und faellt taeglich fuer rund
-                       zwei Stunden aus -- siehe KI-8. Kein Codefehler
+Updated:               2026-08-31  --  SEC-1 und SEC-2 behoben, mit Regressionstests
+Repository state:      Nachfolger von fa568bb, Arbeitsbaum sauber
+Test state:            1031 pytest gruen (in diesem Lauf alle), ruff check und
+                       format sauber. Ein Test ist zeitabhaengig und faellt
+                       taeglich fuer rund zwei Stunden aus -- siehe KI-8.
+                       Kein Codefehler
 Based on:              aktueller Repository-Code und tatsaechlich ausgefuehrte Tests
                        Phase-1-7-Audit (zwei Runden, abgeschlossen)
                        historische JARVIS-SPEC.md (SPEC-1)
@@ -81,7 +83,7 @@ lokalen Dashboard, in dem sich Entscheidungen freigeben lassen.
 **Was tatsaechlich steht.** Der Kern (Konfiguration, Datenbank, Protokoll mit
 Hash-Kette, Ratenbegrenzung, Stoppschalter, Normalisierung, Gatter, Freigaben)
 ist vollstaendig und in den sicherheitskritischen Teilen belastbar getestet:
-15 882 Zeilen Quellcode, 12 062 Zeilen Tests, 1018 Tests -- davon 1017 zu jeder
+16 018 Zeilen Quellcode, 12 346 Zeilen Tests, 1031 Tests -- davon 1030 zu jeder
 Tageszeit gruen, einer zeitabhaengig (KI-8). Sechs Faehigkeiten nach einem
 einheitlichen Vertrag. Drei Bedienwege: CLI, Dashboard,
 Sprache.
@@ -100,15 +102,15 @@ ergaben sie zusammen eine Sackgasse.
 
 **Was bei der Erstellung dieser Spezifikation dazukam.** Der Blueprint verlangt
 zwei gezielte Pruefungen (§44 Approval-vs-Allowlist, §45 Doppelausfuehrung).
-Beide wurden durchgefuehrt, **beide haben eine Luecke bestaetigt**:
+Beide wurden durchgefuehrt, beide haben eine Luecke bestaetigt -- und beide sind
+seit Version 3.1 **behoben, mit Regressionstests**:
 
-* **SEC-1**: Eine Freigabe umgeht die Allowlist. Bestaetigt, **OFFEN**.
-* **SEC-2**: Kein atomarer Anspruch auf eine Freigabe. Doppelausfuehrung erzeugt
-  doppelte Wirkung. Bestaetigt, **OFFEN**.
-
-Beide sind dokumentiert, nicht behoben -- die Erstellung dieser Spezifikation ist
-ein Dokumentationsauftrag (Blueprint §3, §65). Sie stehen als oberste
-REQUIRED-Punkte in Abschnitt 21.
+* **SEC-1**: Eine Freigabe umging die Allowlist. **BEHOBEN**: die Allowlist wird
+  auf dem Freigabeweg in `verify_targets` **und** unmittelbar vor dem Versand in
+  `act()` geprueft. Abschnitt 17.
+* **SEC-2**: Kein atomarer Anspruch auf eine Freigabe; Doppelausfuehrung erzeugte
+  doppelte Wirkung. **BEHOBEN**: der Freigabeweg beansprucht einen Vorgang atomar
+  (`pending -> claimed`) auf Datenbankebene, bevor gehandelt wird. Abschnitt 17.
 
 **Die Lehre aus dem Querschnitt**, die diese Spezifikation praegt:
 
@@ -177,7 +179,7 @@ bewusst schmal: `anthropic`, `google-auth`, `google-auth-oauthlib`, `starlette`,
 `uvicorn`. Kein Frontend-Framework, kein ORM, kein `jsonschema` -- der
 Schemapruefer ist eine eigene kleine Teilmenge.
 
-SQLite mit sieben Migrationen ueber `PRAGMA user_version`, WAL,
+SQLite mit acht Migrationen ueber `PRAGMA user_version`, WAL,
 `BEGIN IMMEDIATE` fuer Protokoll und Ratenbegrenzung. Logs als JSON Lines.
 
 **Kein Typpruefer konfiguriert** (siehe TD-2).
@@ -333,14 +335,14 @@ Funktionsanforderungen sind.
 
 | Eigenschaft | Anforderung | Heutiger Stand |
 |---|---|---|
-| **Security** | Jede Aktion nach aussen **MUST** deterministisch autorisiert sein | erfuellt fuer die vorhandenen Wege; SEC-1 und SEC-2 offen |
+| **Security** | Jede Aktion nach aussen **MUST** deterministisch autorisiert sein | erfuellt fuer die vorhandenen Wege; SEC-1 und SEC-2 seit 3.1 behoben |
 | **Reliability** | Ein Fehler **MUST NOT** zu einer unkontrollierten Aktion fuehren, und **MUST NOT** wie ein Erfolg aussehen | erfuellt: `decide` und `act` auf beiden Wegen abgesichert, Daemon je Tick, alles faellt geschlossen aus |
 | **Observability** | Jede Aktion **MUST** nachvollziehbar sein -- siehe 4.9 | erfuellt fuer Entscheidung, Gatterurteil und Ergebnis |
 | **Modularity** | Skills und Anbieter **MUST** austauschbar sein, ohne den Kern anzufassen | erfuellt: `@register_skill`, `Provider`-Schnittstelle, Zuordnung in der Konfiguration |
 | **Maintainability** | Eine neue Faehigkeit **SHOULD** ohne Eingriff in den Kern integrierbar sein | erfuellt; Einschraenkung: `core/config.py` waechst mit jeder Faehigkeit (TD-4) |
 | **Privacy** | Daten **MUST** nur dort verarbeitet und gespeichert werden, wo es noetig ist | erfuellt: keine Mailinhalte in der Ablage, Vertraulichkeitssperre, 0700/0600 |
 | **Portability** | macOS ist Zielplattform und **MUST** beruecksichtigt werden | Plattformweichen vorhanden, **nichts davon auf macOS gemessen** (Abschnitt 14) |
-| **Testability** | Sicherheitskritische Funktionen **MUST** automatisiert pruefbar sein | erfuellt: 1018 Tests, Sicherheitseigenschaften einzeln getestet und gegen Mutation geprueft |
+| **Testability** | Sicherheitskritische Funktionen **MUST** automatisiert pruefbar sein | erfuellt: 1031 Tests, Sicherheitseigenschaften einzeln getestet und gegen Mutation geprueft |
 
 Diese Liste ist kein Wunschzettel: wo eine Eigenschaft heute nicht erfuellt ist,
 steht der Verweis auf den Befund, der sie offen haelt.
@@ -379,8 +381,8 @@ Obergrenze erreicht?       -> BLOCKED
 ```
 
 **MUST:** Eine Freigabe von Hand ersetzt die Autonomiestufe -- **nicht** den
-Stoppschalter, **nicht** den Ein-Aus-Schalter, **nicht** die Obergrenze und
-**nicht** den Trockenlauf.
+Stoppschalter, **nicht** den Ein-Aus-Schalter, **nicht** die Obergrenze,
+**nicht** den Trockenlauf und **nicht** die Allowlist (SEC-1, gemessen).
 
 **Gemessen:** Bei aktivem Trockenlauf bleibt ein freigegebener Vorgang offen,
 mit Vermerk "Trockenlauf global aktiv".
@@ -512,12 +514,18 @@ dasselbe Gatter, und beide fuehren Buch.
 
 ```
 run_skill:           poll -> decide -> [GATTER] -> act -> after
-execute_approval:            verify_targets -> [GATTER] -> act -> after_approval
+execute_approval:    claim -> verify_targets -> [GATTER] -> act -> after_approval
 ```
 
 Dass `run_skill` kein `verify_targets` braucht, ist richtig: dort sind die Ziele
 gerade erst aus der Quelle berechnet worden. Auf dem Freigabeweg kommt die
 Entscheidung aus der Datenbank und **MUST** gegen die Quelle geprueft werden.
+
+`claim` ist der atomare Anspruch (SEC-2): der Uebergang `pending -> claimed` ist
+ein einzelnes UPDATE mit Zustandsbedingung unter `BEGIN IMMEDIATE` und gelingt
+genau einem Aufrufer, auch ueber Prozessgrenzen. Der Verlierer tut nichts und
+bekommt den Grund ins Protokoll. Lehnt das Gatter nach dem Anspruch ab, gibt
+`release` den Vorgang zurueck auf `pending`, mit dem Grund als Vermerk.
 
 `after_approval` ist die Gegenstelle zu `after` und stammt aus dem Audit: auf dem
 Freigabeweg gibt es kein Ereignis mehr, weil die Entscheidung gespeichert war und
@@ -532,7 +540,7 @@ Freigabeweg eine Sackgasse (siehe Abschnitt 17, Q-1).
 |---|---|
 | Gatter | `act`, `dry_run`, `blocked` |
 | Ergebnis | `performed`, `failed` |
-| Freigabe | `pending`, `executed`, `rejected`, `failed` |
+| Freigabe | `pending`, `claimed`, `executed`, `rejected`, `failed` |
 | Mail | `seen`, `analysed`, `acted`, `skipped` |
 | Antwort | `planned`, `drafted`, `skipped`, `held`, gesendet ueber `sent_at` |
 
@@ -555,17 +563,21 @@ wird, welche das System heute wirklich unterscheidet und welche nicht:
 `performed` sind getrennt, und eine Ausnahme wird als `failed` protokolliert,
 nicht verschluckt.
 
-**Bekannte Luecken.** Zwei, und sie haengen zusammen:
+**Bekannte Luecken.**
 
-1. Es gibt **keinen** zentralen, atomaren Anspruch auf eine Aktion (`CLAIMED` /
-   `EXECUTING`). Siehe SEC-2.
+1. Der atomare Anspruch (`claimed`) existiert seit SEC-2 **auf dem
+   Freigabeweg**. Fuer `run_skill` gibt es weiterhin keinen zentralen Anspruch --
+   dort entstehen die Entscheidungen frisch aus `poll()`, zwei parallel
+   laufende Durchlaeufe derselben Faehigkeit sind aber nicht zentral
+   ausgeschlossen (der Daemon schuetzt sich mit `flock`, die CLI nicht).
+   Gehoert in den Execution Layer, siehe 19.2 und OD-1.
 2. Ein **teilweise ausgefuehrter** externer Vorgang hat keinen eigenen Zustand.
    Bricht `act()` nach dem Aufruf des Dienstes ab -- der Entwurf ist gesendet,
    das Nachtragen scheitert --, steht im Protokoll `failed`, obwohl aussen etwas
    geschehen ist. Heute ist das entschaerft, weil das Nachtragen nach dem
    Versand gegen einen Fehler abgesichert ist und die Aktion trotzdem als
-   ausgefuehrt gilt. Als allgemeine Eigenschaft fehlt es. Gehoert zusammen mit
-   SEC-2 in den Execution Layer, siehe 19.2 und OD-1.
+   ausgefuehrt gilt. Als allgemeine Eigenschaft fehlt es. Gehoert in den
+   Execution Layer, siehe 19.2 und OD-1.
 
 ### 5.3 Fehlerbehandlung
 
@@ -877,8 +889,8 @@ dasselbe Gatter -- nicht direkt an einen Dienst.
 
 ## 13. Testing
 
-**CURRENT:** 1018 Tests, Laufzeit rund 16 s. Verhaeltnis Testcode zu Quellcode
-0,76 : 1. **1017 davon laufen zu jeder Tageszeit gruen**; einer ist zeitabhaengig
+**CURRENT:** 1031 Tests, Laufzeit rund 16 s. Verhaeltnis Testcode zu Quellcode
+0,77 : 1. **1030 davon laufen zu jeder Tageszeit gruen**; einer ist zeitabhaengig
 und faellt taeglich in einem Zwei-Stunden-Fenster aus (KI-8). Das ist ein Fehler
 im Test, nicht im Code -- aber er entwertet jede pauschale "alle gruen"-Aussage.
 
@@ -939,13 +951,13 @@ Ausschliesslich anhand des Repository- und Auditstandes gefuellt.
 | Capability | Status | Tested | Mock | Live | macOS | Notes |
 |---|---|---|---|---|---|---|
 | Konfiguration, Autonomiestufen | CURRENT | ja | -- | -- | NO | 7 Faehigkeiten, alle Stufe 0, `dry_run = true` |
-| SQLite, Migrationen | CURRENT | ja | -- | -- | NO | 7 Migrationen, WAL, `BEGIN IMMEDIATE` |
+| SQLite, Migrationen | CURRENT | ja | -- | -- | NO | 8 Migrationen, WAL, `BEGIN IMMEDIATE` |
 | Protokoll mit Hash-Kette | CURRENT | ja | -- | -- | NO | UPDATE/DELETE gemessen abgewiesen |
 | Ratenbegrenzung | CURRENT | ja | -- | -- | NO | nebenlaeufig geprueft; Trockenlauf verbraucht nichts |
 | Stoppschalter | CURRENT | ja | -- | -- | NO | wirkt ohne Datenbank, faellt geschlossen aus |
 | Normalisierung | CURRENT | ja | -- | -- | NO | Rahmenfaelschung gemessen blockiert |
 | Gatter | CURRENT | ja | -- | -- | NO | einzige Stelle, gilt fuer alle Faehigkeiten |
-| Freigabewarteschlange | CURRENT | ja | -- | -- | NO | **SEC-1, SEC-2 offen** |
+| Freigabewarteschlange | CURRENT | ja | -- | -- | NO | SEC-1, SEC-2 behoben; atomarer Anspruch `claimed` |
 | Dateirechte | CURRENT | ja | -- | -- | NO | 0700/0600, reparierend, gemessen |
 | Zielfeldsperre | CURRENT | ja | -- | -- | NO | 9 Zielnamen gemessen abgewiesen |
 | Prozesstrennung | CURRENT | ja | -- | -- | NO | `subprocess` wirksam, `sandbox` nie ausgefuehrt |
@@ -971,40 +983,40 @@ Ausschliesslich anhand des Repository- und Auditstandes gefuellt.
 |---|---|---|---|---|
 | **Stop Switch** | Datei, wirkt ohne DB, vor der Obergrenze ausgewertet, unabhaengig von Modell, UI, Sprache | **ja**, ausgefuehrt | niedrig | Bei jeder neuen Faehigkeit erhalten; kein Umgehungspfad |
 | **Target Validation** | Vierfach: Schemasperre, `Decision`-Sperre, `verify_targets`, Freigabeweg ueber `Decision` | **ja**, gemessen durch die ganze Kette | niedrig | Bei neuen Zielarten (Pfad, Geraet) dieselbe Strenge |
-| **Approval** | Ersetzt die Stufe, nicht Stoppschalter/Trockenlauf/Obergrenze | **ja** fuer diese Eigenschaft | **hoch** | **SEC-1 und SEC-2 schliessen** |
-| **Allowlist** | Nur in `decide()` ausgewertet. Der Freigabeweg umgeht `decide()` | **Luecke bestaetigt** | **hoch** | **SEC-1**: in `verify_targets` und unmittelbar vor dem Versand pruefen |
+| **Approval** | Ersetzt die Stufe, nicht Stoppschalter/Trockenlauf/Obergrenze/Allowlist; atomarer Anspruch vor der Ausfuehrung | **ja**, gemessen (SEC-1- und SEC-2-Regressionstests) | niedrig | Bei jedem neuen Ausfuehrungsweg: Anspruch zuerst, Freigabe ersetzt nur die Stufe |
+| **Allowlist** | In `decide()`, in `verify_targets` **und** in der harten Sperre in `act()` unmittelbar vor dem Versand | **ja**, gemessen je Schicht | niedrig | Bei neuen ausgehenden Faehigkeiten dieselbe Doppelung: Pruefung im Urteil und unmittelbar vor der Wirkung |
 | **Prompt Injection** | Normalisierung + P1 + P2; Modell hat keine Werkzeuge, Ausgabe wird nie ausgefuehrt | **ja**, Fassung des Rahmens blockiert; Ziel aus Kopffeldern gemessen | niedrig | Bei Dokumenten und Web dieselbe Grenze |
 | **Isolation** | Eigener Prozess, gefilterte Umgebung, leeres HOME, Schluessel ueber stdin | **teilweise**: Dateizugriff und Netz offen | mittel | `sandbox` auf macOS messen; Zielhost-Allowlist pruefen |
 | **Secret Storage** | Keychain-only auf macOS, kein stiller Rueckfall, Abweichung gemeldet | **teilweise**: nur simulierte Plattform | mittel | Auf echtem macOS verifizieren |
 | **File Permissions** | 0700/0600, reparierend, vollstaendig inkl. WAL, Rotation, Sperrdatei, Token | **ja**, gemessen | niedrig | Bei neuen Dateiarten `core/files.py` benutzen |
 | **Audit** | Hash-Kette + SQLite-Trigger, auch abgelehnte Aktionen | **ja**, Manipulation gemessen abgewiesen | niedrig | Bei komplexeren Aktionen Kette erhalten |
-| **Idempotency** | **Kein** zentraler atomarer Anspruch. Nur `mail_send` schuetzt sich selbst ueber `sent_at` | **Luecke bestaetigt**: doppelte Freigabe erzeugt zwei Entwuerfe | **hoch** | **SEC-2**: zentraler Anspruch im Ausfuehrungsweg |
+| **Idempotency** | Zentraler atomarer Anspruch (`pending -> claimed`) im Freigabeweg, fuer alle Faehigkeiten; `mail_send` schuetzt sich zusaetzlich ueber `sent_at` | **ja**, gemessen: doppelte und nebenlaeufige Freigabe erzeugen genau eine Wirkung | niedrig | Beim Execution Layer (19.2) den Anspruch auf alle Ausfuehrungswege ausdehnen |
 | **Exception Handling** | `decide` und `act` auf beiden Wegen abgesichert, Daemon je Tick | **ja**, gemessen | niedrig | Bei neuen Wegen mitziehen |
 
 ---
 
 ## 17. Known Issues
 
-### Bestaetigte Sicherheitsluecken -- OFFEN
+### Bestaetigte Sicherheitsluecken -- BEHOBEN in 3.1
 
-#### SEC-1 — Eine Freigabe umgeht die Allowlist
+#### SEC-1 — Eine Freigabe umging die Allowlist
 
 ```
-Status:      BESTAETIGT, OFFEN
-Schwere:     hoch  (eine E-Mail geht an eine gesperrte Adresse)
+Status:      BEHOBEN (2026-08-31), mit Regressionstests und Mutationsprobe
+Schwere:     hoch  (eine E-Mail ging an eine gesperrte Adresse)
 Gefunden:    bei der Erstellung von SPEC-3, Blueprint §44
 Betroffen:   jarvis/skills/runner.py (execute_approval)
              jarvis/skills/mail/reply.py (MailSendSkill.verify_targets, act)
 ```
 
-**Ursache.** Die Allowlist wird ausschliesslich in `MailSendSkill.decide()`
+**Ursache.** Die Allowlist wurde ausschliesslich in `MailSendSkill.decide()`
 ausgewertet. Der Freigabeweg ruft `decide()` nie auf -- er baut die Entscheidung
-aus der Datenbank wieder auf und geht direkt zu `verify_targets`. Dort werden
+aus der Datenbank wieder auf und geht direkt zu `verify_targets`. Dort wurden
 Antwortdatensatz, Versandzustand, Durchsicht und Entwurfsintegritaet geprueft,
-**nicht** die Allowlist. Die harte Sperre in `act()` prueft Entwurfsidentitaet und
-Fingerabdruck -- ebenfalls nicht die Allowlist.
+**nicht** die Allowlist. Die harte Sperre in `act()` pruefte Entwurfsidentitaet
+und Fingerabdruck -- ebenfalls nicht die Allowlist.
 
-**Fehlerszenario, gemessen:**
+**Fehlerszenario, gemessen (vor dem Fix):**
 
 ```
 1. Adresse anna@example.com steht auf der Allowlist
@@ -1018,35 +1030,49 @@ Fingerabdruck -- ebenfalls nicht die Allowlist.
 ERGEBNIS: an eine gesperrte Adresse gesendet
 ```
 
-**Gewuenschtes Verhalten.** Eine Freigabe **MUST** ausschliesslich die
-Autonomiestufe ersetzen. Sie darf die Allowlist nicht ersetzen -- so wie sie
-Stoppschalter, Trockenlauf und Obergrenze nicht ersetzt. Die Allowlist gehoert in
-`verify_targets` **und** in die harte Sperre unmittelbar vor dem Versand, weil
-zwischen Freigabe und Ausfuehrung Tage liegen koennen.
+**Fix.** Eine Freigabe ersetzt ausschliesslich die Autonomiestufe -- so wie sie
+Stoppschalter, Trockenlauf und Obergrenze nicht ersetzt, ersetzt sie jetzt auch
+die Allowlist nicht. Die Pruefung steht doppelt, weil zwischen Freigabe und
+Ausfuehrung Tage liegen koennen, und beide Male gegen den Empfaenger aus dem
+eigenen Antwortspeicher, nie aus der aufbewahrten Entscheidung:
 
-**Regressionstest (zu schreiben).** Vorgang bei erlaubter Adresse einstellen,
-Adresse sperren, freigeben -- es darf nichts hinausgehen, und der Vorgang muss den
-Grund tragen. Gegenprobe: bei weiterhin erlaubter Adresse geht er hinaus.
+* `MailSendSkill.verify_targets`: `Allowlist.permits` -- nicht erlaubt heisst
+  `TargetMismatch`, der Vorgang wird mit dem Grund als `failed` geschlossen und
+  der Grund steht im Protokoll (`refused`).
+* `MailSendSkill.act`: dieselbe Pruefung in der harten Sperre unmittelbar vor
+  `send_draft`, unabhaengig vom Weg hierher -- wer `decide` und `verify_targets`
+  umgeht, scheitert hier.
 
-**Status des Fixes:** nicht behoben. Diese Runde ist ein Dokumentationsauftrag
-(Blueprint §3, §65). Oberster REQUIRED-Punkt, Abschnitt 21.
+Das Modell bestimmt auch hier zu keinem Zeitpunkt das Ziel (Prinzip 2.1 gilt
+unveraendert; `Decision` prueft das beim Wiederaufbau erneut).
+
+**Regressionstests** (`tests/test_reply_runner.py`, alle vor dem Fix gemessen
+rot, danach gruen):
+
+* `test_eine_freigabe_umgeht_die_allowlist_nicht` -- das Szenario oben: nichts
+  geht hinaus, der Grund steht am Vorgang und im Protokoll.
+* `test_gegenprobe_eine_weiterhin_erlaubte_adresse_geht_hinaus`.
+* `test_verify_targets_prueft_die_allowlist` -- Mutationsprobe erste Schicht.
+* `test_die_harte_sperre_prueft_die_allowlist_unmittelbar_vor_dem_versand` --
+  Mutationsprobe zweite Schicht, ruft `act()` direkt.
 
 #### SEC-2 — Kein atomarer Anspruch auf eine Freigabe
 
 ```
-Status:      BESTAETIGT, OFFEN
+Status:      BEHOBEN (2026-08-31), mit Regressionstests, auch nebenlaeufig
 Schwere:     hoch  (doppelte externe Wirkung)
 Gefunden:    bei der Erstellung von SPEC-3, Blueprint §45
 Betroffen:   jarvis/skills/runner.py (execute_approval)
              jarvis/core/approvals.py
+             jarvis/core/db.py (Migration 8)
 ```
 
-**Ursache.** `execute_approval` prueft `approval.pending` auf dem **uebergebenen
-Abbild**, nicht gegen die Datenbank, und es gibt keinen Zustand zwischen
+**Ursache.** `execute_approval` pruefte `approval.pending` auf dem **uebergebenen
+Abbild**, nicht gegen die Datenbank, und es gab keinen Zustand zwischen
 `pending` und `executed`. Zwei Aufrufe mit demselben Abbild -- Doppelklick, zwei
-Arbeiter, Daemon und Dashboard gleichzeitig -- laufen beide durch.
+Arbeiter, Daemon und Dashboard gleichzeitig -- liefen beide durch.
 
-**Fehlerszenario, gemessen:**
+**Fehlerszenario, gemessen (vor dem Fix):**
 
 ```
 mail_reply, derselbe Vorgang zweimal freigegeben:
@@ -1057,20 +1083,51 @@ mail_reply, derselbe Vorgang zweimal freigegeben:
 ERGEBNIS: doppelter Entwurf im Postfach
 ```
 
-Bei `mail_send` haelt es -- aber **zufaellig**: `verify_targets` prueft dort
-`sent_at`, und das ist gesetzt. Der Schutz liegt in der Faehigkeit, nicht im
-Rahmenwerk. Eine kuenftige Faehigkeit erbt ihn nicht.
+Bei `mail_send` hielt es -- aber **zufaellig**: `verify_targets` prueft dort
+`sent_at`. Der Schutz lag in der Faehigkeit, nicht im Rahmenwerk.
 
-**Gewuenschtes Verhalten.** Der Ausfuehrungsweg **MUST** einen Vorgang atomar
-beanspruchen, bevor gehandelt wird -- ein Zustandsuebergang
-`pending -> claimed`, der nur einmal gelingen kann. Konzeptionell:
-`PENDING -> CLAIMED -> EXECUTING -> SUCCEEDED | FAILED | CANCELLED`. Die genaue
-Zustandsmaschine wird nach Analyse des bestehenden Codes festgelegt (OD-1).
+**Fix.** `execute_approval` beansprucht den Vorgang atomar, bevor irgendetwas
+geschieht: `ApprovalStore.claim` ist der Uebergang `pending -> claimed` als
+einzelnes UPDATE mit Zustandsbedingung unter `BEGIN IMMEDIATE` -- auf
+Datenbankebene, nicht als Python-Zustand, und damit korrekt ueber getrennte
+Verbindungen und Prozesse. Genau ein Aufrufer gewinnt; der Verlierer tut nichts
+und traegt den Grund ins Protokoll (`refused`, "kein Anspruch"). Der Schutz
+liegt im Rahmenwerk und gilt fuer **alle** Faehigkeiten. Im Einzelnen:
 
-**Regressionstest (zu schreiben).** Derselbe Vorgang zweimal ausgefuehrt -- genau
-eine Wirkung. Zusaetzlich nebenlaeufig mit getrennten Verbindungen.
+* Zustandsmodell: `pending -> claimed -> executed | failed`; `rejected` nur aus
+  `pending` (was gerade ausgefuehrt wird, laesst sich nicht mehr verwerfen).
+* Lehnt das Gatter nach dem Anspruch ab (Stoppschalter, Obergrenze,
+  Trockenlauf), gibt `release` den Vorgang zurueck auf `pending`, mit Grund.
+* Die Entscheidung wird aus der **beanspruchten Zeile** wieder aufgebaut, nicht
+  aus dem Abbild des Aufrufers.
+* `claimed` zaehlt als offen: der Teilindex `ux_approvals_offen` (Migration 8)
+  und der Einstell-Check verhindern, dass waehrend einer laufenden Ausfuehrung
+  eine zweite Kopie desselben Vorgangs entsteht.
+* Stirbt der Prozess zwischen Anspruch und Abschluss, bleibt der Vorgang als
+  `claimed` stehen und wird **nie von selbst erneut ausgefuehrt** -- das System
+  faellt geschlossen aus, nicht offen. Ein solcher Vorgang ist unter den
+  letzten Vorgaengen und in der Zustandszaehlung sichtbar, aber nicht mehr
+  freigebbar; einen Bedienweg zum Aufraeumen gibt es bewusst noch nicht
+  (gehoert zu OD-1). Das ist die eine offen dokumentierte Einschraenkung.
 
-**Status des Fixes:** nicht behoben. Zweiter REQUIRED-Punkt.
+Die volle konzeptionelle Zustandsmaschine
+(`PENDING -> CLAIMED -> EXECUTING -> SUCCEEDED | FAILED | CANCELLED`) bleibt
+OD-1 und dem Execution Layer (19.2) vorbehalten -- hier steht das Minimum, das
+die Doppelwirkung ausschliesst.
+
+**Regressionstests** (vor dem Fix gemessen rot bzw. den Befund reproduzierend,
+danach gruen):
+
+* `tests/test_reply_runner.py::test_eine_doppelte_freigabe_erzeugt_nur_einen_entwurf`
+  -- das gemessene Szenario: genau ein Entwurf.
+* `tests/test_approvals.py::test_dieselbe_freigabe_zweimal_wirkt_nur_einmal`,
+  `test_der_verlierer_bekommt_einen_grund_ins_protokoll`,
+  `test_der_anspruch_ist_atomar`,
+  `test_der_anspruch_haelt_nebenlaeufig_ueber_getrennte_verbindungen` (zwei
+  Faeden, zwei eigene Datenbankverbindungen, genau ein Gewinner),
+  `test_freigeben_am_stoppschalter_gibt_den_anspruch_zurueck`,
+  `test_beanspruchtes_laesst_sich_nicht_verwerfen`,
+  `test_solange_beansprucht_wird_nichts_neues_eingestellt`.
 
 ### Behobene Befunde aus dem Phase-1-7-Audit
 
@@ -1184,9 +1241,9 @@ externe Aktionen direkt kontrolliert.
 ### 19.2 Action Execution Layer — PLANNED
 
 Heute traegt jede Faehigkeit ein Stueck Verantwortung fuer den Ablauf. Der
-Freigabeweg (Q-1) und der fehlende atomare Anspruch (SEC-2) sind Symptome
-desselben Musters. Ein zentraler Ausfuehrungsweg wuerde beides an einer Stelle
-loesen:
+Freigabeweg (Q-1) und der lange fehlende atomare Anspruch (SEC-2) waren
+Symptome desselben Musters. Ein zentraler Ausfuehrungsweg buendelt das an einer
+Stelle:
 
 ```
 Skill Decision
@@ -1195,20 +1252,22 @@ Skill Decision
       -> Authorization       (Stufe, Allowlist, Policy)
       -> Approval Check
       -> Stop Switch
-      -> Atomic Claim        (loest SEC-2)
+      -> Atomic Claim        (SEC-2: fuer den Freigabeweg umgesetzt)
       -> External Action
       -> Result
       -> Audit
 ```
 
 **Was die heutige Architektur dafuer schon mitbringt:** ein einziges Gatter,
-`verify_targets` als Vertragsbestandteil, die Hash-Kette, und seit dem Audit zwei
-symmetrische Wege. **Was fehlt:** der atomare Anspruch und die Allowlist als
-Teil der Autorisierung statt der Entscheidung.
+`verify_targets` als Vertragsbestandteil, die Hash-Kette, zwei symmetrische
+Wege -- und seit den SEC-Fixes den atomaren Anspruch auf dem Freigabeweg sowie
+die Allowlist in Zielpruefung und harter Sperre, nicht nur in der Entscheidung.
+**Was fehlt:** die gemeinsame Schnittstelle beider Wege, der Anspruch auch fuer
+`run_skill`, und die volle Zustandsmaschine (OD-1).
 
 **Explizit nicht jetzt umgesetzt:** keine neue Klasse, kein Interface, kein
-Umbau. Die Beschreibung dient dazu, SEC-1 und SEC-2 nicht als Einzelpflaster zu
-loesen, sondern in die richtige Richtung.
+Umbau. Die SEC-Fixes wurden bewusst so geschnitten, dass sie in diese Richtung
+zeigen, statt ihr im Weg zu stehen.
 
 ### 19.3 Extension Points
 
@@ -1496,9 +1555,9 @@ Audit-, State- und Stop-System gebaut werden.
 ```
 [erledigt]  Phase-1-7-Audit, zwei Runden
 [erledigt]  Sicherheits- und Zuverlaessigkeitskorrekturen (A-G, N-1..N-3, Q-1..Q-3)
-[erledigt]  SPEC-3  <- hier stehen wir
+[erledigt]  SPEC-3
+[erledigt]  SEC-1 und SEC-2 schliessen  <- hier stehen wir
 
-  1. SEC-1 und SEC-2 schliessen                          REQUIRED
   2. Erste echte Verbindung (Gmail + Kalender, lesend)   REQUIRED
   3. macOS-Verifikation                                  REQUIRED
   4. Execution Layer konsolidieren                       REQUIRED
@@ -1512,17 +1571,17 @@ Audit-, State- und Stop-System gebaut werden.
  12. Dauerbetrieb haerten und optimieren                 PLANNED
 ```
 
-### Die fuenf REQUIRED-Punkte
+### Die REQUIRED-Punkte
 
 | # | Was | Warum jetzt | Braucht |
 |---|---|---|---|
-| **1** | **SEC-1 und SEC-2 schliessen** | Zwei bestaetigte Sicherheitsluecken im Freigabeweg. Beide sind Voraussetzung dafuer, dass eine echte Verbindung ueberhaupt verantwortbar ist | nichts ausser Freigabe |
+| **1** | **SEC-1 und SEC-2 schliessen** -- **erledigt (2026-08-31)**, siehe Abschnitt 17 | Zwei bestaetigte Sicherheitsluecken im Freigabeweg. Beide waren Voraussetzung dafuer, dass eine echte Verbindung ueberhaupt verantwortbar ist | -- |
 | **2** | Erste echte Verbindung, lesend, Stufe 0, Trockenlauf an | Der groesste offene Punkt ueberhaupt. Alles ist gebaut, nichts ist je gelaufen. OAuth, Fehlerformate, Token-Erneuerung sind ungepruefte Annahmen | Google-Cloud-Projekt, Desktop-OAuth |
 | **3** | macOS-Verifikation | Zielplattform. `jarvis llm check` mit Sandbox, `services check --live`, Plist laden, Keychain, Whisper, `say` | den Mac; keine neue Zeile Code |
 | **4** | Execution Layer konsolidieren | SEC-2, TD-3 und KI-1 haben dieselbe Wurzel. Einzeln geflickt bleiben sie wiederkehrend | Entscheidung OD-1 |
 | **5** | Netzquelle fuer Recherche | Die Faehigkeit steht, findet aber nur den Beispielbestand | Anbieter-Key oder eigene Quelle |
 
-**Reihenfolge-Begruendung.** 1 vor 2, weil eine bestaetigte Luecke im
+**Reihenfolge-Begruendung.** 1 stand vor 2, weil eine bestaetigte Luecke im
 Freigabeweg nicht mit echten Zugangsdaten kombiniert werden sollte. 2 vor 4,
 weil der Execution Layer aus den Erfahrungen der ersten echten Verbindung lernen
 sollte statt sie vorwegzunehmen. 3 kann parallel laufen, es braucht nur den Mac.
@@ -1562,8 +1621,13 @@ Optionen: A  Zustandsspalte in `approvals`, Uebergang per BEGIN IMMEDIATE
           C  Anspruch je Faehigkeit (heutiger Zustand, implizit)
 Empfehlung: A fuer den naechsten Schritt -- kleinste Aenderung, nutzt die
           vorhandene Schreibsperre. B, wenn spaeter mehrere Arbeiter dazukommen.
-          C ist der Ist-Zustand und die Ursache von SEC-2.
-Status:   OFFEN
+          C war der Ist-Zustand und die Ursache von SEC-2.
+Stand:    Der SEC-2-Fix hat Option A umgesetzt (Zustand `claimed` in
+          `approvals`, Uebergang per BEGIN IMMEDIATE) -- fuer den Freigabeweg.
+          Offen bleibt die volle Zustandsmaschine (EXECUTING, CANCELLED,
+          Aufraeumen liegengebliebener `claimed`-Vorgaenge) und ihre
+          Ausdehnung auf alle Ausfuehrungswege im Execution Layer (19.2).
+Status:   TEILWEISE ENTSCHIEDEN (A), Rest OFFEN
 ```
 
 ### OD-2 — Vertrauensgrad im Gedaechtnis
@@ -1681,21 +1745,25 @@ vorhandene `JARVIS-SPEC.md` ist SPEC-1 und ebenfalls historisch.
 
 Woran sich die naechsten Schritte messen lassen.
 
-### Fuer SEC-1 (Allowlist)
+### Fuer SEC-1 (Allowlist) — alle erfuellt, 2026-08-31
 
-* [ ] Ein Vorgang, dessen Adresse nach dem Einstellen gesperrt wurde, geht bei
+* [x] Ein Vorgang, dessen Adresse nach dem Einstellen gesperrt wurde, geht bei
       Freigabe **nicht** hinaus.
-* [ ] Der Grund steht im Vorgang und im Protokoll.
-* [ ] Gegenprobe: eine weiterhin erlaubte Adresse geht hinaus.
-* [ ] Die Pruefung greift in `verify_targets` **und** unmittelbar vor dem Versand.
-* [ ] Mutationsprobe: Pruefung entfernt -> Test schlaegt fehl.
+* [x] Der Grund steht im Vorgang und im Protokoll.
+* [x] Gegenprobe: eine weiterhin erlaubte Adresse geht hinaus.
+* [x] Die Pruefung greift in `verify_targets` **und** unmittelbar vor dem Versand.
+* [x] Mutationsprobe: die Regressionstests wurden gegen den Code vor dem Fix
+      ausgefuehrt und schlagen dort fehl; je eine Schicht wird einzeln geprueft.
 
-### Fuer SEC-2 (atomarer Anspruch)
+### Fuer SEC-2 (atomarer Anspruch) — alle erfuellt, 2026-08-31
 
-* [ ] Derselbe Vorgang zweimal ausgefuehrt erzeugt genau **eine** Wirkung.
-* [ ] Nebenlaeufig mit getrennten Verbindungen ebenso.
-* [ ] Der zweite Aufruf meldet einen verstaendlichen Grund, keinen Fehler.
-* [ ] Gilt fuer **alle** Faehigkeiten, nicht nur `mail_send`.
+* [x] Derselbe Vorgang zweimal ausgefuehrt erzeugt genau **eine** Wirkung.
+* [x] Nebenlaeufig mit getrennten Verbindungen ebenso (zwei Faeden, je eigene
+      Datenbankverbindung).
+* [x] Der zweite Aufruf meldet einen verstaendlichen Grund ins Protokoll,
+      keinen Fehler.
+* [x] Gilt fuer **alle** Faehigkeiten: der Anspruch liegt in
+      `execute_approval`/`ApprovalStore`, nicht in einer Faehigkeit.
 
 ### Fuer die erste echte Verbindung
 
@@ -1767,17 +1835,18 @@ Fuer eine neue Sitzung ohne bisherigen Verlauf.
 
 JARVIS ist ein persoenlicher Assistent fuer macOS, der Mail und Kalender liest,
 einordnet, Antworten entwirft und ein Briefing erzeugt. Der Kern ist fertig und
-getestet (1018 Tests), sechs Faehigkeiten laufen nach einem einheitlichen
+getestet (1031 Tests), sechs Faehigkeiten laufen nach einem einheitlichen
 Vertrag. **Kein externer Dienst wurde je erreicht, und nichts lief je auf
-macOS.** Zwei bestaetigte Sicherheitsluecken im Freigabeweg sind offen (SEC-1,
-SEC-2) und stehen ganz oben auf der Roadmap. Alles unter PLANNED und IDEA ist
+macOS.** Die zwei bestaetigten Sicherheitsluecken im Freigabeweg (SEC-1, SEC-2)
+sind seit 3.1 behoben und mit Regressionstests belegt; naechster
+REQUIRED-Punkt ist die erste echte Verbindung. Alles unter PLANNED und IDEA ist
 ausdruecklich **nicht** zu bauen.
 
 ### Schnellstart
 
 ```sh
 uv sync
-uv run pytest -q                              # 1018 Tests, siehe KI-8
+uv run pytest -q                              # 1031 Tests, siehe KI-8
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe
@@ -1801,7 +1870,7 @@ Antwort, die zum Schema passt.
 | Was ist verifiziert? | Was in Abschnitt 15/16 als "gemessen" steht |
 | Was ist sicherheitskritisch? | Abschnitt 3.2 (vier Prinzipien) und 16 |
 | Was funktioniert nicht? | Abschnitt 17, Known Issues |
-| Was kommt als Naechstes? | Abschnitt 21, die fuenf REQUIRED-Punkte |
+| Was kommt als Naechstes? | Abschnitt 21, die REQUIRED-Punkte |
 | Was darf **nicht** gebaut werden? | Alles unter PLANNED und IDEA, Abschnitt 20 |
 | Wie fuege ich eine Faehigkeit hinzu? | Abschnitt 6.2, neun Schritte |
 | Wie loest ein Modell eine Aktion aus? | Gar nicht direkt -- Abschnitt 3.1 und 5.1 |

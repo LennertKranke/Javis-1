@@ -233,7 +233,9 @@ Was diese Sitzung getan hat:
    Vorgang wird ueber die Route weder ausgefuehrt noch geschlossen.
 3. **SPEC-Versionierung bereinigt:** 3.1 gehoert den SEC-Fixen. Der
    Dashboard-Nachtrag (`design/SPEC-3-NACHTRAG.md`, OD-4) ist auf **3.2**
-   umnummeriert und wartet weiter auf die Freigabe des Nutzers.
+   umnummeriert und wurde nach Freigabe des Nutzers am 2026-09-01 in
+   `JARVIS-SPEC-3.md` eingetragen (OD-4: ENTSCHIEDEN; Zahlen am aktuellen
+   Stand neu gemessen).
 4. **CI eingerichtet:** `.github/workflows/ci.yml` -- `uv sync`, `ruff check`,
    `ruff format --check`, `pytest` bei jedem Push und Pull Request.
 5. **`CLAUDE.md` angelegt:** Befehle, Dokumenten-Rangfolge, Arbeitsregeln --

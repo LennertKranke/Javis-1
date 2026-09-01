@@ -26,7 +26,7 @@ uv run python -m jarvis services check            # zeigt den Nachweisstand
 3. **`JARVIS-SPEC.md`** — historischer Ursprung; gilt nur, wo SPEC-3 schweigt.
 4. **`README.md`** — ausfuehrliche Begruendungen der Bauentscheidungen.
 5. **`design/`** — Designsystem und Entwurfsblaetter. `SPEC-3-NACHTRAG.md`
-   dort ist ein Vorschlag und wartet auf die Freigabe des Nutzers.
+   dort ist als SPEC-3 Fassung 3.2 eingearbeitet und bleibt als Nachweis.
 
 ## Unverhandelbar
 

@@ -1,7 +1,15 @@
 # Vorschlag: SPEC-3-Nachtrag zur Dashboard-Aenderung
 
 ```
-Status:   VORSCHLAG -- nicht in JARVIS-SPEC-3.md eingetragen
+Status:   EINGEARBEITET -- am 2026-09-01 nach Freigabe des Nutzers als
+          Fassung 3.2 in JARVIS-SPEC-3.md eingetragen. Dieses Dokument
+          bleibt als Nachweis des Vorschlags liegen; verbindlich ist SPEC-3.
+          Die Zahlen in Abschnitt 10 wurden beim Eintragen am aktuellen
+          Stand neu gemessen (1063 Tests), nicht aus diesem Vorschlag
+          uebernommen. Die Bemerkung zur Allowlist in der Tabelle "Was nicht
+          geaendert werden muss" stammt von vor den SEC-Fixen: seit 3.1
+          prueft der Freigabeweg die Allowlist; eine Allowlist-Sprosse in
+          der Gatterleiter zeigt sie weiterhin nicht.
 Fassung:  bei der Konsolidierung (2026-09-01) von 3.1 auf 3.2 umnummeriert --
           3.1 ist seither durch die SEC-Fixe vergeben, siehe Abschnitt 1
 Anlass:   SPEC-3 Abschnitt 27, Change Management:

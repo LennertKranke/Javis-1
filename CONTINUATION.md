@@ -328,6 +328,15 @@ Systemtatsachen rechts vom Kern spiegeln die Zahlen links; Tabellen ohne
 Zeilenhervorhebung, Werte in Maschinenschrift. Nichts an Aufbau, Routen
 oder Zustaenden. Im Browser geprueft in allen Zustaenden und Breiten.
 
+**Vierte Runde, letzte Politur (Fassung 2.3).** Nur `style.py`: Systemzone
+um den Kern (weiter Kreis, Horizontlinie, Hauch Licht), Doppelring und
+zwoelf Naehte am Kern, ruhigeres Atmen und Glanzlicht; Kennzahlen als
+Telemetrie mit zum Kern auslaufenden Lichtlinien; Akzentstrich an
+Tafeltiteln, blassere Tabellenlinien, auslaufende Linie unter dem Band.
+`--kern-groesse` haengt jetzt an `.lage-mitte`. Kein Aufbau, keine Route,
+kein Zustand geaendert; im Browser bei 1440, 820, 390 px und im Stopp
+geprueft.
+
 **Ein Befund fuer den Nutzer -- SPEC-3 aendert nur er.** SPEC-3 Abschnitt 12
 fuehrt die *Vertrauensnaht* als CURRENT (auch in Abschnitt 15 und 25). Sie
 war am 2026-08-31 zurueckgebaut worden (Commit 397c3dd, Weg A-teil); der

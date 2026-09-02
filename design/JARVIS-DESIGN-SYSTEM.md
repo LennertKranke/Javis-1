@@ -3,8 +3,8 @@
 ```
 Dokument:          JARVIS-DESIGN-SYSTEM
 Status:            SOURCE OF TRUTH fuer die Gestaltung des Dashboards
-Fassung:           2.2
-Stand:             2026-09-02 (2.2: Kern raeumlich, Glas, Feinschliff)
+Fassung:           2.3
+Stand:             2026-09-02 (2.3: letzte Politur -- Systemzone, Telemetrie)
 Geltungsbereich:   Gestaltung und Bedienung von jarvis/interfaces/web/.
                    Keine Architektur, keine Anforderungen, keine Roadmap
 Grundlage:         JARVIS-SPEC-3.md (CURRENT SOURCE OF TRUTH), Abschnitte
@@ -225,7 +225,7 @@ und gestaltet in `style.py` unter `.kern`, von aussen nach innen:
   .kern::before        weiter Lichthof, leicht nach unten versetzt   steht
   .kern-ring.r0        sehr blasser Aussenring                       steht
   .kern-ring.r2        gestrichelter Ring                            dreht, 110 s
-  .kern-ring.r1        durchgezogener Ring                           steht; pulsiert bei "wartet"
+  .kern-ring.r1        Doppelring: Linie und, 3px aussen, ihr Echo   steht; pulsiert bei "wartet"
   .kern-ring.r3        Skalenring aus 48 Strichen                    dreht gegenlaeufig, 140 s
                        (repeating-conic-gradient, Maske als radial-gradient)
   .kern-bogen          ein heller Bogen                              laeuft um, 26 s
@@ -233,7 +233,8 @@ und gestaltet in `style.py` unter `.kern`, von aussen nach innen:
                        ausgeht                                       nach aussen
   .kern-glut           die Kugel                                     atmet, 7 s
     ::before           Glanzlicht oben links                         steht
-    ::after            feine konzentrische Schichten                 steht
+    ::after            feine Schichten und zwoelf kaum sichtbare     steht
+                       Naehte (repeating-conic-gradient)
 ```
 
 **Die Kugel ist eine Kugel, keine Scheibe.** Die Lichtquelle sitzt oben
@@ -241,10 +242,22 @@ links (`circle at 40% 34%`), der Rand wird nach unten rechts dunkel
 (`#7a2a06` bis `#3a1203`), eine innere Schattenkante und ein Glanzlicht
 stuetzen das; darunter liegt ein weicher, nach unten versetzter Schein --
 der Kern steht ueber dem Grund, er klebt nicht darauf. Die Schichten im
-Glas (`repeating-radial-gradient`, Alpha .045) geben ihm Struktur, ohne
-Muster zu werden.
+Glas (`repeating-radial-gradient`, Alpha .035) und zwoelf Naehte (Alpha .05)
+geben ihm Struktur, ohne Muster zu werden: ein Energie- und
+Informationskern, keine Spielkugel. Das Glanzlicht ist zurueckgenommen
+(Alpha .38), das Atmen auf 2% Skalierung.
 
-Groesse `--kern-groesse`: 17rem weit, 13rem standard, 11rem schmal. Fuer
+### Die Systemzone
+
+Um den Kern liegt eine Zone, die sagt: hier sitzt das Zentrum. Sie besteht
+aus drei Dingen, alle in `.lage-mitte::before`, alle blass: ein Kreis mit
+dem 1,6-fachen Durchmesser des Kerns (Alpha .08), eine **Horizontlinie**
+durch die Mitte, die zum Kern hin und an den Enden verklingt (Alpha .16),
+und ein Hauch Licht (Alpha .05). Im Stopp wird sie kalt. Die Groesse
+haengt an `--kern-groesse`, die auf `.lage-mitte` gesetzt ist -- 17rem
+weit, 13rem standard, 11rem schmal -- und vom Kern geerbt wird.
+
+Groesse ueber `--kern-groesse` (siehe Systemzone). Fuer
 Hilfsmittel ist der Kern `aria-hidden`; der Zustand steht daneben als Text,
 und nur der zaehlt.
 
@@ -302,15 +315,15 @@ blinkt, nichts springt, nichts wackelt.
 
 | Baustein | Wo | Aufgabe |
 |---|---|---|
-| **Systemband** `.systemband` | `render.seite` | erstes Element im Dokument; Zustandspunkt, Marke `Betrieb`/`Angehalten`, drei Tatsachen (Trockenlauf, Dienste, Zugangsdaten bzw. Grund und Wirkung), Stoppschalter. Klebt oben (`sticky`), Glas mit Weichzeichner; im schmalen Fenster statisch |
+| **Systemband** `.systemband` | `render.seite` | erstes Element im Dokument; Zustandspunkt, Marke `Betrieb`/`Angehalten`, drei Tatsachen (Trockenlauf, Dienste, Zugangsdaten bzw. Grund und Wirkung), Stoppschalter. Klebt oben (`sticky`), Glas mit Weichzeichner, unten eine Linie, die an den Raendern verklingt; im schmalen Fenster statisch |
 | **Stoppschalter** `button.stopp` | Band | `Anhalten` mit Achteck-Symbol, im Stopp `Fortsetzen` mit Kreis-Symbol. Beides Formulare (`/stop`, `/weiter`). Erstes Formular im Dokument, also erster Griff im Tabfluss |
 | **Kopf** `.kopf` | `render.seite` | Wortmarke mit Kern-Punkt, Navigation rechts |
 | **Navigation** `nav` | `render.ANSICHTEN` | genau vier Punkte, Versalien; der aktive traegt eine 1px-Akzentlinie unten und leuchtet leicht -- kein Kasten; Zaehler offener Entscheidungen als gefuellte Marke |
 | **Meldung** `.note.meldung` | `app.MELDUNGEN` | Ergebnis der letzten Handlung, aus fester Tabelle, nie aus der Adresszeile |
 | **Kern** `.kern` | `render.kern` | Abschnitt 7 |
-| **Kennzahl** `.kennzahl` | `render.kennzahl` | grosse Zahl mit Name und Zusatz; `hebt` Akzent, `gefahr` Rot, `kalt`; `klein` fuer Worte statt Zahlen (die Systemtatsachen rechts vom Kern) |
+| **Kennzahl** `.kennzahl` | `render.kennzahl` | Telemetrie: Beschriftung 0.62rem still, Wert 1.55rem; darunter eine Lichtlinie, die zum Kern hin auslaeuft (links nach rechts, rechts nach links -- die Spalten zeigen auf die Mitte); `hebt` Akzent, `gefahr` Rot, `kalt`; `klein` fuer Worte statt Zahlen |
 | **Faktenliste** `dl.facts` | `render.fakten` | Name/Wert, Wert in Maschinenschrift, bricht ueberall um |
-| **Tafel** `.tafel` | `render.tafel` | Glas mit Titel, Eckwinkeln und optionalem Fuss (der Weg in die Tiefe) |
+| **Tafel** `.tafel` | `render.tafel` | Glas mit Titel (davor ein 10px-Akzentstrich: die Tafel gehoert zum System), Eckwinkeln und optionalem Fuss (der Weg in die Tiefe); Zeilenlinien in Tabellen Alpha .09 |
 | **Tabelle** `.tabelle > table` | `render.tabelle` | rollt in ihrem Rahmen, nie die Seite; jede Zelle traegt `data-kopf`, im schmalen Fenster wird sie zu Bloecken; Werte in Maschinenschrift, keine Zeilenhervorhebung beim Ueberfahren -- eine Tafel, kein Formular |
 | **Zustandsmarke** `.marke` | `render.zustandsmarke` | Wort mit Form; nur bekannte Ergebnisse, alles andere bleibt Text (`.dim`) |
 | **Autonomiestufe** `.stufe` | `render.stufe` | immer beide Zahlen, gewaehrt / verlangt; reicht die gewaehrte nicht, leuchtet sie |
@@ -497,6 +510,13 @@ Regeln, wie Kuenftiges einpasst -- kein Platz, der warmgehalten wird.
 ---
 
 ## 18. Geprueft
+
+**Vierte Abnahme (Fassung 2.3, letzte Politur).** Nahaufnahme des Kerns,
+Lage bei 1440, 820 und 390 px, Entscheidungen und Protokoll bei 1440,
+Stopp bei 1440. Geaendert: Systemzone um den Kern, Doppelring, Naehte,
+ruhigeres Atmen und Glanzlicht, Telemetrielinien an den Kennzahlen,
+Akzentstrich an Tafeltiteln, blassere Tabellenlinien, auslaufende Linie
+unter dem Band. Nicht geaendert: Aufbau, Farben, Zustaende, Routen.
 
 **Dritte Abnahme (Fassung 2.2).** Nahaufnahmen des Kerns bei doppelter
 Aufloesung in den Zustaenden Betrieb, Wartet und Angehalten; vier Ansichten

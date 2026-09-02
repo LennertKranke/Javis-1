@@ -18,11 +18,20 @@ Drei Bausteine tragen mehr als Gestaltung:
   `gatterleiter`   Die Reihenfolge aus Abschnitt 4.2, sichtbar. Sie zeigt, an
                    welcher Sprosse es haengt -- und dass eine Freigabe nur auf
                    Sprosse 3 wirkt.
+  `kern`           Der Orb in der Mitte der Lage. Sein Zustand ist keine
+                   Stimmung, sondern aus vier Tatsachen abgeleitet, die das
+                   System wirklich fuehrt: Stoppschalter, Abweichungen, offene
+                   Entscheidungen, sonst Betrieb. Siehe `zustand_ermitteln`.
+
+Kein Inline-Stil, kein Skript, kein Bild: die Sicherheitsrichtlinie laesst
+nichts davon zu, und nichts davon wird gebraucht. Symbole sind Inline-SVG --
+Dokumentinhalt, kein Abruf.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from html import escape
 from typing import Any
 
@@ -30,17 +39,24 @@ from jarvis.core.approvals import Approval
 from jarvis.core.gate import GatePreview
 
 __all__ = [
+    "Zustand",
     "esc",
     "fakten",
     "gatterleiter",
     "hinweis",
+    "kennzahl",
+    "kern",
     "leer",
     "marke",
     "seite",
     "stufe",
     "tabelle",
+    "tafel",
     "vorgang",
+    "vorgang_kurz",
     "vorgangsfakten",
+    "zaehler",
+    "zustand_ermitteln",
     "zustandsmarke",
 ]
 
@@ -72,14 +88,37 @@ ZUSTAENDE: dict[str, tuple[str, str]] = {
     "stop_released": ("Fortgesetzt", ""),
 }
 
-#: Ausgang einer Gattersprosse -> Marke und Zeilenklasse.
+#: Ausgang einer Gattersprosse -> Marke, Markenart, Zeilenklasse.
 _SPROSSE: dict[str, tuple[str, str, str]] = {
     "weiter": ("Weiter", "erfolg", ""),
-    "blockiert": ("Blockiert", "blockiert", "entschieden"),
+    "blockiert": ("Blockiert", "blockiert", "entschieden blockiert"),
     "trocken": ("Haelt", "trocken", "entschieden"),
     "act": ("Geht hinaus", "erfolg", "entschieden"),
     "offen": ("--", "", "offen"),
 }
+
+#: Die vier Ansichten. Mehr gibt es nicht, und die Leiste behauptet auch nicht
+#: mehr: jeder Eintrag hier ist eine Route in `app.py`.
+ANSICHTEN: tuple[tuple[str, str], ...] = (
+    ("/", "Lage"),
+    ("/entscheidungen", "Entscheidungen"),
+    ("/briefing", "Briefing"),
+    ("/protokoll", "Protokoll"),
+)
+
+# Zwei Symbole, beide als Dokumentinhalt. Sie stehen nie allein: der Knopf
+# traegt sein Wort daneben.
+_SYMBOL_HALT = (
+    '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
+    '<path d="M5.2 1.5h5.6l4 4v5.6l-4 4H5.2l-4-4V5.5z" fill="none" '
+    'stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>'
+    '<path d="M5.4 8h5.2" stroke="currentColor" stroke-width="1.4"/></svg>'
+)
+_SYMBOL_WEITER = (
+    '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
+    '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"/>'
+    '<path d="M6.3 5.2v5.6L10.6 8z" fill="currentColor"/></svg>'
+)
 
 
 def esc(wert: object) -> str:
@@ -209,6 +248,108 @@ def vorgangsfakten(
     return fakten(paare) if paare else ""
 
 
+# --------------------------------------------------------------------------- #
+# Der Systemzustand und der Kern
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Zustand:
+    """Was der Kern zeigt -- eine Klasse, ein Wort, ein Satz.
+
+    `klasse` ist zugleich die CSS-Klasse des Kerns. Es gibt genau vier, und
+    jede steht fuer eine Tatsache, die das System fuehrt.
+    """
+
+    klasse: str  # betrieb | wartet | abweichung | angehalten
+    titel: str
+    satz: str
+
+    @property
+    def art(self) -> str:
+        """Farbrolle der Zustandsschrift: kalt fuer angehalten, fehler fuer Abweichung."""
+        return {"angehalten": "kalt", "abweichung": "fehler"}.get(self.klasse, "")
+
+
+def zustand_ermitteln(
+    *,
+    angehalten: bool,
+    stopp_grund: str | None,
+    offen: int,
+    abweichungen: Sequence[str],
+    trockenlauf: bool,
+) -> Zustand:
+    """Leitet den Zustand aus Tatsachen ab, in fester Rangfolge.
+
+    Angehalten schlaegt alles: ein stehendes System hat keinen anderen
+    Zustand. Dann Abweichungen, weil sie vor jeder Arbeit geklaert gehoeren.
+    Dann Wartendes. Sonst Betrieb. Denken, Laufen, Offline gibt es nicht --
+    der Kern kennt diese Zustaende nicht (SPEC-3 5.2), also zeigt sie auch
+    niemand an.
+    """
+    if angehalten:
+        return Zustand(
+            "angehalten",
+            "Angehalten",
+            f"Stoppschalter gesetzt: {stopp_grund or 'ohne Angabe'}. "
+            "Jede ausgehende Aktion ist blockiert.",
+        )
+    if abweichungen:
+        weitere = len(abweichungen) - 1
+        zusatz = {0: "", 1: " Und eine weitere."}.get(weitere, f" Und {weitere} weitere.")
+        return Zustand("abweichung", "Abweichung", f"{abweichungen[0]}.{zusatz}")
+    trocken = (
+        "Trockenlauf an: Freigeben bewirkt nichts."
+        if trockenlauf
+        else "Trockenlauf AUS: eine Freigabe wirkt nach aussen."
+    )
+    if offen:
+        wartet = "Eine Entscheidung wartet." if offen == 1 else f"{offen} Entscheidungen warten."
+        return Zustand("wartet", "Wartet auf Freigabe", f"{wartet} {trocken}")
+    ruhe = (
+        "Nichts wartet, nichts weicht ab. Trockenlauf an: nichts verlaesst den Rechner."
+        if trockenlauf
+        else "Nichts wartet, nichts weicht ab. Trockenlauf AUS: Aktionen wirken nach aussen."
+    )
+    return Zustand("betrieb", "Betrieb", ruhe)
+
+
+def kern(zustand: Zustand) -> str:
+    """Der Orb. Reine Gestaltung, deshalb fuer Hilfsmittel unsichtbar -- der
+    Zustand steht daneben als Text, und nur der zaehlt."""
+    return (
+        f'<div class="kern {esc(zustand.klasse)}" aria-hidden="true">'
+        '<span class="kern-ring r2"></span>'
+        '<span class="kern-ring r3"></span>'
+        '<span class="kern-ring r1"></span>'
+        '<span class="kern-bogen"></span>'
+        '<span class="kern-glut"></span>'
+        "</div>"
+    )
+
+
+def kennzahl(name: str, wert: object, *, art: str = "", zusatz: str = "") -> str:
+    """Eine grosse Zahl mit ihrem Namen. `art` ist hebt, gefahr oder kalt."""
+    klasse = f"kennzahl-wert {art}".strip()
+    nachsatz = f'<span class="kennzahl-zusatz">{esc(zusatz)}</span>' if zusatz else ""
+    return (
+        f'<div class="kennzahl"><span class="kennzahl-name">{esc(name)}</span>'
+        f'<span class="{klasse}">{esc(wert)}</span>{nachsatz}</div>'
+    )
+
+
+def tafel(titel: str, inhalt_html: str, *, fuss_html: str = "", klasse: str = "") -> str:
+    """Eine Tafel mit Titel. `inhalt_html` und `fuss_html` sind fertiges HTML."""
+    fuss = f'<p class="tafel-fuss">{fuss_html}</p>' if fuss_html else ""
+    klassen = f"tafel {klasse}".strip()
+    return f'<section class="{esc(klassen)}"><h2>{esc(titel)}</h2>{inhalt_html}{fuss}</section>'
+
+
+# --------------------------------------------------------------------------- #
+# Der Rahmen
+# --------------------------------------------------------------------------- #
+
+
 def seite(
     titel: str,
     *,
@@ -222,20 +363,24 @@ def seite(
     dienste_mock: bool = False,
     zugangsdaten: str = "",
     weit: bool = False,
+    meldung_html: str = "",
 ) -> str:
     """Der Rahmen. `inhalt_html` ist bereits fertiges, maskiertes HTML.
 
-    Im Systemband stehen vier Tatsachen. Die ersten drei beantworten zusammen
-    die Frage, die vor jeder Handlung zaehlt: *wird das, was ich gleich tue,
-    wirklich passieren?* Auffaellig ist dabei der unsichere Zustand -- nicht
-    "Trockenlauf an", sondern "Trockenlauf AUS", denn dann verlaesst echte Post
-    den Rechner. Ein Mock, den man nicht sieht, ist aus demselben Grund
-    hervorgehoben.
+    Zuerst im Dokument steht das Systemband -- und darin der Stoppschalter,
+    damit er auch im Tabfluss der erste Griff ist. Im Band stehen vier
+    Tatsachen. Die ersten drei beantworten zusammen die Frage, die vor jeder
+    Handlung zaehlt: *wird das, was ich gleich tue, wirklich passieren?*
+    Auffaellig ist dabei der unsichere Zustand -- nicht "Trockenlauf an",
+    sondern "Trockenlauf AUS", denn dann verlaesst echte Post den Rechner. Ein
+    Mock, den man nicht sieht, ist aus demselben Grund hervorgehoben.
     """
     nachladen = f'<meta http-equiv="refresh" content="{int(refresh)}">' if refresh else ""
-    knopf = "Freigeben" if angehalten else "Anhalten"
+    knopf = "Fortsetzen" if angehalten else "Anhalten"
+    symbol = _SYMBOL_WEITER if angehalten else _SYMBOL_HALT
     ziel = "/weiter" if angehalten else "/stop"
     klasse = "systemband angehalten" if angehalten else "systemband"
+    koerper = ' class="angehalten"' if angehalten else ""
 
     if angehalten:
         tatsachen = [
@@ -251,15 +396,10 @@ def seite(
         ]
         if zugangsdaten:
             tatsachen.append(_tatsache("Zugangsdaten", zugangsdaten))
+    zustand, *weitere = tatsachen
 
     punkte = []
-    ansichten = (
-        ("/", "Lage"),
-        ("/briefing", "Briefing"),
-        ("/entscheidungen", "Entscheidungen"),
-        ("/protokoll", "Protokoll"),
-    )
-    for pfad, name in ansichten:
+    for pfad, name in ANSICHTEN:
         auszeichnung = ' class="on"' if pfad == aktiv else ""
         zahl = f' <span class="count">{offen}</span>' if pfad == "/entscheidungen" and offen else ""
         punkte.append(f'<a href="{pfad}"{auszeichnung}>{esc(name)}{zahl}</a>')
@@ -274,21 +414,25 @@ def seite(
 <link rel="stylesheet" href="/jarvis.css">
 {nachladen}
 </head>
-<body>
+<body{koerper}>
 <div class="{klasse}">
   <div class="systemband-inhalt">
-    {"".join(tatsachen)}
+    <span class="zustand"><span class="puls"></span>{zustand}</span>
+    {"".join(weitere)}
     <form method="post" action="{ziel}">
-      <button type="submit">{knopf}</button>
+      <button type="submit" class="stopp">{symbol}<span>{knopf}</span></button>
     </form>
   </div>
 </div>
-<div class="{spur}">
-<header><h1>JARVIS</h1></header>
-<nav>{"".join(punkte)}</nav>
+<header class="kopf">
+  <h1><a href="/"><span class="wortmarke-kern"></span>JARVIS</a></h1>
+  <nav>{"".join(punkte)}</nav>
+</header>
+<main class="{spur}">
+{meldung_html}
 {inhalt_html}
+</main>
 <footer>Loopback, Einzelplatz. Durchlaeufe startet die Kommandozeile.</footer>
-</div>
 </body>
 </html>
 """
@@ -313,11 +457,16 @@ def tabelle(
     *,
     mono: Sequence[int] = (),
     roh: Sequence[int] = (),
+    umbruch: Sequence[int] = (),
 ) -> str:
     """`roh` nennt Spalten, die bereits fertiges HTML enthalten -- Marken etwa.
 
     Alles andere geht durch `esc`. Die Ausnahme ist ausdruecklich zu nennen,
     damit sie nicht aus Versehen entsteht.
+
+    Jede Zelle traegt ihren Spaltenkopf als `data-kopf`: im schmalen Fenster
+    wird die Tabelle zu Bloecken, und die Beschriftung kommt aus diesem
+    Attribut -- ohne Skript, nur ueber das Stylesheet.
     """
     kopf_html = "".join(f"<th>{esc(name)}</th>" for name in kopf)
     koerper = []
@@ -325,11 +474,19 @@ def tabelle(
         zellen = []
         for i, wert in enumerate(zeile):
             inhalt = str(wert) if i in roh else esc(wert)
-            zellen.append(f'<td class="{"mono" if i in mono else ""}">{inhalt}</td>')
+            klassen = " ".join(
+                k for k, ja in (("mono", i in mono), ("umbruch", i in umbruch)) if ja
+            )
+            beschriftung = esc(kopf[i]) if i < len(kopf) else ""
+            zellen.append(f'<td class="{klassen}" data-kopf="{beschriftung}">{inhalt}</td>')
         koerper.append(f"<tr>{''.join(zellen)}</tr>")
     if not koerper:
         return leer("Nichts vorhanden.")
-    return f"<table><thead><tr>{kopf_html}</tr></thead><tbody>{''.join(koerper)}</tbody></table>"
+    return (
+        '<div class="tabelle"><table>'
+        f"<thead><tr>{kopf_html}</tr></thead><tbody>{''.join(koerper)}</tbody>"
+        "</table></div>"
+    )
 
 
 def leer(text: str) -> str:
@@ -339,6 +496,23 @@ def leer(text: str) -> str:
 def hinweis(text: str, *, art: str = "") -> str:
     klasse = f"note {art}".strip()
     return f'<p class="{esc(klasse)}">{esc(text)}</p>'
+
+
+def vorgang_kurz(eintrag: Approval) -> str:
+    """Ein anstehender Vorgang in einer Zeile -- fuer die Lage.
+
+    Kein Knopf: gehandelt wird nur in der Ansicht Entscheidungen, wo die
+    Gatterleiter und der volle Vorgang danebenstehen. Die Lage zeigt, sie
+    entscheidet nicht.
+    """
+    return (
+        f"<li>"
+        f'<span class="item-skill">{esc(eintrag.skill)}</span>'
+        f'<span class="anstehend-satz">{esc(eintrag.summary)}</span>'
+        f'<span class="anstehend-zeit">{esc(eintrag.action)} -- '
+        f"{esc(eintrag.created_at[:16].replace('T', ' '))}</span>"
+        f"</li>"
+    )
 
 
 def vorgang(eintrag: Approval, *, ausfuehrbar: bool, vorschau: GatePreview | None = None) -> str:

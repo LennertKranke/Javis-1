@@ -403,19 +403,42 @@ def test_ohne_trockenlauf_entstehen_im_mock_echte_befunde(home, conn):
     assert mit_befund, "keine Konflikte im Beispielkalender gefunden"
 
 
-def test_das_briefing_entsteht_aus_mock_daten(home, conn):
+def test_das_briefing_entsteht_aus_mock_daten(home, conn, monkeypatch):
+    """Die Uhr ist festgenagelt: acht Uhr am heutigen Tag der Ortszeit.
+
+    Vorher hing der Test an der Wanduhr (SPEC-3 KI-8): der Kalender-Mock legt
+    seine Termine auf *jetzt plus zwei Stunden*, das Briefing gilt fuer
+    *heute* in `Europe/Berlin`. Ab 22 Uhr Ortszeit rollten die Termine auf den
+    Folgetag, und das Briefing fand keine -- taeglich zwei Stunden rot, auch
+    in der CI. Jetzt sehen Mock und Kalenderfaehigkeit dieselbe feste Uhrzeit,
+    und das Briefing rechnet mit demselben Tag.
+    """
+    from datetime import datetime, time
+
     from jarvis.skills.briefing.store import BriefingStore
+    from jarvis.skills.calendar import mock as kalender_mock
+    from jarvis.skills.calendar import skill as kalender_skill
 
     config = voll_config(home, dry_run=False)
+    heute = datetime.now(config.timezone).date()
+    acht_uhr = datetime.combine(heute, time(8, 0), tzinfo=config.timezone)
+
+    class FesteUhr(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return acht_uhr.astimezone(tz) if tz else acht_uhr
+
+    monkeypatch.setattr(
+        kalender_mock, "beispiel_kalender", lambda **_: beispiel_kalender(jetzt=acht_uhr)
+    )
+    monkeypatch.setattr(kalender_skill, "datetime", FesteUhr)
+
     durchlauf(config, conn, "calendar")
     durchlauf(config, conn, "mail")
     bericht = durchlauf(config, conn, "briefing")
     assert bericht.acted == 1
 
-    from datetime import datetime
-
-    heute = datetime.now(config.timezone).date().isoformat()
-    briefing = BriefingStore(conn).get(heute)
+    briefing = BriefingStore(conn).get(heute.isoformat())
     assert briefing is not None
     assert briefing.facts["termine"], "Briefing ohne Termine aus dem Mock-Kalender"
 

@@ -340,11 +340,26 @@ task = "personal"     # vertraulich, nur Ollama
 uv run jarvis web
 ```
 
-Gibt eine Adresse mit Sitzungstoken aus. Drei Ansichten -- Zustand,
-Entscheidungen, Protokoll -- und genau drei Dinge, die sich ausloesen lassen:
-freigeben, verwerfen, anhalten. Durchlaeufe startet weiter die Kommandozeile;
-eine Oberflaeche, die Modellaufrufe ausloesen kann, ist etwas anderes als eine,
-die nur bestaetigt.
+Gibt eine Adresse mit Sitzungstoken aus. Vier Ansichten -- Lage,
+Entscheidungen, Briefing, Protokoll -- und genau vier Dinge, die sich
+ausloesen lassen: freigeben, verwerfen, anhalten, fortsetzen. Durchlaeufe
+startet weiter die Kommandozeile; eine Oberflaeche, die Modellaufrufe ausloesen
+kann, ist etwas anderes als eine, die nur bestaetigt.
+
+Die Lage ist die Leitstelle: in der Mitte der Kern, ein Orb, der den
+Systemzustand traegt -- Betrieb, Wartet auf Freigabe, Abweichung, Angehalten.
+Jeder dieser Zustaende ist aus einer Tatsache abgeleitet, die das System
+fuehrt (Stoppschalter, offene Entscheidungen, Hash-Kette, Dateirechte,
+Zugangsdatenquelle); einen Zustand, den der Kern nicht kennt, zeigt der Orb
+auch nicht. Darum herum die Zahlen, die zaehlen, was wartet, was zuletzt
+geschah, und was jede Faehigkeit darf. Alles gelesen, nichts entschieden:
+gehandelt wird nur unter *Entscheidungen*, und dort nur ueber
+`execute_approval`.
+
+Gestaltung: dunkel, eine warme Akzentfarbe, Glas statt Flaeche, kein
+JavaScript, kein Bild, keine Webfont. Das Designsystem steht in
+`design/JARVIS-DESIGN-SYSTEM.md` und beschreibt die Implementierung in
+`jarvis/interfaces/web/style.py` -- nicht umgekehrt.
 
 ### Anstehende Entscheidungen
 

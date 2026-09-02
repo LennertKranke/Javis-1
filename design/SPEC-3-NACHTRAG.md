@@ -1,5 +1,20 @@
 # Vorschlag: SPEC-3-Nachtrag zur Dashboard-Aenderung
 
+> **Hinweis vom 2026-09-02.** Dieses Dokument ist ein Nachweis, keine
+> Beschreibung des heutigen Stands. Zwei Dinge haben sich seither geaendert:
+>
+> 1. Das Designsystem, auf das Abschnitt 5 verweist, liegt weiterhin unter
+>    `design/JARVIS-DESIGN-SYSTEM.md`, ist aber seit Fassung 2.0 ein anderes
+>    (dunkel, Orange, Kern). Die vier Anzeigen aus Abschnitt 4 -- Stufe
+>    gewaehrt/verlangt, Zustandsmarke, Gatterleiter, Systemband -- bestehen
+>    darin weiter.
+> 2. Die **Vertrauensnaht** war bereits am 2026-08-31 zurueckgebaut worden
+>    (Entscheidung des Nutzers, Weg A-teil; `render.vorgangsfakten()` zeigt
+>    eine gemeinsame Liste). Die Zeile dazu in Abschnitt 4 und der Satz in
+>    Abschnitt 9 waren beim Eintragen in SPEC-3 (Fassung 3.2) schon ueberholt.
+>    SPEC-3 Abschnitt 12 fuehrt die Naht deshalb heute zu Unrecht als CURRENT;
+>    die Korrektur gehoert dem Nutzer (SPEC-3 Abschnitt 27).
+
 ```
 Status:   EINGEARBEITET -- am 2026-09-01 nach Freigabe des Nutzers als
           Fassung 3.2 in JARVIS-SPEC-3.md eingetragen. Dieses Dokument

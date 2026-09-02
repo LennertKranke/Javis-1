@@ -25,8 +25,10 @@ uv run python -m jarvis services check            # zeigt den Nachweisstand
    Am Ende jeder Sitzung auf den neuen Stand bringen.
 3. **`JARVIS-SPEC.md`** — historischer Ursprung; gilt nur, wo SPEC-3 schweigt.
 4. **`README.md`** — ausfuehrliche Begruendungen der Bauentscheidungen.
-5. **`design/`** — Designsystem und Entwurfsblaetter. `SPEC-3-NACHTRAG.md`
-   dort ist als SPEC-3 Fassung 3.2 eingearbeitet und bleibt als Nachweis.
+5. **`design/JARVIS-DESIGN-SYSTEM.md`** — das Designsystem des Dashboards.
+   Es beschreibt die Implementierung in `jarvis/interfaces/web/`, nicht
+   umgekehrt. `design/SPEC-3-NACHTRAG.md` ist als SPEC-3 Fassung 3.2
+   eingearbeitet und bleibt als Nachweis.
 
 ## Unverhandelbar
 
@@ -63,3 +65,7 @@ CONTINUATION Abschnitt 9 -- keiner davon wird entfernt oder umgangen.
   unabhaengig; das eine ersetzt das andere nicht.
 - `StaticProvider` wird nie in den Subprozess ausgelagert; wer den
   Subprozess-Weg testen will, baut `SubprocessProvider` direkt.
+- Das Dashboard hat kein JavaScript und `style-src 'self'` / `img-src 'none'`:
+  kein `style`-Attribut, kein `url()` im Stylesheet -- beides wuerde still
+  verworfen. Der Kern (Orb) besteht deshalb aus Gradienten. Tests halten das
+  fest.

@@ -667,3 +667,194 @@ def test_angehaltenes_band_sagt_was_gilt(dashboard):
     text = klient(dashboard).get("/").text
     assert "systemband angehalten" in text
     assert "jede ausgehende Aktion blockiert" in text
+
+
+# --- Was die Leitstelle zusichert ------------------------------------------ #
+#
+# Der Kern zeigt einen Zustand, den das System wirklich hat; jede Route ist
+# geschuetzt; die Lage zeigt und entscheidet nichts; und nichts auf der Seite
+# verlaesst sich auf etwas, das die Sicherheitsrichtlinie still verwerfen
+# wuerde.
+
+
+def test_jede_route_ausser_dem_stylesheet_verlangt_den_token(dashboard):
+    """TD-1 aus SPEC-3: eine neue Route ohne Schutz waere still offen.
+
+    Deshalb laeuft die Pruefung ueber die registrierten Routen, nicht ueber
+    eine Liste bekannter Pfade -- eine Liste wird irgendwann nicht nachgezogen.
+    """
+    app = create_app(home=dashboard, token=TOKEN, port=8765)
+    client = TestClient(app, base_url=BASIS)
+    geprueft = 0
+    for route in app.routes:
+        pfad = route.path.replace("{vorgang_id:int}", "1")
+        if pfad == "/jarvis.css":
+            continue
+        for methode in route.methods - {"HEAD", "OPTIONS"}:
+            antwort = client.request(
+                methode, pfad, headers={"Origin": BASIS}, follow_redirects=False
+            )
+            assert antwort.status_code == 403, f"{methode} {pfad} antwortet ohne Token"
+            geprueft += 1
+    assert geprueft >= 8
+
+
+def test_kein_inline_stil_in_keiner_ansicht(dashboard):
+    """`style-src 'self'` verwirft ein style-Attribut still -- also darf es keines geben."""
+    vorgang_einstellen(dashboard, skill="mail_send")
+    client = klient(dashboard)
+    for pfad in ("/", "/entscheidungen", "/briefing", "/protokoll"):
+        text = client.get(pfad).text
+        assert " style=" not in text, pfad
+        assert "<style" not in text, pfad
+
+
+def test_das_stylesheet_laedt_nichts_nach(dashboard):
+    """`img-src 'none'` blockiert jedes url() -- auch Daten-URIs, auch in mask.
+
+    Der Kern besteht deshalb aus Gradienten. Und Bewegung gibt es nur, solange
+    der Nutzer sie nicht abbestellt hat.
+    """
+    css = klient(dashboard).get("/jarvis.css").text
+    assert "url(" not in css
+    assert "@import" not in css
+    assert "prefers-reduced-motion" in css
+
+
+def test_zustand_rangfolge():
+    """Angehalten schlaegt alles; dann Abweichung; dann Wartendes; sonst Betrieb."""
+    from jarvis.interfaces.web.render import zustand_ermitteln
+
+    z = zustand_ermitteln(
+        angehalten=True, stopp_grund="Vorfall", offen=3, abweichungen=["x"], trockenlauf=True
+    )
+    assert z.klasse == "angehalten"
+    assert "Vorfall" in z.satz
+    z = zustand_ermitteln(
+        angehalten=False,
+        stopp_grund=None,
+        offen=3,
+        abweichungen=["Kette gebrochen"],
+        trockenlauf=True,
+    )
+    assert z.klasse == "abweichung"
+    assert z.satz.startswith("Kette gebrochen")
+    z = zustand_ermitteln(
+        angehalten=False, stopp_grund=None, offen=1, abweichungen=[], trockenlauf=False
+    )
+    assert z.klasse == "wartet"
+    assert "Eine Entscheidung wartet" in z.satz
+    assert "AUS" in z.satz
+    z = zustand_ermitteln(
+        angehalten=False, stopp_grund=None, offen=0, abweichungen=[], trockenlauf=True
+    )
+    assert z.klasse == "betrieb"
+
+
+def test_der_kern_zeigt_den_zustand_den_das_system_hat(dashboard):
+    """Kein Zustand ohne Tatsache dahinter -- und der Stoppschalter schlaegt alles."""
+    client = klient(dashboard)
+    text = client.get("/").text
+    assert 'class="kern betrieb"' in text
+    assert "Nichts wartet" in text
+
+    vorgang_einstellen(dashboard)
+    text = client.get("/").text
+    assert 'class="kern wartet"' in text
+    assert "Wartet auf Freigabe" in text
+
+    eigene_post(client, "/stop")
+    text = client.get("/").text
+    assert 'class="kern angehalten"' in text
+    assert 'class="kern wartet"' not in text
+
+
+def test_eine_gebrochene_kette_ist_eine_abweichung(dashboard):
+    """Der Kern behauptet keinen Betrieb, wenn das Protokoll angefasst wurde."""
+    conn = open_database(dashboard / "state.db")
+    audit = AuditLog(conn)
+    for _ in range(3):
+        audit.record(capability="mail", kind="action", outcome="act")
+    conn.execute("DROP TRIGGER audit_log_no_update")
+    conn.execute("UPDATE audit_log SET outcome = 'blocked' WHERE id = 2")
+    conn.commit()
+    conn.close()
+
+    text = klient(dashboard).get("/").text
+    assert 'class="kern abweichung"' in text
+    assert "Protokollkette gebrochen bei Eintrag 2" in text
+
+
+def test_das_band_bietet_nach_dem_anhalten_das_fortsetzen_an(dashboard):
+    client = klient(dashboard)
+    eigene_post(client, "/stop")
+    text = client.get("/").text
+    assert 'action="/weiter"' in text
+    assert "Fortsetzen" in text
+    # Der ganze Grund wird kalt, nicht nur die Marke.
+    assert '<body class="angehalten">' in text
+
+
+def test_die_navigation_zeigt_genau_die_vier_ansichten(dashboard):
+    """Keine Seite, die es nicht gibt: jeder Eintrag der Leiste ist eine Route."""
+    text = klient(dashboard).get("/").text
+    nav = text[text.index("<nav>") : text.index("</nav>")]
+    assert set(re.findall(r'href="([^"]+)"', nav)) == {
+        "/",
+        "/entscheidungen",
+        "/briefing",
+        "/protokoll",
+    }
+
+
+def test_die_lage_zeigt_anstehendes_und_das_protokoll(dashboard):
+    vorgang_einstellen(dashboard, summary="kunde@example.com -- wartet auf dich")
+    conn = open_database(dashboard / "state.db")
+    AuditLog(conn).record(
+        capability="mail_send", kind="action", outcome="failed", detail={"reason": "Gmail weg"}
+    )
+    conn.close()
+    text = klient(dashboard).get("/").text
+    assert "wartet auf dich" in text
+    assert "Alle 1 ansehen und entscheiden" in text
+    assert '<span class="marke fehler">Fehlgeschlagen</span>' in text
+    assert "Gmail weg" in text
+
+
+def test_die_lage_entscheidet_nichts(dashboard):
+    """Zehnmal laden aendert weder Protokoll noch Kontingent -- wie bei den Entscheidungen."""
+    vorgang_einstellen(dashboard, skill="mail_send")
+    conn = open_database(dashboard / "state.db")
+    vorher = AuditLog(conn).count()
+    conn.close()
+
+    client = klient(dashboard)
+    for _ in range(10):
+        assert client.get("/").status_code == 200
+
+    conn = open_database(dashboard / "state.db")
+    try:
+        assert AuditLog(conn).count() == vorher
+        assert conn.execute("SELECT count(*) FROM rate_events").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_die_lage_hat_keine_handlung_ausser_dem_stoppschalter(dashboard):
+    """Die Lage zeigt, sie entscheidet nicht. Gehandelt wird nur unter Entscheidungen."""
+    vorgang_einstellen(dashboard)
+    text = klient(dashboard).get("/").text
+    assert re.findall(r'<form[^>]+action="([^"]+)"', text) == ["/stop"]
+
+
+def test_tabellenzellen_tragen_ihren_kopf(dashboard):
+    """Im schmalen Fenster wird die Tabelle zu Bloecken; die Beschriftung kommt aus dem Attribut."""
+    text = klient(dashboard).get("/").text
+    assert 'data-kopf="Faehigkeit"' in text
+    assert 'data-kopf="Stufe gewaehrt / verlangt"' in text
+
+
+def test_der_stoppschalter_steht_vor_allem_anderen(dashboard):
+    """Erstes Formular im Dokument, also erster Griff im Tabfluss -- auch ohne Maus."""
+    text = klient(dashboard).get("/protokoll").text
+    assert text.index('action="/stop"') < text.index("<nav>")

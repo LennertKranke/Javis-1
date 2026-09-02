@@ -1,10 +1,16 @@
 """Das Dashboard.
 
-Drei Ansichten -- Zustand, Entscheidungen, Protokoll -- und genau drei Dinge,
-die man ausloesen kann: freigeben, verwerfen, anhalten. Durchlaeufe startet
-weiter die Kommandozeile. Jede Schaltflaeche ist eine Angriffsflaeche, und eine
-Oberflaeche, die Modellaufrufe ausloesen kann, ist etwas anderes als eine, die
-nur bestaetigt.
+Vier Ansichten -- Lage, Entscheidungen, Briefing, Protokoll -- und genau vier
+Dinge, die man ausloesen kann: freigeben, verwerfen, anhalten, fortsetzen.
+Durchlaeufe startet weiter die Kommandozeile. Jede Schaltflaeche ist eine
+Angriffsflaeche, und eine Oberflaeche, die Modellaufrufe ausloesen kann, ist
+etwas anderes als eine, die nur bestaetigt.
+
+Die Lage ist die Leitstelle: in der Mitte der Kern mit dem Systemzustand,
+daneben die Zahlen, die zaehlen, darunter was wartet, was zuletzt geschah und
+was die Faehigkeiten duerfen. Alles darauf ist gelesen, nichts davon ist
+entschieden -- gehandelt wird nur in der Ansicht Entscheidungen, und auch dort
+nur ueber `execute_approval`.
 
 Die Endpunkte sind bewusst gewoehnliche Funktionen, nicht `async`. Starlette
 fuehrt sie dann in einem Threadpool aus, und SQLite bekommt pro Anfrage eine
@@ -34,19 +40,26 @@ from jarvis.core.approvals import ApprovalStore
 from jarvis.core.audit import KIND_SYSTEM, AuditLog
 from jarvis.core.config import Config, ConfigError, Paths, StopSwitch
 from jarvis.core.db import open_database
+from jarvis.core.files import offene_pfade
 from jarvis.core.gate import Gate, GatePreview
 from jarvis.core.ratelimit import RateLimiter
 from jarvis.core.secrets import default_store
+from jarvis.daemon import letzter_lauf
 from jarvis.interfaces.web.render import (
     esc,
     fakten,
     hinweis,
+    kennzahl,
+    kern,
     leer,
     seite,
     stufe,
     tabelle,
+    tafel,
     vorgang,
+    vorgang_kurz,
     zaehler,
+    zustand_ermitteln,
     zustandsmarke,
 )
 from jarvis.interfaces.web.security import (
@@ -73,9 +86,32 @@ MELDUNGEN = {
     "fehlgeschlagen": "Die Ausfuehrung ist fehlgeschlagen. Der Grund steht am Vorgang.",
     "unbekannt": "Diesen Vorgang gibt es nicht mehr.",
     "angehalten": "Angehalten. Jede ausgehende Aktion ist blockiert.",
-    "fortgesetzt": "Freigegeben. Ausgehende Aktionen sind wieder moeglich.",
+    "fortgesetzt": "Fortgesetzt. Ausgehende Aktionen sind wieder moeglich.",
     "nicht-erreichbar": "Gmail war nicht erreichbar. Der Vorgang bleibt offen.",
 }
+
+#: Wie die Trennung des Modellprozesses heisst, wenn man sie liest.
+TRENNUNG = {
+    "subprocess": "eigener Prozess",
+    "sandbox": "eigener Prozess, Sandbox",
+    "off": "AUS -- im selben Prozess",
+}
+
+
+def _quelle(quelle: Path | None, basis: Path) -> str:
+    """Die Konfigurationsdatei -- nur der Name, wenn sie in der Basis liegt."""
+    if quelle is None:
+        return "Vorgabe, keine Datei"
+    return quelle.name if quelle.parent == basis else _kurz(quelle)
+
+
+def _kurz(pfad: Path) -> str:
+    """Ein Pfad fuer die Anzeige: das Heimverzeichnis als `~`."""
+    heim = str(Path.home())
+    text = str(pfad)
+    if heim != "/" and text.startswith(heim):
+        return "~" + text[len(heim) :]
+    return text
 
 
 class SecurityHeaders:
@@ -190,11 +226,11 @@ def create_app(
             zugangsdaten = f"{zugangsdaten} -- Abweichung"
 
         meldung = MELDUNGEN.get(request.query_params.get("m", ""))
-        koerper = (hinweis(meldung) if meldung else "") + inhalt
         return HTMLResponse(
             seite(
                 titel,
-                inhalt_html=koerper,
+                inhalt_html=inhalt,
+                meldung_html=hinweis(meldung, art="meldung") if meldung else "",
                 aktiv=aktiv,
                 angehalten=schalter.engaged(),
                 stopp_grund=schalter.reason(),
@@ -209,66 +245,202 @@ def create_app(
 
     # ---------------------------------------------------------------- #
 
+    def _abweichungen(config: Config, kette_ok: bool, kette_bei: int | None) -> list[str]:
+        """Was nicht stimmt -- aus denselben Pruefungen wie `jarvis status`.
+
+        Drei Quellen, alle gemessen: die Hash-Kette, die Dateirechte der
+        Ablage, die Quelle der Zugangsdaten. Nichts davon ist ein Zustand, den
+        sich die Oberflaeche ausdenkt; jede Zeile hier laesst `jarvis status`
+        ebenfalls mit 1 enden.
+        """
+        befunde: list[str] = []
+        if not kette_ok:
+            befunde.append(f"Protokollkette gebrochen bei Eintrag {kette_bei}")
+
+        # Nur bei eingerichteter Ablage, wie in der CLI: ein leeres
+        # Verzeichnis hat nichts, was auslaufen koennte.
+        eingerichtet = paths.db_file.exists() or paths.config_file.exists()
+        offen = [p.name or str(p) for p in offene_pfade(paths.home)] if eingerichtet else []
+        if offen:
+            sichtbar = ", ".join(offen[:4]) + (
+                f" und {len(offen) - 4} weitere" if len(offen) > 4 else ""
+            )
+            befunde.append(f"Ablage offen fuer andere Benutzer: {sichtbar}")
+
+        speicher = default_store()
+        grund = speicher.insecure_reason()
+        if grund and speicher.violates_spec:
+            befunde.append(f"Zugangsdaten: {grund}")
+        return befunde
+
     @geschuetzt
     def lage(request: Request) -> Response:
         config = konfiguration()
+        schalter = config.stop_switch
         conn = verbindung()
         try:
             audit = AuditLog(conn)
             kette = audit.verify()
             begrenzer = RateLimiter(conn, config.capabilities)
-            offen = ApprovalStore(conn).count_pending()
-
-            kopf = fakten(
-                [
-                    ("Offene Entscheidungen", offen),
-                    ("Protokoll", f"{audit.count()} Eintraege"),
-                    ("Kette", "intakt" if kette.ok else f"GEBROCHEN bei {kette.broken_at}"),
-                ]
-            )
-
-            # Die verlangte Stufe steht am Skill, die gewaehrte in der
-            # Konfiguration. Nur eine von beiden zu zeigen war die alte
-            # Fassung -- und genau diese Verwechslung hat im Audit eine
-            # Faehigkeit auf Stufe 0 handeln lassen: `0 >= 0` ist wahr.
-            faehigkeiten = available_skills()
-            zeilen = []
-            for name in sorted(config.capabilities):
-                cap = config.capabilities[name]
-                klasse = faehigkeiten.get(name)
-                verlangt = None if klasse is None else int(klasse.autonomy_level)
-                zeilen.append(
-                    [
-                        name,
-                        stufe(int(cap.autonomy_level), verlangt, cap.autonomy_level.label),
-                        "ja" if cap.requires_outbound else "nein",
-                        "ja" if cap.enabled else "nein",
-                        zaehler((w.window, w.used, w.limit) for w in begrenzer.usage(name)),
-                    ]
-                )
-            inhalt = (
-                "<h2>Lage</h2>"
-                + kopf
-                + "<h2>Faehigkeiten</h2>"
-                + tabelle(
-                    # Siehe cli.py: "Ausgehend" war irrefuehrend. Labels und
-                    # Entwuerfe gehen zu Google, erreichen aber niemanden.
-                    # "Stufe" traegt jetzt beide Zahlen: gewaehrt / verlangt.
-                    [
-                        "Faehigkeit",
-                        "Stufe gewaehrt / verlangt",
-                        "Erreicht Dritte",
-                        "Aktiv",
-                        "Kontingent",
-                    ],
-                    zeilen,
-                    mono=(0,),
-                    roh=(1, 4),
-                )
-            )
+            freigaben = ApprovalStore(conn)
+            offen = freigaben.count_pending()
+            anstehend = freigaben.pending(limit=4)
+            letzte = audit.recent(8)
+            protokoll_anzahl = audit.count()
+            # Der letzte Lauf je Faehigkeit stammt vom Daemon; die CLI
+            # verzeichnet ihren Lauf nicht. Die Spalte heisst deshalb so.
+            laeufe = {name: letzter_lauf(conn, name) for name in config.capabilities}
+            # Vor dem Schliessen lesen: der Begrenzer haengt an der Verbindung.
+            kontingente = {
+                name: [(w.window, w.used, w.limit) for w in begrenzer.usage(name)]
+                for name in config.capabilities
+            }
         finally:
             conn.close()
-        return rahmen(request, "Lage", inhalt, "/", weit=True)
+
+        abweichungen = _abweichungen(config, kette.ok, kette.broken_at)
+        # Im Satz unter dem Kern nur der Grund; Zeitstempel und Urheber
+        # stehen weiterhin im Band.
+        zustand = zustand_ermitteln(
+            angehalten=schalter.engaged(),
+            stopp_grund=schalter.spoken_reason(),
+            offen=offen,
+            abweichungen=abweichungen,
+            trockenlauf=config.dry_run,
+        )
+
+        # --- Kern, Zahlen, System ------------------------------------------ #
+        kette_text = "intakt" if kette.ok else f"gebrochen bei {kette.broken_at}"
+        zahlen = (
+            kennzahl("Offene Entscheidungen", offen, art="hebt" if offen else "")
+            + kennzahl(
+                "Protokoll",
+                protokoll_anzahl,
+                art="" if kette.ok else "gefahr",
+                zusatz=f"Eintraege, Kette {kette_text}",
+            )
+            + (
+                kennzahl("Letzter Eintrag", letzte[0].ts[11:19], zusatz=f"{letzte[0].ts[:10]}, UTC")
+                if letzte
+                else kennzahl("Letzter Eintrag", "--")
+            )
+        )
+
+        speicher = default_store()
+        eingerichtet = paths.db_file.exists() or paths.config_file.exists()
+        offene = offene_pfade(paths.home) if eingerichtet else []
+        system = fakten(
+            [
+                ("Basis", _kurz(paths.home)),
+                ("Konfiguration", _quelle(config.source, paths.home)),
+                ("Zugangsdaten", f"{speicher.describe()} ({speicher.mode})"),
+                (
+                    "Ablage",
+                    "geschlossen, 0700/0600" if not offene else f"{len(offene)} Pfade offen",
+                ),
+                ("Modellprozess", TRENNUNG.get(config.llm.isolation, config.llm.isolation)),
+            ]
+        )
+        mitte = (
+            kern(zustand)
+            + f'<span class="lage-zustandsmarke {esc(zustand.art)}">{esc(zustand.titel)}</span>'
+            + f'<p class="lage-satz">{esc(zustand.satz)}</p>'
+        )
+        kopf = (
+            '<section class="lage">'
+            f'<div class="lage-kennzahlen"><div class="kennzahlen">{zahlen}</div></div>'
+            f'<div class="lage-mitte">{mitte}</div>'
+            f'<div class="lage-system">{system}</div>'
+            "</section>"
+        )
+        if abweichungen:
+            punkte = "".join(f"<li>{esc(a)}</li>" for a in abweichungen)
+            kopf += (
+                '<div class="abweichungen">Abweichungen, die vor jeder Arbeit geklaert '
+                f"gehoeren:<ul>{punkte}</ul></div>"
+            )
+
+        # --- Was wartet, was zuletzt geschah ------------------------------- #
+        if anstehend:
+            wartend = '<ul class="anstehend">' + "".join(map(vorgang_kurz, anstehend)) + "</ul>"
+            weg = f'<a href="/entscheidungen">Alle {offen} ansehen und entscheiden</a>'
+        else:
+            wartend = leer("Nichts anstehend. Was von selbst durchging, steht im Protokoll.")
+            weg = ""
+        zuletzt = tabelle(
+            ["Zeit (UTC)", "Faehigkeit", "Ergebnis", "Grund"],
+            [
+                [
+                    e.ts[11:19],
+                    e.capability,
+                    zustandsmarke(e.outcome, dry_run=e.dry_run),
+                    str(e.detail.get("reason", "") or e.detail.get("summary", ""))[:70],
+                ]
+                for e in letzte
+            ],
+            mono=(0, 1),
+            roh=(2,),
+            umbruch=(3,),
+        )
+        tafeln = (
+            '<div class="tafeln">'
+            + tafel("Anstehend", wartend, fuss_html=weg)
+            + tafel(
+                "Zuletzt im Protokoll",
+                zuletzt,
+                fuss_html='<a href="/protokoll">Vollstaendiges Protokoll</a>',
+            )
+            + "</div>"
+        )
+
+        # --- Faehigkeiten --------------------------------------------------- #
+        # Die verlangte Stufe steht am Skill, die gewaehrte in der
+        # Konfiguration. Nur eine von beiden zu zeigen war die alte Fassung --
+        # und genau diese Verwechslung hat im Audit eine Faehigkeit auf Stufe 0
+        # handeln lassen: `0 >= 0` ist wahr.
+        faehigkeiten = available_skills()
+        zeilen = []
+        for name in sorted(config.capabilities):
+            cap = config.capabilities[name]
+            klasse = faehigkeiten.get(name)
+            verlangt = None if klasse is None else int(klasse.autonomy_level)
+            lauf = laeufe.get(name)
+            zuletzt_gelaufen = (
+                datetime.fromtimestamp(lauf, tz=config.timezone).strftime("%Y-%m-%d %H:%M")
+                if lauf
+                else "--"
+            )
+            zeilen.append(
+                [
+                    name,
+                    stufe(int(cap.autonomy_level), verlangt, cap.autonomy_level.label),
+                    "ja" if cap.requires_outbound else "nein",
+                    "ja" if cap.enabled else "nein",
+                    zaehler(kontingente[name]),
+                    zuletzt_gelaufen,
+                ]
+            )
+        faehigkeitstafel = tafel(
+            "Faehigkeiten",
+            tabelle(
+                # Siehe cli.py: "Ausgehend" war irrefuehrend. Labels und
+                # Entwuerfe gehen zu Google, erreichen aber niemanden.
+                # "Stufe" traegt beide Zahlen: gewaehrt / verlangt.
+                [
+                    "Faehigkeit",
+                    "Stufe gewaehrt / verlangt",
+                    "Erreicht Dritte",
+                    "Aktiv",
+                    "Kontingent",
+                    "Letzter Lauf (Daemon)",
+                ],
+                zeilen,
+                mono=(0, 5),
+                roh=(1, 4),
+            ),
+            klasse="breit",
+        )
+        return rahmen(request, "Lage", kopf + tafeln + faehigkeitstafel, "/", weit=True)
 
     @geschuetzt
     def briefing(request: Request) -> Response:
@@ -284,8 +456,9 @@ def create_app(
             heute = datetime.now(konfiguration().timezone).date().isoformat()
 
             if not eintraege:
-                inhalt = "<h2>Briefing</h2>" + leer(
-                    "Noch kein Briefing abgelegt. Erzeugen: jarvis briefing --neu"
+                inhalt = tafel(
+                    "Briefing",
+                    leer("Noch kein Briefing abgelegt. Erzeugen: jarvis briefing --neu"),
                 )
             else:
                 neuestes = eintraege[0]
@@ -297,17 +470,22 @@ def create_app(
                         ("Erstellt", neuestes.created_at[:19].replace("T", " ")),
                     ]
                 )
-                inhalt = (
-                    "<h2>Briefing</h2>" + kopf + f'<pre class="briefing">{esc(neuestes.text)}</pre>'
+                inhalt = tafel(
+                    "Briefing", kopf + f'<pre class="briefing">{esc(neuestes.text)}</pre>'
                 )
                 if len(eintraege) > 1:
-                    inhalt += "<h2>Frueher</h2>" + tabelle(
-                        ["Tag", "Quelle", "Anfang"],
-                        [
-                            [b.day, b.model or "ohne Modell", b.text.split(chr(10))[0][:60]]
-                            for b in eintraege[1:]
-                        ],
-                        mono=(0,),
+                    inhalt += tafel(
+                        "Frueher",
+                        tabelle(
+                            ["Tag", "Quelle", "Anfang"],
+                            [
+                                [b.day, b.model or "ohne Modell", b.text.split(chr(10))[0][:60]]
+                                for b in eintraege[1:]
+                            ],
+                            mono=(0,),
+                            umbruch=(2,),
+                        ),
+                        klasse="breit",
                     )
         finally:
             conn.close()
@@ -370,7 +548,10 @@ def create_app(
     def protokoll(request: Request) -> Response:
         conn = verbindung()
         try:
-            eintraege = AuditLog(conn).recent(60)
+            audit = AuditLog(conn)
+            eintraege = audit.recent(60)
+            anzahl = audit.count()
+            kette = audit.verify()
         finally:
             conn.close()
         # Statt einer T-Spalte mit Legende steht der Zustand als Marke da.
@@ -387,11 +568,18 @@ def create_app(
             ]
             for e in eintraege
         ]
-        inhalt = "<h2>Protokoll</h2>" + tabelle(
-            ["Nr", "Zeit (UTC)", "Faehigkeit", "Art", "Ergebnis", "Grund"],
-            zeilen,
-            mono=(0, 1),
-            roh=(4,),
+        kette_text = "intakt" if kette.ok else f"gebrochen bei {kette.broken_at}"
+        stand = f"{anzahl} Eintraege, Kette {kette_text}; die letzten {len(zeilen)} stehen hier"
+        inhalt = tafel(
+            "Protokoll",
+            tabelle(
+                ["Nr", "Zeit (UTC)", "Faehigkeit", "Art", "Ergebnis", "Grund"],
+                zeilen,
+                mono=(0, 1, 2),
+                roh=(4,),
+                umbruch=(5,),
+            ),
+            fuss_html=esc(stand),
         )
         return rahmen(request, "Protokoll", inhalt, "/protokoll", weit=True)
 
@@ -409,8 +597,6 @@ def create_app(
                 return _zurueck("unbekannt")
 
             audit = AuditLog(conn)
-            from jarvis.core.gate import Gate
-
             gate = Gate(config, audit, RateLimiter(conn, config.capabilities))
             try:
                 # Die Freigabe wirkt auf das Gatter und auf die Rechte des

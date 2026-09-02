@@ -1,7 +1,9 @@
 # JARVIS — Projektstand und Uebergabe
 
-Stand: Konsolidierung 2026-09-01, Branch `main`.
-1063 Tests gruen, `ruff check` und `ruff format --check` sauber.
+Stand: Neugestaltung des Dashboards 2026-09-02, Branch `claude/plugin-082094`
+(Pull Request gegen `main`).
+1076 Tests, davon 1075 zu jeder Tageszeit gruen (KI-8), `ruff check` und
+`ruff format --check` sauber.
 
 Dieses Dokument beschreibt den **tatsaechlichen** Stand, nicht die Absicht.
 Verbindliche Vorgabe ist `JARVIS-SPEC-3.md` (Source of Truth); die
@@ -74,7 +76,9 @@ Modellaufruf in einem eigenen Interpreter aus, mit gefilterter Umgebung.
 ### Bedienweisen (`jarvis/interfaces/`)
 
 - `cli.py` -- 17 Befehle, siehe unten
-- `web/` -- Dashboard auf localhost, Token, Origin-Pruefung, CSP, kein JS
+- `web/` -- Dashboard auf localhost, Token, Origin-Pruefung, CSP, kein JS.
+  Seit 2026-09-02 eine Leitstelle: Kern (Orb) mit Systemzustand, vier
+  Ansichten, Gestaltung in `design/JARVIS-DESIGN-SYSTEM.md` (Fassung 2.0)
 - `voice/` -- Sprache. **Bedienweise, keine Faehigkeit** (siehe §4)
 
 ### Dauerbetrieb
@@ -255,14 +259,79 @@ bevor gemerged wird.
 
 ---
 
+## 2d. Neugestaltung des Dashboards (2026-09-02)
+
+Auftrag: das Webinterface zu einer konsistenten, tatsaechlich nutzbaren
+Leitstelle machen -- dunkel, Orange, ruhig, mit einem Kern als visuellem
+Zentrum -- und `design/` auf eine einzige Quelle bringen. Architektur,
+Routen, Sicherheitskopfzeilen und Aktionswege sind unveraendert; geaendert
+ist ausschliesslich `jarvis/interfaces/web/` samt Tests und Dokumentation.
+
+1. **Stylesheet neu** (`style.py`): warmes Schwarz, ein Akzent Orange, Glas
+   statt Flaeche, Systemschriften, Bewegung nur am Kern und am Puls im Band,
+   `prefers-reduced-motion` schaltet alles ab. Keine helle Fassung mehr.
+   Kein `url()`, kein `style`-Attribut -- beides wuerde die CSP still
+   verwerfen; zwei Tests halten das fest.
+2. **Lage als Leitstelle** (`app.py`, `render.py`): in der Mitte der Kern,
+   dessen Zustand aus Tatsachen abgeleitet ist (`render.zustand_ermitteln`:
+   angehalten > Abweichung > wartet > Betrieb; Abweichung heisst Kette
+   gebrochen, Ablage offen oder Zugangsdaten abweichend -- dieselben
+   Pruefungen wie `jarvis status`). Daneben Kennzahlen und System, darunter
+   Anstehend (Vorschau ohne Knopf), Zuletzt im Protokoll, Faehigkeiten mit
+   der Spalte "Letzter Lauf (Daemon)" aus `daemon.letzter_lauf`. Die Lage
+   hat kein Formular ausser dem Stoppschalter.
+3. **Rahmen**: Systemband zuerst im Dokument (klebt oben), Stoppschalter als
+   `Anhalten` / `Fortsetzen` mit Inline-SVG; Kopf mit Wortmarke und
+   Navigation; Tafeln mit Eckwinkeln; Tabellen tragen `data-kopf` und werden
+   im schmalen Fenster zu Bloecken; breite Tabellen rollen im Rahmen.
+4. **Nicht gebaut, mit Absicht**: Chat oder Eingabefeld (zweiter Aktionsweg,
+   SPEC-3 12 MUST NOT, `web/app.py`), Seiten fuer Dienste, Modelle,
+   Gedaechtnis, Fehler, Tasks (PLANNED, Roadmap 6), Zustaende Laeuft, Denkt,
+   Offline (SPEC-3 5.2 kennt sie nicht). Keine Mock-Daten in der
+   Oberflaeche: alles kommt aus Konfiguration, Datenbank und Stoppdatei.
+5. **`design/` bereinigt**: `designsystem.html` (Blaetterwerk) und
+   `prototyp/` (zehn Entwurfsblaetter plus CSS) entfernt -- altes Design,
+   Vorschlag 1.0, zeigte PLANNED-Bereiche. `JARVIS-DESIGN-SYSTEM.md` ist in
+   Fassung 2.0 neu geschrieben und beschreibt die Implementierung, nicht
+   umgekehrt. `SPEC-3-NACHTRAG.md` bleibt als Nachweis, mit Hinweis.
+   README.md (Phase 4) und CLAUDE.md nachgezogen.
+6. **Tests**: 13 neue in `test_web.py` (jetzt 67): jede registrierte Route
+   ausser `/jarvis.css` verlangt den Token (TD-1 als Test ueber
+   `app.routes`), kein Inline-Stil, kein `url()`, der Kern folgt
+   Stoppschalter, offenen Vorgaengen und Kette, die Navigation zeigt genau
+   vier Ansichten, die Lage entscheidet nichts (zehnmal Laden aendert weder
+   Protokoll noch Kontingent) und hat kein Formular ausser `/stop`, Tabellen
+   tragen ihren Kopf, der Stoppschalter steht vor allem anderen. Alle 54
+   bestehenden Tests sind unveraendert gruen.
+7. **Im Browser geprueft** (Chromium ueber Playwright, gegen das laufende
+   Dashboard mit Mock-Diensten): vier Ansichten bei 1440, 1100, 820 und 390
+   px ohne horizontalen Ueberlauf; Zustaende Betrieb, Wartet, Angehalten,
+   Abweichung (Kette gebrochen), Trockenlauf AUS, Mock; leere Ablage; 15
+   Vorgaenge mit 40-zeiligen Entwuerfen und ueberlangen Betreffzeilen.
+   Safari auf macOS: nicht geprueft (Sitzung unter Linux).
+
+**Ein Befund fuer den Nutzer -- SPEC-3 aendert nur er.** SPEC-3 Abschnitt 12
+fuehrt die *Vertrauensnaht* als CURRENT (auch in Abschnitt 15 und 25). Sie
+war am 2026-08-31 zurueckgebaut worden (Commit 397c3dd, Weg A-teil); der
+Nachtrag wurde am 2026-09-01 trotzdem mit dieser Zeile eingetragen. Der Code
+hat seit dem Rueckbau `render.vorgangsfakten()` -- eine gemeinsame Liste --
+und ein Test prueft, dass keine Naht erscheint. Empfehlung: Zeile in 12
+streichen, Bemerkung in 15 und 25 anpassen (Fassung 3.3). Der Hinweis steht
+auch am Kopf von `design/SPEC-3-NACHTRAG.md`.
+
+---
+
 ## 3. Tests
 
-**1063, alle gruen.** `uv run pytest` — Laufzeit rund 19 s. Sie laufen seit
+**1076, davon 1075 zu jeder Tageszeit gruen.** `uv run pytest` — Laufzeit
+rund 20 s. Der eine ist KI-8 (`test_das_briefing_entsteht_aus_mock_daten`,
+zeitabhaengig, faellt taeglich von 22 bis 24 Uhr Berliner Zeit aus -- so auch
+im Lauf dieser Sitzung; ein Fehler im Test, nicht im Code). Sie laufen seit
 der Konsolidierung auch in der CI (`.github/workflows/ci.yml`) bei jedem
 Push und Pull Request.
 
-Groesste Gruppen: `test_voice.py` (99), `test_cli.py` (84), `test_calendar.py`
-(64), `test_web.py` (54), `test_approvals.py` (51), `test_schema.py` (42),
+Groesste Gruppen: `test_voice.py` (99), `test_cli.py` (84), `test_web.py`
+(67), `test_calendar.py` (64), `test_approvals.py` (51), `test_schema.py` (42),
 `test_isolation.py` (41), `test_briefing.py` (39), `test_daemon.py` (38),
 `test_research.py` (37).
 
@@ -282,6 +351,14 @@ Alarm, wenn jemand etwas verdrahtet, das nicht verdrahtet sein darf:
 
 ### Echte Fehler
 Keine offenen. Die aus dem Audit sind behoben, siehe Abschnitt 2a.
+
+### Dokumentation
+- **SPEC-3 Abschnitt 12 nennt die Vertrauensnaht als CURRENT; sie ist seit
+  2026-08-31 zurueckgebaut.** Siehe Abschnitt 2d. Korrektur nur durch den
+  Nutzer (SPEC-3 Abschnitt 27).
+- **KI-8** ist weiterhin offen: der zeitabhaengige Test entwertet jede
+  pauschale "alle Tests gruen"-Aussage, solange er nicht auf eine feste Uhr
+  gestellt ist.
 
 ### Nie auf echter Hardware ausgefuehrt
 - **macOS-Sandbox** (`isolation = "sandbox"`): Profil und Aufruf getestet,
@@ -313,6 +390,13 @@ Keine offenen. Die aus dem Audit sind behoben, siehe Abschnitt 2a.
   Importe, die erst weiter unten gebraucht werden. Erst fertig schreiben.
 - **`StaticProvider` wird nie ausgelagert** (Kosten). Wer den
   Subprozess-Weg testen will, baut `SubprocessProvider` direkt.
+- **Das Dashboard hat `style-src 'self'` und `img-src 'none'`.** Ein
+  `style`-Attribut oder ein `url()` im Stylesheet wird still verworfen --
+  im Browser sieht man nur, dass etwas fehlt. Tests pruefen beides. Der Kern
+  ist deshalb aus Gradienten gebaut, Symbole sind Inline-SVG.
+- **Der Kern zeigt nur Zustaende, die das System fuehrt.** Wer einen neuen
+  will, braucht erst die Tatsache (`zustand_ermitteln`), dann die Klasse,
+  dann den Test -- nicht umgekehrt.
 
 ---
 
@@ -449,7 +533,7 @@ beide den Nutzer an seinem Mac und lassen sich als **ein** Termin erledigen.
 
 ```sh
 uv sync
-uv run pytest -q                 # 1063 Tests
+uv run pytest -q                 # 1076 Tests, siehe KI-8
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe

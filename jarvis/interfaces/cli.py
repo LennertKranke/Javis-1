@@ -1604,7 +1604,6 @@ def cmd_memory(args: argparse.Namespace, out: Out) -> int:
             out.table(
                 ["SCHLUESSEL", "WERT", "KATEGORIE", "GEWICHT"],
                 [[f.key, f.value[:60], f.category, f"{f.weight:g}"] for f in fakten],
-                mono=(0, 3),
             )
         else:
             out.line(f"  {out.dim('Nichts abgelegt.')}")

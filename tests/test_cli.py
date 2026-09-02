@@ -956,3 +956,123 @@ def test_termine_mit_uhrzeit_werden_weiterhin_umgerechnet():
     gespeichert = "2026-03-02T09:00:00+00:00"
     assert _ortszeit(gespeichert, ZoneInfo("Europe/Berlin")) == "02.03. 10:00"
     assert _ortszeit(gespeichert, ZoneInfo("America/New_York")) == "02.03. 04:00"
+
+
+# --------------------------------------------------------------------------- #
+# Gedaechtnis
+#
+# Der Weg "ablegen, dann auflisten" war nie ausgefuehrt worden: `cmd_memory`
+# rief `Out.table` mit einem Parameter auf, den diese Methode in keiner Fassung
+# je hatte. Sichtbar wurde das erst mit mindestens einer abgelegten Tatsache --
+# ohne Eintrag greift der leere Zweig und die fehlerhafte Zeile bleibt kalt.
+# Deshalb pruefen die folgenden Tests genau diesen Uebergang.
+# --------------------------------------------------------------------------- #
+
+
+def test_memory_listet_eine_abgelegte_tatsache_auf(home, capsys):
+    """Der Regressionsfall: ablegen, dann auflisten.
+
+    Deckt den ganzen Weg ab -- die Tatsache wird ueber den vorgesehenen
+    Memory-Befehl abgelegt, der Vorgang endet erfolgreich, und sie ist danach
+    in der Auflistung wiederzufinden.
+    """
+    run(home, "init", capsys=capsys)
+
+    code, out = run(home, "memory", "buero", "Muenchen,", "3.", "Stock", capsys=capsys)
+    assert code == 0
+    assert "Gemerkt: buero = Muenchen, 3. Stock" in out
+
+    code, out = run(home, "memory", capsys=capsys)
+    assert code == 0
+    assert "Tatsachen" in out
+    assert "SCHLUESSEL" in out and "GEWICHT" in out
+    assert "buero" in out
+    assert "Muenchen, 3. Stock" in out
+    assert "Nichts abgelegt." not in out
+
+
+def test_memory_bleibt_auf_leerer_ablage_lauffaehig(home, capsys):
+    """Die Gegenprobe: ohne Eintrag darf keine Tabelle entstehen.
+
+    Genau dieser Zweig lief immer -- er hat den Fehler im anderen verdeckt.
+    """
+    run(home, "init", capsys=capsys)
+    code, out = run(home, "memory", capsys=capsys)
+    assert code == 0
+    assert "Nichts abgelegt." in out
+    assert "SCHLUESSEL" not in out
+
+
+def test_memory_zeigt_gewicht_und_kategorie(home, capsys):
+    """Alle vier Spalten der Tabelle werden tatsaechlich gefuellt."""
+    run(home, "init", capsys=capsys)
+    run(
+        home,
+        "memory",
+        "chef",
+        "Frau",
+        "Meier",
+        "--kategorie",
+        "person",
+        "--gewicht",
+        "2.5",
+        capsys=capsys,
+    )
+    code, out = run(home, "memory", capsys=capsys)
+    assert code == 0
+    assert "chef" in out
+    assert "person" in out
+    assert "2.5" in out
+
+
+def test_memory_filtert_nach_kategorie(home, capsys):
+    """Der Filterweg fuehrt in dieselbe Tabelle und muss ebenso laufen."""
+    run(home, "init", capsys=capsys)
+    run(home, "memory", "chef", "Frau", "Meier", "--kategorie", "person", capsys=capsys)
+    run(home, "memory", "kaffee", "schwarz", "--kategorie", "praeferenz", capsys=capsys)
+
+    code, out = run(home, "memory", "--kategorie-filter", "person", capsys=capsys)
+    assert code == 0
+    assert "chef" in out
+    assert "kaffee" not in out
+
+
+def test_memory_laesst_die_hashkette_intakt(home, capsys):
+    """Das Gedaechtnis ist Zustand, keine Aussenwirkung.
+
+    Es gehoert deshalb nicht ins Protokoll -- aber es darf die Kette der
+    bereits vorhandenen Eintraege auch nicht beschaedigen. Beides wird hier
+    gemessen, damit der Fix an der Anzeige nicht unbemerkt am Protokoll ruettelt.
+    """
+    run(home, "init", capsys=capsys)
+    run(home, "memory", "buero", "Muenchen", capsys=capsys)
+    run(home, "memory", capsys=capsys)
+
+    code, out = run(home, "verify", capsys=capsys)
+    assert code == 0
+    assert "intakt" in out
+
+    conn = open_database(home / "state.db")
+    try:
+        pruefung = AuditLog(conn).verify()
+        assert pruefung.ok
+        offen = conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE capability LIKE '%memory%'"
+        ).fetchone()[0]
+        assert offen == 0, "Das Gedaechtnis schreibt bewusst keine Protokolleintraege"
+    finally:
+        conn.close()
+
+
+def test_memory_vergessen_entfernt_die_tatsache(home, capsys):
+    """Der dritte Zweig desselben Befehls, damit er nicht ungeprueft bleibt."""
+    run(home, "init", capsys=capsys)
+    run(home, "memory", "buero", "Muenchen", capsys=capsys)
+
+    code, out = run(home, "memory", "--vergessen", "buero", capsys=capsys)
+    assert code == 0
+    assert "Vergessen." in out
+
+    _code, out = run(home, "memory", capsys=capsys)
+    assert "buero" not in out
+    assert "Nichts abgelegt." in out

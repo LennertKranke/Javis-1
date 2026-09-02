@@ -34,7 +34,7 @@ from typing import Any
 
 from jarvis.skills.mail.gmail import GmailError
 
-__all__ = ["MockGmailClient", "beispiel_postfach"]
+__all__ = ["MockGmailClient", "MockPostfach", "beispiel_postfach"]
 
 
 def _b64(text: str) -> str:
@@ -67,6 +67,43 @@ def _entwurfsform(raw: str, thread_id: str | None) -> dict[str, Any]:
             "body": {"data": _b64(koerper), "size": len(koerper)},
         },
     }
+
+
+class MockPostfach:
+    """Der Bestand, den mehrere Zugaenge teilen: Nachrichten, Labels, Entwuerfe.
+
+    Beim echten Client liegt der Bestand ausserhalb -- bei Google. Zwei
+    Instanzen mit verschiedenen Rechten sehen deshalb dasselbe Postfach und
+    denselben Entwurf. Das Doppel hielt seinen Bestand dagegen in sich selbst,
+    und weil `gmail_client` je Faehigkeit eine eigene Instanz baut, war der
+    Entwurf von `mail_reply` fuer `mail_send` unsichtbar -- auch im selben
+    Prozess. Genau diese Rolle des "Postfachs draussen" fuellt diese Klasse.
+
+    Die Rechte bleiben ausdruecklich draussen: sie gehoeren dem Zugang, nicht
+    dem Bestand. Ein Doppel, das senden darf, weil ein anderes es darf, waere
+    ein Doppel, dem man nichts glauben kann.
+    """
+
+    def __init__(
+        self,
+        *,
+        address: str = "ich@example.com",
+        messages: list[dict] | None = None,
+        fixtures: Path | None = None,
+    ) -> None:
+        self.address = address
+        self.messages = list(messages if messages is not None else beispiel_postfach())
+        if fixtures is not None:
+            self.messages = _lade_fixtures(fixtures)
+        self.labels: dict[str, str] = {"INBOX": "INBOX", "UNREAD": "UNREAD"}
+        self.drafts: dict[str, dict] = {}
+        self.sent: list[dict] = []
+        self._zaehler = 0
+
+    def naechste(self, praefix: str) -> str:
+        """Kennungen kommen aus dem Bestand, damit zwei Zugaenge keine doppeln."""
+        self._zaehler += 1
+        return f"{praefix}{self._zaehler}"
 
 
 def _nachricht(
@@ -168,19 +205,32 @@ class MockGmailClient:
         address: str = "ich@example.com",
         messages: list[dict] | None = None,
         fixtures: Path | None = None,
+        postfach: MockPostfach | None = None,
     ) -> None:
         self._capabilities = frozenset(capabilities)
-        self._address = address
-        self._messages = list(messages if messages is not None else beispiel_postfach())
-        if fixtures is not None:
-            self._messages = _lade_fixtures(fixtures)
-        self._labels: dict[str, str] = {
-            "INBOX": "INBOX",
-            "UNREAD": "UNREAD",
-        }
-        self._drafts: dict[str, dict] = {}
-        self._sent: list[dict] = []
-        self._zaehler = 0
+        self._postfach = postfach or MockPostfach(
+            address=address, messages=messages, fixtures=fixtures
+        )
+
+    @property
+    def _address(self) -> str:
+        return self._postfach.address
+
+    @property
+    def _messages(self) -> list[dict]:
+        return self._postfach.messages
+
+    @property
+    def _labels(self) -> dict[str, str]:
+        return self._postfach.labels
+
+    @property
+    def _drafts(self) -> dict[str, dict]:
+        return self._postfach.drafts
+
+    @property
+    def _sent(self) -> list[dict]:
+        return self._postfach.sent
 
     # --- Faehigkeiten ------------------------------------------------- #
 
@@ -200,8 +250,7 @@ class MockGmailClient:
             )
 
     def _naechste(self, praefix: str) -> str:
-        self._zaehler += 1
-        return f"{praefix}{self._zaehler}"
+        return self._postfach.naechste(praefix)
 
     # --- Lesen --------------------------------------------------------- #
 

@@ -626,3 +626,148 @@ def _roher_entwurf(*, to: str, subject: str, body: str) -> str:
 
     ziel = ReplyTarget(to=to, thread_id="t1", subject=subject)
     return raw_for_gmail(build_message(ziel, body, from_address="ich@example.com"))
+
+
+# --------------------------------------------------------------------------- #
+# Lebensdauer des Doppels
+#
+# Der echte Client ist ein Zugang zu einem Postfach, das ausserhalb von ihm
+# liegt: zwei Instanzen mit verschiedenen Rechten sehen dieselben Nachrichten
+# und denselben Entwurf. Das Doppel hielt seinen Bestand dagegen in sich
+# selbst, und `gmail_client` baut je Faehigkeit eine eigene Instanz -- also sah
+# `mail_send` die Entwuerfe von `mail_reply` auch im selben Prozess nie.
+# Die Rechte muessen dabei getrennt bleiben: `mail` darf nicht senden koennen,
+# nur weil `mail_send` es darf.
+# --------------------------------------------------------------------------- #
+
+
+def lebenszyklus_config(home) -> Config:
+    """Postfach lesen, entwerfen und senden -- alles ohne Google und ohne Modell."""
+    einordnung = json.dumps(
+        {
+            "kategorie": "anfrage",
+            "dringlichkeit": 2,
+            "antwort_noetig": True,
+            "begruendung": "Probelauf",
+        }
+    )
+    entwurf = json.dumps(
+        {
+            "antwort_text": "Guten Tag, vielen Dank fuer Ihre Nachricht. Viele Gruesse",
+            "zuversicht": 3,
+            "braucht_menschen": False,
+            "begruendung": "Probelauf",
+        }
+    )
+    return Config.from_mapping(
+        {
+            "dry_run": False,
+            "services": {"mode": "mock"},
+            "capabilities": {
+                "mail": {"requires_outbound": False, "rate_limits": {"hour": 100}},
+                "mail_reply": {"requires_outbound": False, "rate_limits": {"hour": 100}},
+                "mail_send": {
+                    "autonomy_level": 1,
+                    "requires_outbound": True,
+                    "rate_limits": {"hour": 100},
+                },
+            },
+            "llm": {
+                "isolation": "off",
+                "providers": {
+                    "trocken": {
+                        "kind": "static",
+                        "model": "static",
+                        "local": True,
+                        "reply": einordnung,
+                    },
+                    "trocken_entwurf": {
+                        "kind": "static",
+                        "model": "static",
+                        "local": True,
+                        "reply": entwurf,
+                    },
+                },
+                "tasks": {
+                    "classify": {"providers": ["trocken"]},
+                    "draft": {"providers": ["trocken_entwurf"]},
+                },
+            },
+            "skills": {
+                "mail_send": {"allowlist_manual": ["rechnung@stadtwerke.example"]},
+            },
+        },
+        paths=Paths(home=home),
+    )
+
+
+def test_das_doppel_teilt_den_bestand_ueber_faehigkeiten_hinweg(home, conn):
+    """Der Regressionsfall: der Entwurf muss die Faehigkeitsgrenze ueberleben.
+
+    Gebaut wird ueber `build_skill` -- genau den Weg, den Kommandozeile und
+    Daemon gehen. Ohne geteilten Bestand haelt `mail_send` jeden Entwurf
+    zurueck, weil das eigene Doppel ihn gar nicht kennt.
+    """
+    from jarvis.skills.mail.store import ReplyStore
+
+    config = lebenszyklus_config(home)
+    for name in ("mail", "mail_reply"):
+        durchlauf(config, conn, name)
+
+    bericht = durchlauf(config, conn, "mail_send")
+
+    assert bericht.failed == 0
+    assert bericht.acted >= 1, "Der Entwurf war fuer mail_send nicht auffindbar"
+    eintrag = ReplyStore(conn).get("m1")
+    assert eintrag is not None and eintrag.sent_at, "m1 wurde nie gesendet"
+
+
+def test_die_rechte_bleiben_je_faehigkeit_getrennt(home, conn):
+    """Ein geteilter Bestand darf keine geteilten Rechte bedeuten.
+
+    `mail` beschriftet und darf nicht senden, `mail_reply` entwirft und darf
+    nicht senden -- auch dann nicht, wenn `mail_send` im selben Prozess das
+    Senderecht hat.
+    """
+    from jarvis.skills.factory import build_skill
+
+    config = lebenszyklus_config(home)
+    rechte = {
+        name: build_skill(name, config=config, conn=conn)._client.capabilities
+        for name in ("mail", "mail_reply", "mail_send")
+    }
+
+    assert "send" not in rechte["mail"]
+    assert "label" in rechte["mail"]
+    assert "send" not in rechte["mail_reply"]
+    assert "draft" in rechte["mail_reply"]
+    assert "send" in rechte["mail_send"]
+
+
+def test_zwei_ablagen_teilen_kein_postfach(home, tmp_path):
+    """Verschiedene Beispieldaten heissen verschiedene Postfaecher."""
+    from jarvis.skills.factory import gmail_client
+
+    (tmp_path / "messages.json").write_text(
+        json.dumps([{"id": "x1", "threadId": "t", "payload": {"headers": []}}]),
+        encoding="utf-8",
+    )
+    eigen = Config.from_mapping(
+        {"services": {"mode": "mock", "fixtures": str(tmp_path)}}, paths=Paths(home=home)
+    )
+    vorgabe = Config.from_mapping({"services": {"mode": "mock"}}, paths=Paths(home=home))
+
+    a = gmail_client(eigen, LABELLING)
+    b = gmail_client(vorgabe, LABELLING)
+    assert a.list_message_ids("", 10) != b.list_message_ids("", 10)
+
+
+def test_ein_eigenes_doppel_bleibt_fuer_sich():
+    """Wer direkt konstruiert, bekommt weiterhin ein eigenes Postfach."""
+    a = MockGmailClient(DRAFTING)
+    b = MockGmailClient(DRAFTING)
+    entwurf = a.create_draft(_roher_entwurf(to="anna@example.com", subject="Re: x", body="Text"))
+
+    assert a.get_draft(entwurf["id"])["id"] == entwurf["id"]
+    with pytest.raises(GmailError, match="nicht gefunden"):
+        b.get_draft(entwurf["id"])

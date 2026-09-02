@@ -37,7 +37,7 @@ from jarvis.skills.calendar.skill import CalendarSkill
 from jarvis.skills.calendar.store import CalendarStore
 from jarvis.skills.mail.allowlist import Allowlist
 from jarvis.skills.mail.gmail import DRAFTING, LABELLING, SENDING, GmailAuth, GmailClient
-from jarvis.skills.mail.mock import MockGmailClient
+from jarvis.skills.mail.mock import MockGmailClient, MockPostfach
 from jarvis.skills.mail.reply import MailDraftSkill, MailSendSkill, SendOptions
 from jarvis.skills.mail.skill import MailOptions, MailSkill
 from jarvis.skills.mail.store import MailStore, ReplyStore
@@ -78,6 +78,22 @@ def _fixtures(config: Config) -> Path | None:
     return Path(pfad).expanduser() if pfad else None
 
 
+#: Das Postfach des Doppels, je Beispieldatenquelle einmal pro Prozess.
+#:
+#: Jede Faehigkeit bekommt ihren eigenen Client mit ihren eigenen Rechten --
+#: das ist Absicht und bleibt so. Der *Bestand* dahinter darf aber nicht
+#: mitvervielfacht werden: beim echten Client liegt er bei Google, also
+#: ausserhalb, und zwei Instanzen sehen denselben Entwurf. Hielt jedes Doppel
+#: seinen eigenen, war der Entwurf von `mail_reply` fuer `mail_send` schon im
+#: selben Prozess unsichtbar.
+_MOCK_POSTFAECHER: dict[str, MockPostfach] = {}
+
+
+def reset_mock_postfaecher() -> None:
+    """Verwirft die Postfaecher des Doppels. Fuer Tests, die frisch anfangen."""
+    _MOCK_POSTFAECHER.clear()
+
+
 def gmail_client(
     config: Config, capabilities: frozenset[str], *, secrets: SecretStore | None = None
 ) -> GmailClient | MockGmailClient:
@@ -85,9 +101,19 @@ def gmail_client(
 
     Die Faehigkeiten gehen unveraendert weiter. Ein Mock, der mehr duerfte
     als der echte Client, waere ein Mock, dem man nichts glauben kann.
+
+    Beim Doppel wird nur der Bestand geteilt, nie die Rechte: `mail` bekommt
+    weiterhin einen Zugang ohne Senderecht, auch wenn `mail_send` im selben
+    Prozess einen mit hat.
     """
     if config.services.is_mock:
-        return MockGmailClient(capabilities, fixtures=_fixtures(config))
+        quelle = _fixtures(config)
+        schluessel = str(quelle) if quelle is not None else ""
+        postfach = _MOCK_POSTFAECHER.get(schluessel)
+        if postfach is None:
+            postfach = MockPostfach(fixtures=quelle)
+            _MOCK_POSTFAECHER[schluessel] = postfach
+        return MockGmailClient(capabilities, postfach=postfach)
     return GmailClient(gmail_auth(config, secrets=secrets), capabilities=capabilities)
 
 

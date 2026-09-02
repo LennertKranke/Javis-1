@@ -6,6 +6,21 @@ from jarvis.core.config import Config, Paths
 from jarvis.core.db import open_database
 
 
+@pytest.fixture(autouse=True)
+def frisches_mock_postfach():
+    """Jeder Test faengt mit einem leeren Postfach des Doppels an.
+
+    Das Doppel haelt seinen Bestand seit dem Lebensdauer-Fix prozessweit, damit
+    `mail_send` die Entwuerfe von `mail_reply` sieht. Ohne dieses Zuruecksetzen
+    truegen Labels und Entwuerfe des einen Tests in den naechsten.
+    """
+    from jarvis.skills.factory import reset_mock_postfaecher
+
+    reset_mock_postfaecher()
+    yield
+    reset_mock_postfaecher()
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     """Ein leeres JARVIS-Basisverzeichnis, isoliert vom echten Nutzer."""

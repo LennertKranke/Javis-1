@@ -3,8 +3,8 @@
 ```
 Dokument:          JARVIS-DESIGN-SYSTEM
 Status:            SOURCE OF TRUTH fuer die Gestaltung des Dashboards
-Fassung:           2.1
-Stand:             2026-09-02 (2.1: visuelle Abnahme und Feinschliff)
+Fassung:           2.2
+Stand:             2026-09-02 (2.2: Kern raeumlich, Glas, Feinschliff)
 Geltungsbereich:   Gestaltung und Bedienung von jarvis/interfaces/web/.
                    Keine Architektur, keine Anforderungen, keine Roadmap
 Grundlage:         JARVIS-SPEC-3.md (CURRENT SOURCE OF TRUTH), Abschnitte
@@ -171,8 +171,11 @@ Maschinenschrift mit weiter Laufweite -- nicht aus Grafik.
 
 * **Radius 3px** auf Tafeln, Knoepfen und Navigationspunkten; 2px auf
   Marken; der Kern ist rund. Kein anderer Radius.
-* **Tafel** (`.tafel`): Glas (`--glas`) mit 1px `--linie`; oben eine
-  **Lichtkante** -- ein 1px-Schimmer (`inset 0 1px 0 rgba(255,195,130,.14)`)
+* **Tafel** (`.tafel`): Glas (`--glas`) mit 1px `--linie` und
+  `backdrop-filter: blur(8px)` -- der Lichtkegel des Grunds scheint weich
+  hindurch; ein diagonaler Schimmer von oben links
+  (`linear-gradient(135deg, rgba(255,190,120,.05), transparent 28%)`) ist
+  die orange Reflexion; oben eine **Lichtkante** -- ein 1px-Schimmer (`inset 0 1px 0 rgba(255,195,130,.14)`)
   und ein Verlauf, der in den ersten 38% der Hoehe von `rgba(255,165,90,.05)`
   auf transparent ausklingt --, darunter ein weicher Schatten. So liest sich
   die Tafel als Scheibe, die von oben Licht bekommt, nicht als Karte. Zwei
@@ -215,20 +218,33 @@ Tafeln (Lage, Protokoll). Ab 96rem waechst nur der Rand.
 
 ## 7. Der Kern
 
-Das visuelle Zentrum. Ein Orb aus fuenf Schichten, alle aus Gradienten,
-gesetzt in `render.kern()` und gestaltet in `style.py` unter `.kern`:
+Das visuelle Zentrum. Ein Orb aus Gradienten, gesetzt in `render.kern()`
+und gestaltet in `style.py` unter `.kern`, von aussen nach innen:
 
 ```
-  .kern-ring.r2    aeusserer, gestrichelter Ring       dreht sich, 110 s
-  .kern-ring.r3    Skalenring aus 48 Strichen          dreht gegenlaeufig, 140 s
-                   (repeating-conic-gradient, Maske als radial-gradient)
-  .kern-ring.r1    innerer, durchgezogener Ring        steht; pulsiert bei "wartet"
-  .kern-bogen      ein heller Bogen                    laeuft um, 26 s
-  .kern-glut       die Glut: radiale Kugel mit Saum    atmet, 7 s
-  .kern::before    weiter Lichthof                     steht
+  .kern::before        weiter Lichthof, leicht nach unten versetzt   steht
+  .kern-ring.r0        sehr blasser Aussenring                       steht
+  .kern-ring.r2        gestrichelter Ring                            dreht, 110 s
+  .kern-ring.r1        durchgezogener Ring                           steht; pulsiert bei "wartet"
+  .kern-ring.r3        Skalenring aus 48 Strichen                    dreht gegenlaeufig, 140 s
+                       (repeating-conic-gradient, Maske als radial-gradient)
+  .kern-bogen          ein heller Bogen                              laeuft um, 26 s
+  .kern::after         der Impuls: ein Ring, der von der Kugel       alle 9 s, verklingt
+                       ausgeht                                       nach aussen
+  .kern-glut           die Kugel                                     atmet, 7 s
+    ::before           Glanzlicht oben links                         steht
+    ::after            feine konzentrische Schichten                 steht
 ```
 
-Groesse `--kern-groesse`: 15rem weit, 13rem standard, 11rem schmal. Fuer
+**Die Kugel ist eine Kugel, keine Scheibe.** Die Lichtquelle sitzt oben
+links (`circle at 40% 34%`), der Rand wird nach unten rechts dunkel
+(`#7a2a06` bis `#3a1203`), eine innere Schattenkante und ein Glanzlicht
+stuetzen das; darunter liegt ein weicher, nach unten versetzter Schein --
+der Kern steht ueber dem Grund, er klebt nicht darauf. Die Schichten im
+Glas (`repeating-radial-gradient`, Alpha .045) geben ihm Struktur, ohne
+Muster zu werden.
+
+Groesse `--kern-groesse`: 17rem weit, 13rem standard, 11rem schmal. Fuer
 Hilfsmittel ist der Kern `aria-hidden`; der Zustand steht daneben als Text,
 und nur der zaehlt.
 
@@ -240,8 +256,8 @@ denselben Pruefungen wie `jarvis status`:
 
 | Klasse | Wort | Tatsache | Erscheinung |
 |---|---|---|---|
-| `angehalten` | Angehalten | Stoppschalter gesetzt | Kern kalt, ohne Glut, **ohne Bewegung**; Band und Wortmarke kalt; Grund wird kalt |
-| `abweichung` | Abweichung | Kette gebrochen, Ablage offen oder Zugangsdaten abweichend | roter Ring, rote Glut; Liste der Abweichungen unter dem Kern |
+| `angehalten` | Angehalten | Stoppschalter gesetzt | Kern kalt, ohne Glut, **ohne Bewegung**, kein Impuls; Band und Wortmarke kalt; Grund wird kalt |
+| `abweichung` | Abweichung | Kette gebrochen, Ablage offen oder Zugangsdaten abweichend | roter Ring, rote Glut, roter Impuls; Liste der Abweichungen unter dem Kern |
 | `wartet` | Wartet auf Freigabe | offene Entscheidungen > 0 | innerer Ring pulsiert und leuchtet |
 | `betrieb` | Betrieb | nichts davon | Glut atmet, Ringe drehen |
 
@@ -270,6 +286,7 @@ Wenig, langsam, funktional. Was sich bewegt, hat einen Grund:
 | Puls im Band atmet | 4 s | dasselbe, in klein, auf jeder Ansicht |
 | Ringe drehen (`drehen`, `gegendrehen`) | 110 s, 140 s | Praezision, kaum wahrnehmbar |
 | Bogen laeuft um | 26 s | ein Blick, der wandert |
+| Impuls (`impuls`) | 9 s | ein Ring geht von der Kugel aus und verklingt: das System lebt, ohne dass etwas blinkt |
 | Innerer Ring pulsiert (`puls`) | 3.2 s | nur bei `wartet`: etwas will etwas von dir |
 | Knopf, Navigation | 0.15 s Uebergang | Rueckmeldung |
 
@@ -294,7 +311,7 @@ blinkt, nichts springt, nichts wackelt.
 | **Kennzahl** `.kennzahl` | `render.kennzahl` | grosse Zahl mit Name und Zusatz; `hebt` Akzent, `gefahr` Rot, `kalt`; `klein` fuer Worte statt Zahlen (die Systemtatsachen rechts vom Kern) |
 | **Faktenliste** `dl.facts` | `render.fakten` | Name/Wert, Wert in Maschinenschrift, bricht ueberall um |
 | **Tafel** `.tafel` | `render.tafel` | Glas mit Titel, Eckwinkeln und optionalem Fuss (der Weg in die Tiefe) |
-| **Tabelle** `.tabelle > table` | `render.tabelle` | rollt in ihrem Rahmen, nie die Seite; jede Zelle traegt `data-kopf`, im schmalen Fenster wird sie zu Bloecken |
+| **Tabelle** `.tabelle > table` | `render.tabelle` | rollt in ihrem Rahmen, nie die Seite; jede Zelle traegt `data-kopf`, im schmalen Fenster wird sie zu Bloecken; Werte in Maschinenschrift, keine Zeilenhervorhebung beim Ueberfahren -- eine Tafel, kein Formular |
 | **Zustandsmarke** `.marke` | `render.zustandsmarke` | Wort mit Form; nur bekannte Ergebnisse, alles andere bleibt Text (`.dim`) |
 | **Autonomiestufe** `.stufe` | `render.stufe` | immer beide Zahlen, gewaehrt / verlangt; reicht die gewaehrte nicht, leuchtet sie |
 | **Zaehler** `.zaehler` | `render.zaehler` | benutzt/Grenze mit Balken in Fuenferstufen; voll = kalt |
@@ -319,7 +336,8 @@ Die Leitstelle. Reihenfolge: **Zustand, Zahlen, Arbeit, Bestand.**
   1  Systemband
   2  Kern mit Zustand         links drei Zahlen: offene Entscheidungen,
                               Protokoll (Eintraege, Kette), letzter Eintrag
-                              rechts drei Tatsachen, gleiche Form:
+                              rechts drei Tatsachen, gleiche Form, rechts-
+                              buendig (gespiegelt; unter 70rem linksbuendig):
                               Zugangsdaten, Ablage, Modellprozess
                               (rot, wenn die Ablage offen oder die Trennung
                               aus ist). Keine Pfade -- die nennt
@@ -479,6 +497,13 @@ Regeln, wie Kuenftiges einpasst -- kein Platz, der warmgehalten wird.
 ---
 
 ## 18. Geprueft
+
+**Dritte Abnahme (Fassung 2.2).** Nahaufnahmen des Kerns bei doppelter
+Aufloesung in den Zustaenden Betrieb, Wartet und Angehalten; vier Ansichten
+bei 1440, 1100, 820 und 390 px. Geaendert: der Kern ist raeumlich
+(Lichtquelle, Rand, Glanzlicht, Schichten, Aussenring, Impuls, 17rem),
+Tafeln haben Weichzeichner und Reflexion, die Systemtatsachen rechts vom Kern
+spiegeln die Zahlen links, Tabellen ohne Zeilenhervorhebung. Sonst nichts.
 
 **Zweite Abnahme (Fassung 2.1).** Gegen die erste Fassung sind vier Dinge
 geaendert, alle nach Ansehen im Browser: die Pfadliste rechts vom Kern ist

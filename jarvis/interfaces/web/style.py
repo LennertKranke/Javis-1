@@ -146,6 +146,11 @@ a:hover { color: var(--text); }
   0%, 100% { opacity: 0.35; transform: scale(1); }
   50%      { opacity: 0.95; transform: scale(1.025); }
 }
+@keyframes impuls {
+  0%   { opacity: 0.55; transform: scale(1); }
+  70%  { opacity: 0; transform: scale(1.9); }
+  100% { opacity: 0; transform: scale(1.9); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -342,7 +347,12 @@ h3 {
   padding: 1.3rem 1.5rem 1.5rem;
   border: 1px solid var(--linie);
   border-radius: 3px;
-  background: linear-gradient(180deg, rgba(255, 165, 90, 0.05), transparent 38%), var(--glas);
+  background:
+    linear-gradient(135deg, rgba(255, 190, 120, 0.05), transparent 28%),
+    linear-gradient(180deg, rgba(255, 165, 90, 0.05), transparent 38%),
+    var(--glas);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   box-shadow: inset 0 1px 0 rgba(255, 195, 130, 0.14), 0 14px 44px -22px var(--schatten);
 }
 .tafel::before, .tafel::after {
@@ -370,9 +380,11 @@ h3 {
 
 /* --- Der Kern ------------------------------------------------------------ */
 /*
-   Ein Orb aus Gradienten: Glut in der Mitte, drei Ringe darum, ein Bogen,
-   der langsam umlaeuft. Kein Bild, keine Datei -- `img-src 'none'` laesst
-   keines zu, und es braucht auch keines.
+   Ein Orb aus Gradienten: eine Kugel mit Lichtquelle oben links, dunklem
+   Rand und feiner innerer Struktur; darum vier Ringe, ein Bogen, der langsam
+   umlaeuft, und alle neun Sekunden ein Impuls, der nach aussen verklingt.
+   Kein Bild, keine Datei -- `img-src 'none'` laesst keines zu, und es
+   braucht auch keines.
 
    Der Zustand kommt als Klasse und ist kein Schmuck. Er wird serverseitig aus
    Tatsachen abgeleitet, die das System wirklich fuehrt:
@@ -388,69 +400,99 @@ h3 {
 
 .kern {
   position: relative;
-  width: var(--kern-groesse, 15rem);
+  width: var(--kern-groesse, 17rem);
   aspect-ratio: 1;
   margin: 0 auto;
   border-radius: 50%;
 }
+/* Weiter Lichthof, leicht nach unten versetzt: der Kern steht im Raum. */
 .kern::before {
   content: "";
   position: absolute;
-  inset: -35%;
+  inset: -40%;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--glut-weit) 0, transparent 62%);
+  background: radial-gradient(circle at 50% 56%, var(--glut-weit) 0, transparent 60%);
   pointer-events: none;
 }
+/* Der Impuls: ein Ring, der von der Kugel ausgeht und nach aussen verklingt. */
+.kern::after {
+  content: "";
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 190, 120, 0.6);
+  animation: impuls 9s ease-out infinite;
+  pointer-events: none;
+}
+/* Die Kugel: Licht von oben links, dunkler Rand unten rechts. */
 .kern-glut {
   position: absolute;
-  inset: 23%;
+  inset: 26%;
   border-radius: 50%;
   background: radial-gradient(
-    circle at 50% 42%,
-    #fff5e0 0,
-    #ffd193 9%,
-    var(--akzent) 30%,
-    #e2621a 56%,
-    rgba(200, 70, 10, 0.4) 76%,
-    transparent 100%
+    circle at 40% 34%,
+    #fff7e8 0,
+    #ffd9a3 7%,
+    #ffab55 24%,
+    var(--akzent) 40%,
+    #d4561a 62%,
+    #7a2a06 86%,
+    #3a1203 100%
   );
   box-shadow:
-    0 0 40px var(--glut),
-    0 0 110px var(--glut-weit),
-    inset 0 0 28px rgba(255, 225, 190, 0.35);
+    0 0 34px var(--glut),
+    0 0 90px var(--glut-weit),
+    0 34px 60px -18px rgba(255, 120, 30, 0.3),
+    inset -14px -18px 36px rgba(60, 15, 0, 0.55),
+    inset 8px 10px 24px rgba(255, 235, 205, 0.25);
   animation: atmen 7s ease-in-out infinite;
 }
-/* Ein dunkler Saum unten: aus der Scheibe wird eine Kugel. */
+/* Glanzlicht: die Lichtquelle, an der Kugel gespiegelt. */
+.kern-glut::before {
+  content: "";
+  position: absolute;
+  left: 20%;
+  top: 12%;
+  width: 36%;
+  height: 26%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 250, 240, 0.55), rgba(255, 250, 240, 0) 70%);
+  transform: rotate(-24deg);
+}
+/* Innere Struktur: feine konzentrische Ringe, wie Schichten im Glas. */
 .kern-glut::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  box-shadow: inset 0 -16px 32px rgba(110, 35, 0, 0.5);
+  background: repeating-radial-gradient(
+    circle at 40% 34%, transparent 0 11px, rgba(255, 228, 195, 0.045) 11px 12px
+  );
 }
 .kern-ring {
   position: absolute;
   border-radius: 50%;
   pointer-events: none;
 }
-.kern-ring.r1 { inset: 7%; border: 1px solid rgba(255, 175, 100, 0.55); }
+.kern-ring.r0 { inset: -8%; border: 1px solid rgba(255, 175, 100, 0.13); }
+.kern-ring.r1 { inset: 9%; border: 1px solid rgba(255, 175, 100, 0.55); }
 .kern-ring.r2 {
   inset: 0;
   border: 1px dashed rgba(255, 175, 100, 0.4);
   animation: drehen 110s linear infinite;
 }
 .kern-ring.r3 {
-  inset: 12.5%;
+  inset: 15.5%;
   background: repeating-conic-gradient(
     from 0deg,
     rgba(255, 185, 110, 0.8) 0 0.8deg,
     transparent 0.8deg 7.5deg
   );
   -webkit-mask: radial-gradient(
-    circle, transparent 0 calc(50% - 8px), #000 calc(50% - 7px) 50%, transparent 50%
+    circle, transparent 0 calc(50% - 7px), #000 calc(50% - 6px) 50%, transparent 50%
   );
   mask: radial-gradient(
-    circle, transparent 0 calc(50% - 8px), #000 calc(50% - 7px) 50%, transparent 50%
+    circle, transparent 0 calc(50% - 7px), #000 calc(50% - 6px) 50%, transparent 50%
   );
   animation: gegendrehen 140s linear infinite;
 }
@@ -482,25 +524,36 @@ h3 {
   box-shadow: 0 0 22px var(--fehler-glut);
 }
 .kern.abweichung .kern-ring.r2 { border-color: rgba(255, 95, 95, 0.4); }
+.kern.abweichung::after { border-color: rgba(255, 95, 95, 0.55); }
 .kern.abweichung .kern-glut { box-shadow: 0 0 40px var(--fehler-glut), 0 0 110px var(--glut-weit); }
 
 /* Angehalten: kalt, ohne Glut, ohne Bewegung. */
 .kern.angehalten::before {
   background: radial-gradient(circle, var(--kalt-glut) 0, transparent 60%);
 }
+.kern.angehalten::after { display: none; }
 .kern.angehalten .kern-glut {
   background: radial-gradient(
-    circle at 50% 42%,
+    circle at 40% 34%,
     #eef3f7 0,
-    #c4d2de 10%,
-    var(--kalt) 30%,
+    #c9d6e2 8%,
+    var(--kalt) 28%,
     var(--kalt-tief) 58%,
-    rgba(40, 55, 72, 0.5) 78%,
-    transparent 100%
+    #22303f 86%,
+    #121a23 100%
   );
-  box-shadow: 0 0 26px var(--kalt-glut), inset 0 0 26px rgba(230, 240, 250, 0.2);
+  box-shadow:
+    0 0 24px var(--kalt-glut),
+    inset -14px -18px 36px rgba(10, 18, 28, 0.6),
+    inset 8px 10px 24px rgba(235, 242, 250, 0.2);
   animation: none;
 }
+.kern.angehalten .kern-glut::after {
+  background: repeating-radial-gradient(
+    circle at 40% 34%, transparent 0 11px, rgba(220, 232, 244, 0.045) 11px 12px
+  );
+}
+.kern.angehalten .kern-ring.r0 { border-color: rgba(164, 184, 204, 0.12); }
 .kern.angehalten .kern-ring.r1 { border-color: rgba(164, 184, 204, 0.45); }
 .kern.angehalten .kern-ring.r2 { border-color: rgba(164, 184, 204, 0.3); animation: none; }
 .kern.angehalten .kern-ring.r3 {
@@ -562,6 +615,7 @@ h3 {
 .kennzahl-wert.gefahr { color: var(--signal-fehler); }
 .kennzahl-wert.kalt { color: var(--kalt); }
 .kennzahl-wert.klein { font-size: 0.95rem; line-height: 1.5; }
+.lage-system .kennzahl { align-items: flex-end; text-align: right; }
 .kennzahl-zusatz { font-size: 0.78rem; color: var(--text-zweit); }
 
 
@@ -676,7 +730,6 @@ th {
   white-space: nowrap;
 }
 td { padding: 0.5rem 1rem 0.5rem 0; border-bottom: 1px solid var(--linie); vertical-align: top; }
-tbody tr:hover td { background: rgba(255, 150, 70, 0.03); }
 td.mono, .mono { font-family: var(--masch); white-space: nowrap; }
 td.dim, .dim { color: var(--text-gedaempft); }
 td.umbruch { word-break: break-word; }
@@ -708,7 +761,12 @@ td.umbruch { word-break: break-word; }
   margin-bottom: 1.1rem;
   border: 1px solid var(--linie);
   border-radius: 3px;
-  background: linear-gradient(180deg, rgba(255, 165, 90, 0.05), transparent 38%), var(--glas);
+  background:
+    linear-gradient(135deg, rgba(255, 190, 120, 0.05), transparent 28%),
+    linear-gradient(180deg, rgba(255, 165, 90, 0.05), transparent 38%),
+    var(--glas);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   box-shadow: inset 0 1px 0 rgba(255, 195, 130, 0.14), 0 14px 44px -22px var(--schatten);
 }
 .item::before {
@@ -862,6 +920,7 @@ footer {
   .kennzahl { border-top: 1px solid var(--linie); }
   .tafeln { grid-template-columns: 1fr; }
   .kern { --kern-groesse: 13rem; }
+  .lage-system .kennzahl { align-items: flex-start; text-align: left; }
   th { white-space: normal; }
 }
 
@@ -899,7 +958,6 @@ footer {
     text-transform: uppercase;
     color: var(--text-gedaempft);
   }
-  tbody tr:hover td { background: transparent; }
 }
 
 /* Ein Protokollauszug soll sich als Beleg ablegen lassen. */

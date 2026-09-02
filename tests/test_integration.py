@@ -196,8 +196,10 @@ class ZaehlenderClient:
     def list_message_ids(self, query: str, limit: int) -> list[str]:
         return self._echt.list_message_ids(query, limit)
 
-    def get_message(self, message_id: str, *, format: str = "full") -> dict:
-        return self._echt.get_message(message_id, format=format)
+    def get_message(
+        self, message_id: str, *, fmt: str = "full", headers: list[str] | None = None
+    ) -> dict:
+        return self._echt.get_message(message_id, fmt=fmt, headers=headers)
 
     def list_labels(self) -> list[dict]:
         return self._echt.list_labels()

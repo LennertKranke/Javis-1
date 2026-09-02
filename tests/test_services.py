@@ -438,3 +438,191 @@ def test_der_einschleusversuch_wird_auch_im_mock_entschaerft(home, conn):
     assert eintrag is not None
     # Sie wurde eingeordnet wie jede andere -- nicht befolgt.
     assert eintrag.category == "rechnung"
+
+
+# --------------------------------------------------------------------------- #
+# Vertrag: das Doppel und der echte Client duerfen nicht auseinanderlaufen
+#
+# Der Laufzeit-Mock ersetzt Gmail in `[services] mode = "mock"`. Weicht er in
+# Signatur oder Form ab, faellt das nirgends auf: die Faehigkeitstests fahren
+# gegen FakeGmailClient, und der Mock wird nur von Hand benutzt. Genau so ist
+# es passiert -- `get_message` hiess dort `format` statt `fmt`, und ein Entwurf
+# kam ohne `payload` zurueck, womit die Integritaetspruefung vor dem Versand
+# jeden Entwurf zurueckhielt. Die folgenden Tests halten beides fest.
+# --------------------------------------------------------------------------- #
+
+
+#: Was eine Faehigkeit vom Postfach-Client aufruft. Ohne diese Methoden ist das
+#: Doppel kein Ersatz, sondern eine andere Sache.
+VERLANGTE_METHODEN = (
+    "address",
+    "can",
+    "capabilities",
+    "create_draft",
+    "create_label",
+    "get_draft",
+    "get_message",
+    "list_labels",
+    "list_message_ids",
+    "modify_labels",
+    "send_draft",
+)
+
+
+def test_das_doppel_bietet_jede_methode_die_eine_faehigkeit_aufruft():
+    for name in VERLANGTE_METHODEN:
+        assert hasattr(MockGmailClient, name), f"Dem Doppel fehlt {name}"
+        assert hasattr(GmailClient, name), f"Dem echten Client fehlt {name}"
+
+
+def test_das_doppel_hat_dieselben_signaturen_wie_der_echte_client():
+    """Der eigentliche Vertragstest.
+
+    Verglichen wird jede Methode, die beide haben -- nicht nur die aus der
+    Liste oben, damit auch spaeter Hinzugekommenes erfasst wird. Was nur der
+    echte Client kennt (Anmeldung, Zugangsdaten), bleibt aussen vor: das Doppel
+    hat dort bewusst nichts.
+    """
+    import inspect
+
+    abweichungen = []
+    for name in dir(GmailClient):
+        if name.startswith("_"):
+            continue
+        echt = getattr(GmailClient, name)
+        doppel = getattr(MockGmailClient, name, None)
+        if doppel is None or not callable(echt) or not callable(doppel):
+            continue
+        s_echt = inspect.signature(echt)
+        s_doppel = inspect.signature(doppel)
+        if str(s_echt) != str(s_doppel):
+            abweichungen.append(f"{name}: echt {s_echt} -- doppel {s_doppel}")
+
+    assert not abweichungen, "Doppel und echter Client sind auseinandergelaufen:\n" + "\n".join(
+        abweichungen
+    )
+
+
+def test_das_doppel_versteht_fmt_und_headers():
+    """Die konkrete Aufrufform aus `verify_targets` und der Allowlist-Auffrischung."""
+    client = MockGmailClient(DRAFTING, messages=beispiel_postfach())
+    kennung = client.list_message_ids("is:unread", 1)[0]
+
+    roh = client.get_message(kennung, fmt="metadata", headers=["From"])
+    assert roh["id"] == kennung
+    assert client.get_message(kennung, fmt="full")["id"] == kennung
+    assert client.get_message(kennung)["id"] == kennung
+
+
+def test_ein_entwurf_im_doppel_hat_dieselbe_form_wie_bei_gmail():
+    """`get_draft` muss liefern, was der Versandweg liest: Kopffelder und Text."""
+    from jarvis.skills.mail.message import headers_of, parse_message
+
+    client = MockGmailClient(DRAFTING)
+    entwurf = client.create_draft(
+        _roher_entwurf(to="anna@example.com", subject="Re: Angebot", body="Guten Tag,\n\npasst."),
+        thread_id="t1",
+    )
+    nachricht = client.get_draft(entwurf["id"])["message"]
+
+    assert "payload" in nachricht, "Ohne payload kann der Versandweg nichts nachrechnen"
+    kopf = headers_of(nachricht)
+    assert kopf["to"] == "anna@example.com"
+    assert kopf["subject"] == "Re: Angebot"
+    assert nachricht["threadId"] == "t1"
+    assert "passt." in parse_message(nachricht).body
+
+
+def test_der_fingerabdruck_eines_entwurfs_stimmt_im_doppel():
+    """Die Wirkung des Befundes: ohne Uebereinstimmung geht nie etwas hinaus."""
+    from jarvis.skills.mail.compose import fingerprint, fingerprint_of_draft
+
+    client = MockGmailClient(DRAFTING)
+    ziel, roh = _entwurfsziel(to="anna@example.com", subject="Re: Angebot")
+    entwurf = client.create_draft(roh, thread_id=ziel.thread_id)
+
+    erwartet = fingerprint(ziel, "Guten Tag,\n\npasst.")
+    assert fingerprint_of_draft(client.get_draft(entwurf["id"])) == erwartet
+
+
+def test_der_versandweg_laeuft_im_doppel_bis_zum_ende(home, conn):
+    """Der ganze Weg durch die Faehigkeit, nicht nur durch den Client.
+
+    Bisher fuhr kein Test den Laufzeit-Mock durch MailSendSkill -- deshalb fiel
+    die fehlende Form nicht auf. Hier steht der Vorgang im Antwortspeicher, der
+    Entwurf liegt im Doppel, und der Versand muss die Integritaetspruefung
+    bestehen und tatsaechlich stattfinden.
+    """
+    from jarvis.core.audit import AuditLog
+    from jarvis.core.gate import Gate
+    from jarvis.core.ratelimit import RateLimiter
+    from jarvis.skills.mail.allowlist import Allowlist
+    from jarvis.skills.mail.compose import fingerprint
+    from jarvis.skills.mail.reply import MailSendSkill, SendOptions
+    from jarvis.skills.mail.store import ReplyStore
+    from jarvis.skills.runner import run_skill
+
+    client = MockGmailClient(SENDING)
+    ziel, roh = _entwurfsziel(to="anna@example.com", subject="Re: Angebot")
+    entwurf = client.create_draft(roh, thread_id=ziel.thread_id)
+    abdruck = fingerprint(ziel, "Guten Tag,\n\npasst.")
+
+    ReplyStore(conn).plan(
+        message_id="m1",
+        thread_id=ziel.thread_id,
+        recipient=ziel.to,
+        subject=ziel.subject,
+        fingerprint=abdruck,
+        disposition="drafted",
+        draft_id=entwurf["id"],
+        draft_fingerprint=abdruck,
+    )
+
+    config = Config.from_mapping(
+        {
+            "dry_run": False,
+            "services": {"mode": "mock"},
+            "capabilities": {
+                "mail_send": {
+                    "autonomy_level": 1,
+                    "requires_outbound": True,
+                    "rate_limits": {"hour": 10},
+                }
+            },
+        },
+        paths=Paths(home=home),
+    )
+    skill = MailSendSkill(
+        options=SendOptions({}),
+        client=client,
+        reply_store=ReplyStore(conn),
+        allowlist=Allowlist(conn, manual=("anna@example.com",), threshold=3),
+    )
+    audit = AuditLog(conn)
+    bericht = run_skill(
+        skill, gate=Gate(config, audit, RateLimiter(conn, config.capabilities)), audit=audit
+    )
+
+    assert bericht.failed == 0
+    assert bericht.acted == 1, "Der Entwurf wurde zurueckgehalten statt gesendet"
+    assert len(client.gesendet) == 1
+    assert ReplyStore(conn).get("m1").sent_at
+
+
+# --- Hilfen fuer die Entwurfstests ------------------------------------------ #
+
+
+def _entwurfsziel(*, to: str, subject: str, thread_id: str = "t1"):
+    """Ein Zielsatz und die dazu passende rohe Nachricht."""
+    from jarvis.skills.mail.compose import ReplyTarget, build_message, raw_for_gmail
+
+    ziel = ReplyTarget(to=to, thread_id=thread_id, subject=subject)
+    nachricht = build_message(ziel, "Guten Tag,\n\npasst.", from_address="ich@example.com")
+    return ziel, raw_for_gmail(nachricht)
+
+
+def _roher_entwurf(*, to: str, subject: str, body: str) -> str:
+    from jarvis.skills.mail.compose import ReplyTarget, build_message, raw_for_gmail
+
+    ziel = ReplyTarget(to=to, thread_id="t1", subject=subject)
+    return raw_for_gmail(build_message(ziel, body, from_address="ich@example.com"))

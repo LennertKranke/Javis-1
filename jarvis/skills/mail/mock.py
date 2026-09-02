@@ -27,6 +27,8 @@ from __future__ import annotations
 import base64
 import json
 from datetime import UTC, datetime, timedelta
+from email import message_from_bytes
+from email.policy import SMTP
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +39,34 @@ __all__ = ["MockGmailClient", "beispiel_postfach"]
 
 def _b64(text: str) -> str:
     return base64.urlsafe_b64encode(text.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _entwurfsform(raw: str, thread_id: str | None) -> dict[str, Any]:
+    """Die Form, die Gmail bei `get_draft` mit `format=full` zurueckgibt.
+
+    Der Versandweg rechnet aus dem abgelegten Entwurf den Fingerabdruck nach
+    und vergleicht ihn mit dem geprueften Stand. Dafuer braucht er `payload`
+    mit Kopffeldern und Text -- eine gespeicherte `raw`-Zeichenkette allein
+    liest er nicht. Ohne diese Umwandlung haelt die Integritaetspruefung im
+    Doppel jeden Entwurf zurueck, und der Versand ist nie zu Ende zu spielen.
+
+    `raw` bleibt zusaetzlich erhalten: Gmail liefert es bei `format=full`
+    zwar nicht, aber es ist der Beleg dafuer, dass die Nachricht das Doppel
+    nie verlassen hat.
+    """
+    entpackt = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+    nachricht = message_from_bytes(entpackt, policy=SMTP)
+    koerper = nachricht.get_content()
+    return {
+        "threadId": thread_id,
+        "raw": raw,
+        "payload": {
+            "mimeType": "text/plain",
+            "filename": "",
+            "headers": [{"name": name, "value": wert} for name, wert in nachricht.items()],
+            "body": {"data": _b64(koerper), "size": len(koerper)},
+        },
+    }
 
 
 def _nachricht(
@@ -182,7 +212,17 @@ class MockGmailClient:
         self._verlangt("read")
         return [m["id"] for m in self._messages][: max(0, limit)]
 
-    def get_message(self, message_id: str, *, format: str = "full") -> dict:
+    def get_message(
+        self, message_id: str, *, fmt: str = "full", headers: list[str] | None = None
+    ) -> dict:
+        """Dieselbe Signatur wie beim echten Client -- sonst bricht der Aufrufer.
+
+        `fmt` und `headers` werden entgegengenommen, aber nicht ausgewertet:
+        das Doppel haelt ohnehin die ganze Nachricht im Speicher, und mehr
+        zurueckzugeben als angefordert schadet keinem Aufrufer. Was zaehlt ist,
+        dass `get_message(mid, fmt="metadata", headers=["From"])` hier genauso
+        durchlaeuft wie gegen Gmail.
+        """
         self._verlangt("read")
         for nachricht in self._messages:
             if nachricht["id"] == message_id:
@@ -216,7 +256,7 @@ class MockGmailClient:
         kennung = self._naechste("draft_")
         entwurf = {
             "id": kennung,
-            "message": {"id": self._naechste("msg_"), "threadId": thread_id, "raw": raw},
+            "message": {"id": self._naechste("msg_"), **_entwurfsform(raw, thread_id)},
         }
         self._drafts[kennung] = entwurf
         return entwurf

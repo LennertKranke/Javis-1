@@ -50,7 +50,7 @@ CSS = """\
 
   /* Grund: warmes Schwarz. Tafeln sind Glas darauf, keine eigene Flaeche. */
   --grund: #0a0806;
-  --glas: rgba(255, 150, 70, 0.035);
+  --glas: rgba(255, 150, 70, 0.045);
   --glas-hoch: rgba(255, 150, 70, 0.075);
   --schatten: rgba(0, 0, 0, 0.28);
 
@@ -73,7 +73,6 @@ CSS = """\
   /* Kalt: angehalten, blockiert. Rot: fehlgeschlagen. Nur auf Marken. */
   --kalt: #a4b8cc;
   --kalt-tief: #52677c;
-  --kalt-flaeche: #141c26;
   --kalt-glut: rgba(120, 150, 185, 0.22);
   --signal-fehler: #ff5f5f;
   --fehler-glut: rgba(255, 95, 95, 0.35);
@@ -291,9 +290,8 @@ nav a {
 nav a:hover { color: var(--text); border-color: var(--linie); }
 nav a.on {
   color: var(--akzent-hell);
-  border-color: var(--linie-stark);
-  background: var(--glas-hoch);
-  box-shadow: inset 0 -1px 0 var(--akzent);
+  text-shadow: 0 0 12px var(--glut-weit);
+  box-shadow: inset 0 -1px 0 var(--akzent), 0 8px 16px -12px var(--glut);
 }
 nav .count {
   display: inline-block;
@@ -341,11 +339,11 @@ h3 {
 
 .tafel {
   position: relative;
-  padding: 1.1rem 1.3rem 1.3rem;
+  padding: 1.3rem 1.5rem 1.5rem;
   border: 1px solid var(--linie);
   border-radius: 3px;
-  background: var(--glas);
-  box-shadow: inset 0 1px 0 rgba(255, 200, 140, 0.05), 0 12px 40px -20px var(--schatten);
+  background: linear-gradient(180deg, rgba(255, 165, 90, 0.05), transparent 38%), var(--glas);
+  box-shadow: inset 0 1px 0 rgba(255, 195, 130, 0.14), 0 14px 44px -22px var(--schatten);
 }
 .tafel::before, .tafel::after {
   content: "";
@@ -365,10 +363,10 @@ h3 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 1.2rem;
-  margin-top: 1.2rem;
+  gap: 1.4rem;
+  margin-top: 2.2rem;
 }
-.tafel.breit { margin-top: 1.2rem; }
+.tafel.breit { margin-top: 1.4rem; }
 
 /* --- Der Kern ------------------------------------------------------------ */
 /*
@@ -519,8 +517,8 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 2.5rem;
-  padding: 1.6rem 0 0.6rem;
+  gap: 3rem;
+  padding: 2.4rem 0 1rem;
 }
 .lage-mitte { text-align: center; padding: 1.2rem 0; }
 .lage-zustandsmarke {
@@ -553,7 +551,6 @@ h3 {
   padding: 0.75rem 0;
   border-bottom: 1px solid var(--linie);
 }
-.kennzahl:first-child { border-top: 1px solid var(--linie); }
 .kennzahl-name {
   font: 500 0.64rem var(--masch);
   letter-spacing: 0.16em;
@@ -564,10 +561,9 @@ h3 {
 .kennzahl-wert.hebt { color: var(--akzent-hell); text-shadow: 0 0 16px var(--glut-weit); }
 .kennzahl-wert.gefahr { color: var(--signal-fehler); }
 .kennzahl-wert.kalt { color: var(--kalt); }
+.kennzahl-wert.klein { font-size: 0.95rem; line-height: 1.5; }
 .kennzahl-zusatz { font-size: 0.78rem; color: var(--text-zweit); }
 
-.lage-system .facts { font-size: 0.82rem; }
-.lage-system .facts dt { padding-top: 0.1rem; }
 
 /* Abweichungen stehen vor allem anderen, als Liste mit Grund. */
 .abweichungen {
@@ -712,8 +708,8 @@ td.umbruch { word-break: break-word; }
   margin-bottom: 1.1rem;
   border: 1px solid var(--linie);
   border-radius: 3px;
-  background: var(--glas);
-  box-shadow: 0 12px 40px -20px var(--schatten);
+  background: linear-gradient(180deg, rgba(255, 165, 90, 0.05), transparent 38%), var(--glas);
+  box-shadow: inset 0 1px 0 rgba(255, 195, 130, 0.14), 0 14px 44px -22px var(--schatten);
 }
 .item::before {
   content: "";

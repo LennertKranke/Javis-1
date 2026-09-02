@@ -3,8 +3,8 @@
 ```
 Dokument:          JARVIS-DESIGN-SYSTEM
 Status:            SOURCE OF TRUTH fuer die Gestaltung des Dashboards
-Fassung:           2.0
-Stand:             2026-09-02
+Fassung:           2.1
+Stand:             2026-09-02 (2.1: visuelle Abnahme und Feinschliff)
 Geltungsbereich:   Gestaltung und Bedienung von jarvis/interfaces/web/.
                    Keine Architektur, keine Anforderungen, keine Roadmap
 Grundlage:         JARVIS-SPEC-3.md (CURRENT SOURCE OF TRUTH), Abschnitte
@@ -91,7 +91,7 @@ aendert, soll sehen, wofuer sie steht.
 | Marke | Wert | Rolle |
 |---|---|---|
 | `--grund` | `#0a0806` | Seitengrund, warmes Schwarz |
-| `--glas` | `rgba(255,150,70,.035)` | Tafeln: Glas auf dem Grund, keine eigene Flaeche |
+| `--glas` | `rgba(255,150,70,.045)` | Tafeln: Glas auf dem Grund, keine eigene Flaeche |
 | `--glas-hoch` | `rgba(255,150,70,.075)` | Kopfzeilen, aktive Zeile, aktiver Navigationspunkt |
 | `--linie` | `rgba(255,165,90,.14)` | Standardtrennung |
 | `--linie-stark` | `rgba(255,165,90,.32)` | Rahmen, Marken, Tabellenkopf |
@@ -102,7 +102,7 @@ aendert, soll sehen, wofuer sie steht.
 | `--akzent-hell` | `#ffc37c` | Hervorgehobene Schrift, Aufmerksamkeit (Trockenlauf AUS, Mock) |
 | `--akzent-tief` | `#d9671c` | Kern-Rand, Fuellstand |
 | `--glut`, `--glut-weit` | `rgba(255,150,60,.45)`, `rgba(255,120,30,.22)` | Leuchten, nah und weit |
-| `--kalt`, `--kalt-tief` | `#a4b8cc`, `#52677c` | Angehalten, blockiert |
+| `--kalt`, `--kalt-tief` | `#a4b8cc`, `#52677c` | Angehalten, blockiert; Band und Grund im Stopp werden aus diesen Werten gemischt |
 | `--kalt-glut` | `rgba(120,150,185,.22)` | Leuchten im angehaltenen Zustand |
 | `--signal-fehler`, `--fehler-glut` | `#ff5f5f`, `rgba(255,95,95,.35)` | Fehlgeschlagen, Abweichung |
 
@@ -171,11 +171,15 @@ Maschinenschrift mit weiter Laufweite -- nicht aus Grafik.
 
 * **Radius 3px** auf Tafeln, Knoepfen und Navigationspunkten; 2px auf
   Marken; der Kern ist rund. Kein anderer Radius.
-* **Tafel** (`.tafel`): Glas (`--glas`) mit 1px `--linie`, innen eine
-  Lichtkante (`inset 0 1px 0 rgba(255,200,140,.05)`), darunter ein weicher
-  Schatten. Zwei **Eckwinkel** aus 11px-Pseudoelementen (oben links, unten
-  rechts) in `--linie-stark` -- das eine HUD-Zitat, das die Tafel traegt.
-  Eine Vorgangskarte (`.item`) traegt nur den Winkel oben links, in Akzent.
+* **Tafel** (`.tafel`): Glas (`--glas`) mit 1px `--linie`; oben eine
+  **Lichtkante** -- ein 1px-Schimmer (`inset 0 1px 0 rgba(255,195,130,.14)`)
+  und ein Verlauf, der in den ersten 38% der Hoehe von `rgba(255,165,90,.05)`
+  auf transparent ausklingt --, darunter ein weicher Schatten. So liest sich
+  die Tafel als Scheibe, die von oben Licht bekommt, nicht als Karte. Zwei
+  **Eckwinkel** aus 11px-Pseudoelementen (oben links, unten rechts) in
+  `--linie-stark` -- das eine HUD-Zitat, das die Tafel traegt. Eine
+  Vorgangskarte (`.item`) hat dieselbe Lichtkante und nur den Winkel oben
+  links, in Akzent.
 * **Linien**: 1px, ausschliesslich. `--linie` trennt innerhalb, `--linie-stark`
   grenzt ab. Die Abschnittsmarke `h2` laeuft in eine Linie aus, die nach
   rechts in Transparenz verlaeuft.
@@ -198,8 +202,8 @@ Maschinenschrift mit weiter Laufweite -- nicht aus Grafik.
 |---|---|
 | innerhalb einer Faktenzeile | 0.35rem |
 | zwischen Marke und Text | 0.5-0.9rem |
-| Innenabstand Tafel | 1.1rem / 1.3rem (schmal: 1rem) |
-| zwischen Tafeln | 1.2rem |
+| Innenabstand Tafel | 1.3rem / 1.5rem (schmal: 1rem) |
+| zwischen Tafeln | 1.4rem; zwischen Kern-Abschnitt und Tafeln 2.2rem |
 | Spurrand | 1.5rem (schmal: 1rem) |
 | Abschnittsmarke oben | 2.2rem |
 | vor dem Fuss | 3rem |
@@ -284,10 +288,10 @@ blinkt, nichts springt, nichts wackelt.
 | **Systemband** `.systemband` | `render.seite` | erstes Element im Dokument; Zustandspunkt, Marke `Betrieb`/`Angehalten`, drei Tatsachen (Trockenlauf, Dienste, Zugangsdaten bzw. Grund und Wirkung), Stoppschalter. Klebt oben (`sticky`), Glas mit Weichzeichner; im schmalen Fenster statisch |
 | **Stoppschalter** `button.stopp` | Band | `Anhalten` mit Achteck-Symbol, im Stopp `Fortsetzen` mit Kreis-Symbol. Beides Formulare (`/stop`, `/weiter`). Erstes Formular im Dokument, also erster Griff im Tabfluss |
 | **Kopf** `.kopf` | `render.seite` | Wortmarke mit Kern-Punkt, Navigation rechts |
-| **Navigation** `nav` | `render.ANSICHTEN` | genau vier Punkte, Versalien, aktiver Punkt als Glas mit Akzentlinie unten; Zaehler offener Entscheidungen als gefuellte Marke |
+| **Navigation** `nav` | `render.ANSICHTEN` | genau vier Punkte, Versalien; der aktive traegt eine 1px-Akzentlinie unten und leuchtet leicht -- kein Kasten; Zaehler offener Entscheidungen als gefuellte Marke |
 | **Meldung** `.note.meldung` | `app.MELDUNGEN` | Ergebnis der letzten Handlung, aus fester Tabelle, nie aus der Adresszeile |
 | **Kern** `.kern` | `render.kern` | Abschnitt 7 |
-| **Kennzahl** `.kennzahl` | `render.kennzahl` | grosse Zahl mit Name und Zusatz; `hebt` Akzent, `gefahr` Rot, `kalt` |
+| **Kennzahl** `.kennzahl` | `render.kennzahl` | grosse Zahl mit Name und Zusatz; `hebt` Akzent, `gefahr` Rot, `kalt`; `klein` fuer Worte statt Zahlen (die Systemtatsachen rechts vom Kern) |
 | **Faktenliste** `dl.facts` | `render.fakten` | Name/Wert, Wert in Maschinenschrift, bricht ueberall um |
 | **Tafel** `.tafel` | `render.tafel` | Glas mit Titel, Eckwinkeln und optionalem Fuss (der Weg in die Tiefe) |
 | **Tabelle** `.tabelle > table` | `render.tabelle` | rollt in ihrem Rahmen, nie die Seite; jede Zelle traegt `data-kopf`, im schmalen Fenster wird sie zu Bloecken |
@@ -313,10 +317,13 @@ Die Leitstelle. Reihenfolge: **Zustand, Zahlen, Arbeit, Bestand.**
 
 ```
   1  Systemband
-  2  Kern mit Zustand         links Kennzahlen: offene Entscheidungen,
+  2  Kern mit Zustand         links drei Zahlen: offene Entscheidungen,
                               Protokoll (Eintraege, Kette), letzter Eintrag
-                              rechts System: Basis, Konfiguration,
+                              rechts drei Tatsachen, gleiche Form:
                               Zugangsdaten, Ablage, Modellprozess
+                              (rot, wenn die Ablage offen oder die Trennung
+                              aus ist). Keine Pfade -- die nennt
+                              `jarvis status`
   3  Abweichungen             nur wenn vorhanden, rot gerahmt
   4  Anstehend                bis vier Vorgaenge, Weg zu Entscheidungen
      Zuletzt im Protokoll     acht Eintraege mit Marke, Weg zum Protokoll
@@ -361,7 +368,7 @@ Marke, Grund. Im Fuss die Gesamtzahl und der Zustand der Kette.
 | **Trockenlauf an** (Standard) | ruhig: `Trockenlauf an` in normaler Schrift; Kern-Satz sagt "Freigeben bewirkt nichts" |
 | **Trockenlauf AUS** | auffaellig: `AUS` in Akzent-hell mit Leuchten im Band; Freigabeknoepfe erscheinen; Gatterleiter endet auf `Geht hinaus` |
 | **Dienste Mock** | `Mock` in Akzent-hell -- ein Mock, den man nicht sieht, ist eine Falle |
-| **Angehalten** | Band kalt mit Grund und Wirkung, Knopf `Fortsetzen`; Kern kalt und still; Grund und Wortmarke kalt; `<body class="angehalten">` |
+| **Angehalten** | Band kalt mit Grund ("ueber das Dashboard (web, seit 21:31 UTC)" -- aus der Stoppdatei gelesen, nicht die Rohzeile) und Wirkung, Knopf `Fortsetzen`; Kern kalt und still; Grund und Wortmarke kalt; `<body class="angehalten">` |
 | **Abweichung** | Kern mit rotem Ring, Wort `Abweichung`, rote Tafel mit der Liste; Protokoll-Kennzahl rot |
 | **Fehler eines Vorgangs** | Marke `Fehlgeschlagen` rot im Protokoll; der Vorgang bleibt offen und traegt den Grund als Vermerk (`.note.warnung`) |
 | **Meldung nach Handlung** | Hinweis oben in der Zielansicht, Text aus `MELDUNGEN` |
@@ -472,6 +479,15 @@ Regeln, wie Kuenftiges einpasst -- kein Platz, der warmgehalten wird.
 ---
 
 ## 18. Geprueft
+
+**Zweite Abnahme (Fassung 2.1).** Gegen die erste Fassung sind vier Dinge
+geaendert, alle nach Ansehen im Browser: die Pfadliste rechts vom Kern ist
+drei Tatsachen in Kennzahlform gewichen (sie zog den Blick vom Kern weg und
+las sich wie eine Einstellungsseite); der aktive Navigationspunkt ist eine
+Linie statt eines Kastens; Tafeln haben eine sichtbare Lichtkante und mehr
+Luft; die Stoppzeile im Band nennt Grund, Urheber und Uhrzeit statt der
+Rohzeile. Sonst nichts -- was gut war, blieb.
+
 
 Chromium ueber Playwright, 2026-09-02, gegen das laufende Dashboard mit
 Mock-Diensten und einer eingerichteten Probe-Ablage:

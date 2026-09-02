@@ -310,6 +310,16 @@ ist ausschliesslich `jarvis/interfaces/web/` samt Tests und Dokumentation.
    Vorgaenge mit 40-zeiligen Entwuerfen und ueberlangen Betreffzeilen.
    Safari auf macOS: nicht geprueft (Sitzung unter Linux).
 
+**Zweite Runde, visuelle Abnahme (Fassung 2.1 des Designsystems).** Nach
+Ansehen aller Ansichten bei 1440, 1100, 820 und 390 px vier gezielte
+Aenderungen, sonst nichts: rechts vom Kern stehen drei Tatsachen
+(Zugangsdaten, Ablage, Modellprozess) in derselben Form wie die Zahlen links
+statt einer Pfadliste; der aktive Navigationspunkt ist eine Akzentlinie statt
+eines Kastens; Tafeln haben eine sichtbare Lichtkante und mehr Luft; das
+Band nennt beim Stopp Grund, Urheber und Uhrzeit statt der Rohzeile
+(`app._stoppgrund`). Eine ungenutzte Marke (`--kalt-flaeche`) entfernt.
+Tests unveraendert gruen.
+
 **Ein Befund fuer den Nutzer -- SPEC-3 aendert nur er.** SPEC-3 Abschnitt 12
 fuehrt die *Vertrauensnaht* als CURRENT (auch in Abschnitt 15 und 25). Sie
 war am 2026-08-31 zurueckgebaut worden (Commit 397c3dd, Weg A-teil); der

@@ -98,20 +98,23 @@ TRENNUNG = {
 }
 
 
-def _quelle(quelle: Path | None, basis: Path) -> str:
-    """Die Konfigurationsdatei -- nur der Name, wenn sie in der Basis liegt."""
-    if quelle is None:
-        return "Vorgabe, keine Datei"
-    return quelle.name if quelle.parent == basis else _kurz(quelle)
+def _stoppgrund(schalter: StopSwitch) -> str | None:
+    """Der Grund lesbar: "<grund> (<urheber>, seit hh:mm UTC)" statt der Rohzeile.
 
-
-def _kurz(pfad: Path) -> str:
-    """Ein Pfad fuer die Anzeige: das Heimverzeichnis als `~`."""
-    heim = str(Path.home())
-    text = str(pfad)
-    if heim != "/" and text.startswith(heim):
-        return "~" + text[len(heim) :]
-    return text
+    Die Stoppdatei traegt "<zeit> <urheber>: <grund>". Im Band zaehlt der
+    Grund; Urheber und Uhrzeit stehen dahinter, weil sie sagen, wer und seit
+    wann. Passt die Zeile nicht auf die Form -- von Hand geschrieben --, wird
+    sie unveraendert gezeigt.
+    """
+    roh = schalter.reason()
+    if not roh:
+        return None
+    kopf, trenner, rest = roh.partition(": ")
+    teile = kopf.split()
+    if trenner and len(teile) == 2 and rest.strip():
+        zeit, urheber = teile
+        return f"{rest.strip()} ({urheber}, seit {zeit[11:16]} UTC)"
+    return roh
 
 
 class SecurityHeaders:
@@ -233,7 +236,7 @@ def create_app(
                 meldung_html=hinweis(meldung, art="meldung") if meldung else "",
                 aktiv=aktiv,
                 angehalten=schalter.engaged(),
-                stopp_grund=schalter.reason(),
+                stopp_grund=_stoppgrund(schalter),
                 offen=offen,
                 refresh=config.web.refresh_seconds,
                 trockenlauf=config.dry_run,
@@ -329,17 +332,21 @@ def create_app(
         speicher = default_store()
         eingerichtet = paths.db_file.exists() or paths.config_file.exists()
         offene = offene_pfade(paths.home) if eingerichtet else []
-        system = fakten(
-            [
-                ("Basis", _kurz(paths.home)),
-                ("Konfiguration", _quelle(config.source, paths.home)),
-                ("Zugangsdaten", f"{speicher.describe()} ({speicher.mode})"),
-                (
-                    "Ablage",
-                    "geschlossen, 0700/0600" if not offene else f"{len(offene)} Pfade offen",
-                ),
-                ("Modellprozess", TRENNUNG.get(config.llm.isolation, config.llm.isolation)),
-            ]
+        # Rechts vom Kern die drei Tatsachen, die sagen, wie sicher das
+        # System gerade steht -- in derselben Form wie die Zahlen links.
+        # Pfade stehen hier nicht: `jarvis status` nennt sie, die Lage nicht.
+        system = (
+            kennzahl("Zugangsdaten", f"{speicher.describe()} ({speicher.mode})", art="klein")
+            + kennzahl(
+                "Ablage",
+                "geschlossen, 0700/0600" if not offene else f"{len(offene)} Pfade offen",
+                art="klein" if not offene else "klein gefahr",
+            )
+            + kennzahl(
+                "Modellprozess",
+                TRENNUNG.get(config.llm.isolation, config.llm.isolation),
+                art="klein" if config.llm.isolation != "off" else "klein gefahr",
+            )
         )
         mitte = (
             kern(zustand)
@@ -350,7 +357,7 @@ def create_app(
             '<section class="lage">'
             f'<div class="lage-kennzahlen"><div class="kennzahlen">{zahlen}</div></div>'
             f'<div class="lage-mitte">{mitte}</div>'
-            f'<div class="lage-system">{system}</div>'
+            f'<div class="lage-system"><div class="kennzahlen">{system}</div></div>'
             "</section>"
         )
         if abweichungen:

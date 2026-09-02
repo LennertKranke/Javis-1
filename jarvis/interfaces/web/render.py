@@ -319,6 +319,7 @@ def kern(zustand: Zustand) -> str:
     Zustand steht daneben als Text, und nur der zaehlt."""
     return (
         f'<div class="kern {esc(zustand.klasse)}" aria-hidden="true">'
+        '<span class="kern-ring r0"></span>'
         '<span class="kern-ring r2"></span>'
         '<span class="kern-ring r3"></span>'
         '<span class="kern-ring r1"></span>'

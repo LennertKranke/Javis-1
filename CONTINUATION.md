@@ -320,6 +320,14 @@ Band nennt beim Stopp Grund, Urheber und Uhrzeit statt der Rohzeile
 (`app._stoppgrund`). Eine ungenutzte Marke (`--kalt-flaeche`) entfernt.
 Tests unveraendert gruen.
 
+**Dritte Runde, Feinschliff am Kern (Fassung 2.2).** Der Kern ist eine
+Kugel mit Lichtquelle oben links, dunklem Rand, Glanzlicht und feinen
+Schichten, ein blasser Aussenring und ein Impuls alle neun Sekunden dazu,
+17rem statt 15rem; Tafeln mit Weichzeichner und diagonaler Reflexion; die
+Systemtatsachen rechts vom Kern spiegeln die Zahlen links; Tabellen ohne
+Zeilenhervorhebung, Werte in Maschinenschrift. Nichts an Aufbau, Routen
+oder Zustaenden. Im Browser geprueft in allen Zustaenden und Breiten.
+
 **Ein Befund fuer den Nutzer -- SPEC-3 aendert nur er.** SPEC-3 Abschnitt 12
 fuehrt die *Vertrauensnaht* als CURRENT (auch in Abschnitt 15 und 25). Sie
 war am 2026-08-31 zurueckgebaut worden (Commit 397c3dd, Weg A-teil); der

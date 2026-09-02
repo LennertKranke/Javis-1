@@ -442,7 +442,7 @@ def create_app(
                     "Letzter Lauf (Daemon)",
                 ],
                 zeilen,
-                mono=(0, 5),
+                mono=(0, 2, 3, 5),
                 roh=(1, 4),
             ),
             klasse="breit",

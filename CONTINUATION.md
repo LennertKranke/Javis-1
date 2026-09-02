@@ -2,8 +2,8 @@
 
 Stand: Neugestaltung des Dashboards 2026-09-02, Branch `claude/plugin-082094`
 (Pull Request gegen `main`).
-1076 Tests, davon 1075 zu jeder Tageszeit gruen (KI-8), `ruff check` und
-`ruff format --check` sauber.
+1076 Tests gruen, zu jeder Tageszeit (KI-8 im Test behoben), `ruff check`
+und `ruff format --check` sauber.
 
 Dieses Dokument beschreibt den **tatsaechlichen** Stand, nicht die Absicht.
 Verbindliche Vorgabe ist `JARVIS-SPEC-3.md` (Source of Truth); die
@@ -333,12 +333,13 @@ auch am Kopf von `design/SPEC-3-NACHTRAG.md`.
 
 ## 3. Tests
 
-**1076, davon 1075 zu jeder Tageszeit gruen.** `uv run pytest` — Laufzeit
-rund 20 s. Der eine ist KI-8 (`test_das_briefing_entsteht_aus_mock_daten`,
-zeitabhaengig, faellt taeglich von 22 bis 24 Uhr Berliner Zeit aus -- so auch
-im Lauf dieser Sitzung; ein Fehler im Test, nicht im Code). Sie laufen seit
-der Konsolidierung auch in der CI (`.github/workflows/ci.yml`) bei jedem
-Push und Pull Request.
+**1076, alle gruen -- zu jeder Tageszeit.** `uv run pytest` — Laufzeit
+rund 20 s. KI-8 (`test_das_briefing_entsteht_aus_mock_daten`, fiel taeglich
+von 22 bis 24 Uhr Berliner Zeit aus) ist am 2026-09-02 im Test behoben: die
+Uhr ist auf acht Uhr des heutigen Ortstags festgenagelt, fuer Kalender-Mock
+und Kalenderfaehigkeit gleichermassen; nachgemessen um 23:41 Ortszeit. Der
+Code war nie betroffen. Die Tests laufen seit der Konsolidierung auch in der
+CI (`.github/workflows/ci.yml`) bei jedem Push und Pull Request.
 
 Groesste Gruppen: `test_voice.py` (99), `test_cli.py` (84), `test_web.py`
 (67), `test_calendar.py` (64), `test_approvals.py` (51), `test_schema.py` (42),
@@ -366,9 +367,9 @@ Keine offenen. Die aus dem Audit sind behoben, siehe Abschnitt 2a.
 - **SPEC-3 Abschnitt 12 nennt die Vertrauensnaht als CURRENT; sie ist seit
   2026-08-31 zurueckgebaut.** Siehe Abschnitt 2d. Korrektur nur durch den
   Nutzer (SPEC-3 Abschnitt 27).
-- **KI-8** ist weiterhin offen: der zeitabhaengige Test entwertet jede
-  pauschale "alle Tests gruen"-Aussage, solange er nicht auf eine feste Uhr
-  gestellt ist.
+- **KI-8 ist behoben** (Test auf feste Uhr gestellt, siehe Abschnitt 3).
+  SPEC-3 Abschnitt 17 und der Kopfblock fuehren ihn noch als offen; das
+  Nachziehen gehoert dem Nutzer (Abschnitt 27).
 
 ### Nie auf echter Hardware ausgefuehrt
 - **macOS-Sandbox** (`isolation = "sandbox"`): Profil und Aufruf getestet,
@@ -543,7 +544,7 @@ beide den Nutzer an seinem Mac und lassen sich als **ein** Termin erledigen.
 
 ```sh
 uv sync
-uv run pytest -q                 # 1076 Tests, siehe KI-8
+uv run pytest -q                 # 1076 Tests
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe

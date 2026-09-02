@@ -137,8 +137,8 @@ a:hover { color: var(--text); }
 /* --- Bewegung: wenig, langsam, abschaltbar ------------------------------ */
 
 @keyframes atmen {
-  0%, 100% { transform: scale(1); opacity: 0.92; }
-  50%      { transform: scale(1.035); opacity: 1; }
+  0%, 100% { transform: scale(1); opacity: 0.94; }
+  50%      { transform: scale(1.02); opacity: 1; }
 }
 @keyframes drehen { to { transform: rotate(360deg); } }
 @keyframes gegendrehen { to { transform: rotate(-360deg); } }
@@ -162,8 +162,10 @@ a:hover { color: var(--text); }
   position: sticky;
   top: 0;
   z-index: 3;
-  border-bottom: 1px solid var(--linie);
-  background: rgba(10, 8, 6, 0.82);
+  background:
+    linear-gradient(90deg, transparent, var(--linie-stark) 15%, var(--linie-stark) 85%, transparent)
+      bottom / 100% 1px no-repeat,
+    rgba(10, 8, 6, 0.82);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
@@ -366,6 +368,13 @@ h3 {
 .tafel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
 .tafel::after { right: -1px; bottom: -1px; border-left: 0; border-top: 0; }
 .tafel > h2 { margin-top: 0; }
+.tafel > h2::before {
+  content: "";
+  width: 10px;
+  height: 1px;
+  background: var(--akzent);
+  opacity: 0.85;
+}
 .tafel-fuss { margin: 1rem 0 0; font-size: 0.8rem; color: var(--text-gedaempft); }
 .tafel-fuss a { font-family: var(--masch); font-size: 0.72rem; letter-spacing: 0.08em; }
 
@@ -400,7 +409,7 @@ h3 {
 
 .kern {
   position: relative;
-  width: var(--kern-groesse, 17rem);
+  width: var(--kern-groesse);
   aspect-ratio: 1;
   margin: 0 auto;
   border-radius: 50%;
@@ -431,17 +440,17 @@ h3 {
   border-radius: 50%;
   background: radial-gradient(
     circle at 40% 34%,
-    #fff7e8 0,
-    #ffd9a3 7%,
-    #ffab55 24%,
+    #fff3dd 0,
+    #ffd39a 5%,
+    #ffab55 22%,
     var(--akzent) 40%,
     #d4561a 62%,
     #7a2a06 86%,
     #3a1203 100%
   );
   box-shadow:
-    0 0 34px var(--glut),
-    0 0 90px var(--glut-weit),
+    0 0 30px var(--glut),
+    0 0 80px var(--glut-weit),
     0 34px 60px -18px rgba(255, 120, 30, 0.3),
     inset -14px -18px 36px rgba(60, 15, 0, 0.55),
     inset 8px 10px 24px rgba(255, 235, 205, 0.25);
@@ -451,23 +460,28 @@ h3 {
 .kern-glut::before {
   content: "";
   position: absolute;
-  left: 20%;
-  top: 12%;
-  width: 36%;
-  height: 26%;
+  left: 22%;
+  top: 14%;
+  width: 32%;
+  height: 22%;
   border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(255, 250, 240, 0.55), rgba(255, 250, 240, 0) 70%);
+  background: radial-gradient(ellipse, rgba(255, 250, 240, 0.38), rgba(255, 250, 240, 0) 70%);
   transform: rotate(-24deg);
 }
-/* Innere Struktur: feine konzentrische Ringe, wie Schichten im Glas. */
+/* Innere Struktur: feine Schichten und zwoelf kaum sichtbare Naehte --
+   ein technischer Kern, keine Spielkugel. */
 .kern-glut::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: repeating-radial-gradient(
-    circle at 40% 34%, transparent 0 11px, rgba(255, 228, 195, 0.045) 11px 12px
-  );
+  background:
+    repeating-conic-gradient(
+      from 15deg, rgba(255, 240, 220, 0.05) 0 0.5deg, transparent 0.5deg 30deg
+    ),
+    repeating-radial-gradient(
+      circle at 40% 34%, transparent 0 8px, rgba(255, 228, 195, 0.035) 8px 9px
+    );
 }
 .kern-ring {
   position: absolute;
@@ -475,10 +489,16 @@ h3 {
   pointer-events: none;
 }
 .kern-ring.r0 { inset: -8%; border: 1px solid rgba(255, 175, 100, 0.13); }
-.kern-ring.r1 { inset: 9%; border: 1px solid rgba(255, 175, 100, 0.55); }
+/* r1 ist ein Doppelring: die Linie und, drei Pixel aussen, ihr Echo. */
+.kern-ring.r1 {
+  inset: 9%;
+  border: 1px solid rgba(255, 175, 100, 0.6);
+  outline: 1px solid rgba(255, 175, 100, 0.12);
+  outline-offset: 3px;
+}
 .kern-ring.r2 {
   inset: 0;
-  border: 1px dashed rgba(255, 175, 100, 0.4);
+  border: 1px dashed rgba(255, 175, 100, 0.32);
   animation: drehen 110s linear infinite;
 }
 .kern-ring.r3 {
@@ -550,7 +570,7 @@ h3 {
 }
 .kern.angehalten .kern-glut::after {
   background: repeating-radial-gradient(
-    circle at 40% 34%, transparent 0 11px, rgba(220, 232, 244, 0.045) 11px 12px
+    circle at 40% 34%, transparent 0 8px, rgba(220, 232, 244, 0.035) 8px 9px
   );
 }
 .kern.angehalten .kern-ring.r0 { border-color: rgba(164, 184, 204, 0.12); }
@@ -571,12 +591,57 @@ h3 {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 3rem;
-  padding: 2.4rem 0 1rem;
+  padding: 2rem 0 1.2rem;
 }
-.lage-mitte { text-align: center; padding: 1.2rem 0; }
+.lage-mitte { --kern-groesse: 17rem; position: relative; text-align: center; padding: 1.2rem 0; }
+
+/* Die Systemzone um den Kern: ein weiter, blasser Kreis, eine Horizontlinie
+   durch die Mitte, ein Hauch Licht. Orientierung, kein Ornament. */
+.lage-mitte::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(1.2rem + var(--kern-groesse) / 2);
+  width: calc(var(--kern-groesse) * 1.6);
+  height: calc(var(--kern-groesse) * 1.6);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0,
+      rgba(255, 165, 90, 0.16) 18%,
+      transparent 40%,
+      transparent 60%,
+      rgba(255, 165, 90, 0.16) 82%,
+      transparent 100%
+    ) center / 100% 1px no-repeat,
+    radial-gradient(
+      circle, transparent 0 calc(50% - 1px), rgba(255, 165, 90, 0.08) calc(50% - 1px) 50%,
+      transparent 50%
+    ),
+    radial-gradient(circle, rgba(255, 140, 50, 0.05), transparent 62%);
+}
+.angehalten .lage-mitte::before {
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0,
+      rgba(164, 184, 204, 0.14) 18%,
+      transparent 40%,
+      transparent 60%,
+      rgba(164, 184, 204, 0.14) 82%,
+      transparent 100%
+    ) center / 100% 1px no-repeat,
+    radial-gradient(
+      circle, transparent 0 calc(50% - 1px), rgba(164, 184, 204, 0.08) calc(50% - 1px) 50%,
+      transparent 50%
+    );
+}
 .lage-zustandsmarke {
   display: block;
-  margin-top: 1.6rem;
+  margin-top: 1.4rem;
   font: 500 0.84rem var(--masch);
   letter-spacing: 0.36em;
   text-transform: uppercase;
@@ -597,20 +662,40 @@ h3 {
 .lage-satz .mono { font-size: 0.86em; }
 
 .kennzahlen { display: flex; flex-direction: column; margin: 0; }
+/* Telemetrie: Beschriftung klein und still, Wert gross; darunter eine
+   Lichtlinie, die zum Kern hin auslaeuft -- links nach rechts, rechts nach
+   links. Die Spalten zeigen auf die Mitte. */
 .kennzahl {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--linie);
+  gap: 0.2rem;
+  padding: 0.85rem 0 0.95rem;
+}
+.kennzahl::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--linie-stark), transparent);
+}
+.lage-system .kennzahl::after {
+  background: linear-gradient(270deg, var(--linie-stark), transparent);
 }
 .kennzahl-name {
-  font: 500 0.64rem var(--masch);
-  letter-spacing: 0.16em;
+  font: 500 0.62rem var(--masch);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-gedaempft);
 }
-.kennzahl-wert { font: 400 1.45rem/1.2 var(--masch); color: var(--text); word-break: break-word; }
+.kennzahl-wert {
+  font: 400 1.55rem/1.2 var(--masch);
+  letter-spacing: 0.01em;
+  color: var(--text);
+  word-break: break-word;
+}
 .kennzahl-wert.hebt { color: var(--akzent-hell); text-shadow: 0 0 16px var(--glut-weit); }
 .kennzahl-wert.gefahr { color: var(--signal-fehler); }
 .kennzahl-wert.kalt { color: var(--kalt); }
@@ -725,11 +810,15 @@ th {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-gedaempft);
-  padding: 0 1rem 0.55rem 0;
+  padding: 0 1rem 0.6rem 0;
   border-bottom: 1px solid var(--linie-stark);
   white-space: nowrap;
 }
-td { padding: 0.5rem 1rem 0.5rem 0; border-bottom: 1px solid var(--linie); vertical-align: top; }
+td {
+  padding: 0.55rem 1rem 0.55rem 0;
+  border-bottom: 1px solid rgba(255, 165, 90, 0.09);
+  vertical-align: top;
+}
 td.mono, .mono { font-family: var(--masch); white-space: nowrap; }
 td.dim, .dim { color: var(--text-gedaempft); }
 td.umbruch { word-break: break-word; }
@@ -919,8 +1008,11 @@ footer {
   .kennzahl:first-child { border-top: 0; }
   .kennzahl { border-top: 1px solid var(--linie); }
   .tafeln { grid-template-columns: 1fr; }
-  .kern { --kern-groesse: 13rem; }
+  .lage-mitte { --kern-groesse: 13rem; }
   .lage-system .kennzahl { align-items: flex-start; text-align: left; }
+  .lage-system .kennzahl::after {
+    background: linear-gradient(90deg, var(--linie-stark), transparent);
+  }
   th { white-space: normal; }
 }
 
@@ -934,7 +1026,7 @@ footer {
   nav a { padding: 0.55rem 0.7rem; }
   .wrap { padding: 0 1rem; }
   footer { padding: 2.5rem 1rem 0; }
-  .kern { --kern-groesse: 11rem; }
+  .lage-mitte { --kern-groesse: 11rem; }
   .kennzahlen { grid-template-columns: 1fr; }
   .kennzahl { border-top: 0; }
   .facts { grid-template-columns: 1fr; gap: 0; }

@@ -553,3 +553,99 @@ def test_pfad_bleibt_unveraendert():
         assert schritt in quelle
     # Gehandelt wird nur nach dem Gatter.
     assert quelle.index("gate.evaluate") < quelle.index("skill.act(decision)")
+
+
+# --------------------------------------------------------------------------- #
+# 6. Der Modellteil bleibt vom handelnden Teil getrennt
+#
+# Der Router beantwortet genau eine Frage: welcher Anbieter bedient diese
+# Aufgabe. Nicht: darf gehandelt werden. Diese Grenze war bisher wahr, aber
+# nirgends festgehalten -- ein einziger Import haette daraus eine zweite
+# Autorisierungsschicht gemacht, ohne dass ein Test es gemerkt haette.
+# --------------------------------------------------------------------------- #
+
+
+#: Woraus `jarvis/llm/` importieren darf. Alles andere aus `jarvis` waere ein
+#: Griff in den handelnden Teil.
+LLM_DARF_IMPORTIEREN = frozenset({"jarvis.core.config", "jarvis.core.secrets"})
+
+
+def llm_importe() -> dict[str, set[str]]:
+    """Jede Datei unter `jarvis/llm/` und die `jarvis`-Module, die sie holt.
+
+    Statisch ueber den Syntaxbaum, nicht ueber die geladenen Module: so faellt
+    auch ein Import auf, der tief in einer Funktion steht und nur in einem
+    seltenen Zweig ausgefuehrt wuerde.
+    """
+    import ast
+    from pathlib import Path
+
+    wurzel = Path(__file__).resolve().parents[1] / "jarvis" / "llm"
+    gefunden: dict[str, set[str]] = {}
+    for datei in sorted(wurzel.rglob("*.py")):
+        baum = ast.parse(datei.read_text(encoding="utf-8"), filename=str(datei))
+        module: set[str] = set()
+        for knoten in ast.walk(baum):
+            if isinstance(knoten, ast.Import):
+                module.update(a.name for a in knoten.names)
+            elif isinstance(knoten, ast.ImportFrom) and knoten.module and knoten.level == 0:
+                module.add(knoten.module)
+        gefunden[str(datei.relative_to(wurzel.parent.parent))] = {
+            m for m in module if m == "jarvis" or m.startswith("jarvis.")
+        }
+    return gefunden
+
+
+def test_der_llm_teil_greift_nicht_in_den_handelnden_teil():
+    verstoesse = []
+    for datei, module in llm_importe().items():
+        for modul in sorted(module):
+            if modul.startswith("jarvis.llm"):
+                continue
+            if modul in LLM_DARF_IMPORTIEREN:
+                continue
+            verstoesse.append(f"{datei} importiert {modul}")
+    assert not verstoesse, (
+        "Der Router entscheidet ueber Anbieter und Modell, nicht darueber, ob "
+        "gehandelt werden darf. Erlaubt sind nur "
+        f"{', '.join(sorted(LLM_DARF_IMPORTIEREN))}: " + "; ".join(verstoesse)
+    )
+
+
+@pytest.mark.parametrize(
+    "verboten",
+    [
+        "jarvis.core.gate",
+        "jarvis.core.approvals",
+        "jarvis.core.db",
+        "jarvis.core.ratelimit",
+        "jarvis.core.audit",
+        "jarvis.skills",
+    ],
+)
+def test_die_verbotenen_module_stehen_wirklich_nirgends(verboten):
+    """Dasselbe von der anderen Seite: die Liste beim Namen genannt.
+
+    Die Zulassungsliste allein wuerde stillschweigend nachgeben, wenn jemand
+    sie erweitert. Diese Pruefung nennt die sechs Stellen, um die es geht.
+    """
+    for datei, module in llm_importe().items():
+        treffer = [m for m in module if m == verboten or m.startswith(f"{verboten}.")]
+        assert not treffer, f"{datei} importiert {treffer}"
+
+
+def test_der_router_faellt_geschlossen_aus():
+    """Eine Ausfallpause ueberspringt einen Anbieter, sie erlaubt keinen.
+
+    Strukturell: die Kette entsteht in `chain()` samt Vertraulichkeitssperre,
+    bevor in `complete()` irgendetwas uebersprungen wird.
+    """
+    import inspect
+
+    from jarvis.llm.router import Router
+
+    quelle = inspect.getsource(Router.complete)
+    assert "self.chain(task)" in quelle
+    assert quelle.index("self.chain(task)") < quelle.index("nutzbar")
+    # Und die Sperre selbst liegt in chain(), nicht in einem Zweig daneben.
+    assert "ConfidentialityError" in inspect.getsource(Router.chain)

@@ -150,6 +150,27 @@ def test_unbekannte_anbieterart(home):
         laden(home, raw)
 
 
+def test_ausfallpause_hat_eine_vorgabe(home):
+    assert laden(home, {"capabilities": {}}).llm.cooldown_seconds == 60
+
+
+def test_ausfallpause_laesst_sich_abschalten(home):
+    raw = {"capabilities": {}, "llm": {"cooldown_seconds": 0}}
+    assert laden(home, raw).llm.cooldown_seconds == 0
+
+
+def test_negative_ausfallpause_wird_abgewiesen(home):
+    raw = {"capabilities": {}, "llm": {"cooldown_seconds": -1}}
+    with pytest.raises(ConfigError, match="0 oder mehr"):
+        laden(home, raw)
+
+
+def test_ausfallpause_erwartet_eine_ganze_zahl(home):
+    raw = {"capabilities": {}, "llm": {"cooldown_seconds": "eine Minute"}}
+    with pytest.raises(ConfigError, match="ganze Zahl"):
+        laden(home, raw)
+
+
 # --- Autonomiestufen -------------------------------------------------------- #
 
 

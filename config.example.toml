@@ -117,6 +117,13 @@ rate_limits = { hour = 60, day = 400 }
 [llm]
 isolation = "subprocess"
 
+# Ein Anbieter, der nicht erreichbar war oder nicht antwortete, wird so lange
+# uebersprungen statt bei jeder Anfrage erneut mit vollem Zeitlimit versucht.
+# Der Stand steht im Arbeitsspeicher: nach einem Neustart wird wieder probiert.
+# 0 schaltet die Pause ab. Eine Pause ueberspringt nur -- sie macht keinen
+# Anbieter zulaessig, den die Vertraulichkeitssperre ausschliesst.
+cooldown_seconds = 60
+
 
 [llm.providers.anthropic]
 kind = "anthropic"

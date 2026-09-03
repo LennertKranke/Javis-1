@@ -1,8 +1,8 @@
 # JARVIS — Projektstand und Uebergabe
 
-Stand: Neugestaltung des Dashboards 2026-09-02, Branch `claude/plugin-082094`
-(Pull Request gegen `main`).
-1076 Tests gruen, zu jeder Tageszeit (KI-8 im Test behoben), `ruff check`
+Stand: Ausfallpause im Router 2026-09-03, Branch
+`claude/jarvis-handoff-next-session-j4z9ls` (Pull Request gegen `main`).
+1102 Tests gruen, zu jeder Tageszeit (KI-8 im Test behoben), `ruff check`
 und `ruff format --check` sauber.
 
 Dieses Dokument beschreibt den **tatsaechlichen** Stand, nicht die Absicht.
@@ -348,9 +348,62 @@ auch am Kopf von `design/SPEC-3-NACHTRAG.md`.
 
 ---
 
+## 2e. Ausfallpause im Router (2026-09-03)
+
+Auftrag: den **vorhandenen** Router (`llm/router.py`, SPEC-3 Abschnitt 7,
+CURRENT) robuster machen und seine architektonische Grenze festschreiben.
+Kein neuer Router, kein neuer Anbieter, keine Chat-Seite, keine Aenderung an
+Gatter, Freigaben, Runner, Stoppschalter, Stufen, Allowlists oder
+Ratenbegrenzung.
+
+1. **Ausfallpause** (`llm/router.py`): ein Anbieter, der mit
+   `ProviderUnavailable` oder `ProviderTimeout` ausfaellt, wird
+   `[llm] cooldown_seconds` (Vorgabe 60, `0` schaltet ab) lang uebersprungen
+   statt bei jeder Anfrage erneut mit vollem Zeitlimit versucht. Das zaehlt
+   innerhalb eines Durchlaufs: `mail poll` ueber zwanzig Nachrichten rief
+   bisher zwanzigmal in ein totes Zeitlimit.
+2. **Gesundheitsstand** (`Anbietergesundheit`, `Anbieterzustand`): drei
+   Zustaende -- `bereit` (hat in diesem Prozess geantwortet), `pausiert`,
+   `unbekannt` (nie gefragt, oder Pause gerade abgelaufen). Im
+   Arbeitsspeicher, nicht in der Datenbank: Anbietergesundheit ist
+   Betriebszustand dieses Prozesses und keine Datenkategorie aus Abschnitt 8.
+   Ueber `Router.gesundheit` abfragbar; **kein** Aufrufer benutzt es bisher.
+3. **Grenzen der Pause**, jede mit einem Test: sie ueberspringt nur, sie
+   erlaubt nie -- pausiert der einzige lokale Anbieter einer vertraulichen
+   Aufgabe, scheitert die Aufgabe, statt nach draussen zu fallen (die Kette
+   entsteht in `chain()`, vor jeder Pause). Eine Verweigerung
+   (`ProviderRefused`) oder eine unbrauchbare Antwort pausiert nichts: das
+   sind Aussagen ueber die Anfrage, nicht ueber den Anbieter. Ein Ausfall
+   loescht ein frueheres `bereit`, damit nach Ablauf `unbekannt` dasteht und
+   nicht eine Bereitschaft, die seither niemand nachgeprueft hat.
+4. **Architekturgrenze als Test** (`test_hardening.py`, Abschnitt 6): eine
+   statische Pruefung ueber den Syntaxbaum aller Dateien in `jarvis/llm/`.
+   Erlaubt sind aus `jarvis` nur `core.config` und `core.secrets`; verboten
+   und einzeln benannt sind `core.gate`, `core.approvals`, `core.db`,
+   `core.ratelimit`, `core.audit` und `skills`. Die Grenze galt vorher schon,
+   war aber nirgends festgehalten. Gegengeprueft: mit einem eingesetzten
+   `from jarvis.core.gate import Gate` schlagen beide Tests fehl.
+5. **Nicht gebaut, mit Absicht**: kein neuer Anbieter, kein Streaming, keine
+   Modellwahl je Anfrage, keine Kosten- oder Latenzoptimierung, kein
+   Audit-Eintrag je Modellaufruf, keine Anzeige im Dashboard oder in
+   `jarvis status`. Die Pause erscheint im JSONL-Log (`Anbieter
+   uebersprungen`, `pausiert_sekunden`), sonst nirgends.
+6. **Tests**: 26 neue (1076 -> 1102). `test_router.py` von 10 auf 24,
+   `test_hardening.py` +8, `test_config.py` +4. Die Uhr ist im Test
+   austauschbar (`Router(..., uhr=...)`) -- keine Pruefung schlaeft, kein
+   Test haengt an der Tageszeit (Lehre aus KI-8).
+
+**Grenze, ehrlich benannt:** die Pause lebt in der Router-Instanz. `daemon.py`
+baut je Durchlauf eine neue Faehigkeit und damit einen neuen Router -- die
+Pause wirkt **innerhalb** eines Durchlaufs, nicht ueber Ticks hinweg. Sie
+prozessweit zu machen hiesse, `skills/factory.py` und den Daemon anzufassen;
+das lag ausserhalb des freigegebenen Auftrags.
+
+---
+
 ## 3. Tests
 
-**1076, alle gruen -- zu jeder Tageszeit.** `uv run pytest` — Laufzeit
+**1102, alle gruen -- zu jeder Tageszeit.** `uv run pytest` — Laufzeit
 rund 20 s. KI-8 (`test_das_briefing_entsteht_aus_mock_daten`, fiel taeglich
 von 22 bis 24 Uhr Berliner Zeit aus) ist am 2026-09-02 im Test behoben: die
 Uhr ist auf acht Uhr des heutigen Ortstags festgenagelt, fuer Kalender-Mock
@@ -359,9 +412,10 @@ Code war nie betroffen. Die Tests laufen seit der Konsolidierung auch in der
 CI (`.github/workflows/ci.yml`) bei jedem Push und Pull Request.
 
 Groesste Gruppen: `test_voice.py` (99), `test_cli.py` (84), `test_web.py`
-(67), `test_calendar.py` (64), `test_approvals.py` (51), `test_schema.py` (42),
-`test_isolation.py` (41), `test_briefing.py` (39), `test_daemon.py` (38),
-`test_research.py` (37).
+(67), `test_calendar.py` (64), `test_approvals.py` (51), `test_hardening.py`
+(45), `test_schema.py` (42), `test_isolation.py` (41), `test_briefing.py` (39),
+`test_daemon.py` (38), `test_research.py` (37), `test_config.py` (34),
+`test_router.py` (24).
 
 Keine Typechecks im Projekt konfiguriert (kein mypy, kein pyright).
 
@@ -369,6 +423,9 @@ Keine Typechecks im Projekt konfiguriert (kein mypy, kein pyright).
 Alarm, wenn jemand etwas verdrahtet, das nicht verdrahtet sein darf:
 - `interfaces/voice/session.py` enthaelt kein `build_skill`, kein `GmailClient`
 - `llm/isolated.py` importiert keine Faehigkeit, kein Gatter, keine Datenbank
+- **ganz `jarvis/llm/` importiert aus `jarvis` nur `core.config` und
+  `core.secrets`** -- nicht Gatter, Freigaben, Datenbank, Ratenbegrenzung,
+  Protokoll oder Faehigkeiten (statisch ueber den Syntaxbaum, seit 2026-09-03)
 - `llm/transcribe.py` enthaelt keinen HTTP-Client
 - `skills/research/` enthaelt keinen HTTP-Client
 - die beiden Mock-Module rufen nie `merke_kontakt`
@@ -561,7 +618,7 @@ beide den Nutzer an seinem Mac und lassen sich als **ein** Termin erledigen.
 
 ```sh
 uv sync
-uv run pytest -q                 # 1076 Tests
+uv run pytest -q                 # 1102 Tests
 uv run ruff check . && uv run ruff format --check .
 
 export JARVIS_HOME=/tmp/jarvis-probe

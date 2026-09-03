@@ -8,7 +8,7 @@ Commits, Kommentaren und Testnamen.
 
 ```sh
 uv sync
-uv run pytest -q                                  # ~1076 Tests, rund 20 s
+uv run pytest -q                                  # ~1102 Tests, rund 20 s
 uv run ruff check . && uv run ruff format --check .
 
 # Probelauf ohne echte Dienste:

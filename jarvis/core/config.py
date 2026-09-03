@@ -247,6 +247,10 @@ class LLMConfig:
     #: Wie weit der Modellaufruf vom handelnden Teil getrennt laeuft.
     #: "off" | "subprocess" | "sandbox" -- siehe llm/isolation.py.
     isolation: str = "subprocess"
+    #: Wie lange ein nicht erreichbarer Anbieter uebersprungen wird, in
+    #: Sekunden. 0 schaltet die Pause ab; dann wird jeder Anbieter der Kette
+    #: bei jeder Anfrage erneut versucht. Siehe llm/router.py.
+    cooldown_seconds: int = 60
 
 
 LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -826,14 +830,22 @@ def _parse_skills(raw: Any) -> dict[str, dict[str, Any]]:
 def _parse_llm(raw: Any) -> LLMConfig:
     if not isinstance(raw, dict):
         raise ConfigError("llm: erwartet eine Tabelle")
-    _reject_unknown(raw, {"providers", "tasks", "isolation"}, "llm")
+    _reject_unknown(raw, {"providers", "tasks", "isolation", "cooldown_seconds"}, "llm")
     providers = _parse_providers(raw.get("providers", {}))
     tasks = _parse_tasks(raw.get("tasks", {}), providers)
     trennung = _as_str(raw.get("isolation", "subprocess"), "llm.isolation").strip()
     if trennung not in ISOLATION_MODES:
         erlaubt = ", ".join(ISOLATION_MODES)
         raise ConfigError(f"llm.isolation: {trennung!r} unbekannt (erlaubt: {erlaubt})")
-    return LLMConfig(providers=providers, tasks=tasks, isolation=trennung)
+    pause = _as_int(raw.get("cooldown_seconds", 60), "llm.cooldown_seconds")
+    if pause < 0:
+        raise ConfigError("llm.cooldown_seconds: erwartet 0 oder mehr Sekunden")
+    return LLMConfig(
+        providers=providers,
+        tasks=tasks,
+        isolation=trennung,
+        cooldown_seconds=pause,
+    )
 
 
 def _parse_providers(raw: Any) -> dict[str, ProviderConfig]:
@@ -1088,6 +1100,13 @@ rate_limits = { hour = 60, day = 400 }
 # Konstanten und sieht den Text gar nicht an.
 [llm]
 isolation = "subprocess"
+
+# Ein Anbieter, der nicht erreichbar war oder nicht antwortete, wird so lange
+# uebersprungen statt bei jeder Anfrage erneut mit vollem Zeitlimit versucht.
+# Der Stand steht im Arbeitsspeicher: nach einem Neustart wird wieder probiert.
+# 0 schaltet die Pause ab. Eine Pause ueberspringt nur -- sie macht keinen
+# Anbieter zulaessig, den die Vertraulichkeitssperre ausschliesst.
+cooldown_seconds = 60
 
 
 [llm.providers.anthropic]
